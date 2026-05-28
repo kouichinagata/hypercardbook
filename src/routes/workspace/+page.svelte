@@ -150,7 +150,7 @@
     <div class="chat-panel">
         <div class="panel-header">
             <div class="header-left">
-                <button class="back-home-btn" onclick={() => goto('/')}>← ホーム</button>
+                <button class="back-home-btn" onclick={() => goto('/')}>back</button>
                 <h2>Chat</h2>
             </div>
             <div class="status-indicator" class:saving={saveStatus === 'Saving...'} class:error={saveStatus === 'Error'}>
@@ -190,11 +190,11 @@
             <input
                 type="text"
                 bind:value={currentInput}
-                placeholder="本を追加・改造するための指示を入力..."
+                placeholder="Please enter a prompt to correct the book."
                 disabled={isGenerating}
             />
             <button type="submit" disabled={isGenerating || !currentInput.trim()}>
-                送信
+                Run
             </button>
         </form>
     </div>

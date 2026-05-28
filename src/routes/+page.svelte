@@ -158,8 +158,8 @@
     // Computed placeholder text based on book context selection
     let placeholderText = $derived(
         selectedBookId 
-            ? "プロンプトを入力してください。選択された本の設定に基づいて生成します。" 
-            : "プロンプトを入力してください"
+            ? "Please enter the prompt to create the book. (Based on selected book's settings)" 
+            : "Please enter the prompt to create the book."
     );
 </script>
 
@@ -190,7 +190,7 @@
     <!-- Prompt input box repositioned slightly higher -->
     <div class="landing-panel">
         <h1 class="title">HyperCardBook</h1>
-        <p class="subtitle">Markdown電子書籍生成AIです</p>
+        <p class="subtitle">HyperCardBook is an AI for generating Markdown ebooks.</p>
 
         <form onsubmit={handleSubmit} class="prompt-form">
             <textarea
