@@ -7,7 +7,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     const { data: books, error } = await supabase
         .from('books')
         .select('id, slug, title, author, cover_image, theme_color, user_id')
-        .order('updated_at', { ascending: false });
+        .order('slug', { ascending: true });
 
     if (error) {
         console.error('Failed to fetch books from Supabase:', error);
