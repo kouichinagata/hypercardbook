@@ -173,13 +173,26 @@
 
     <!-- Theme switch and login/logout buttons at top right -->
     <div class="theme-switch-container">
-        {#if data.currentUserId}
+        {#if data.session?.user}
+            <div class="user-profile">
+                {#if data.session.user.user_metadata?.avatar_url}
+                    <img 
+                        src={data.session.user.user_metadata.avatar_url} 
+                        alt="User Avatar" 
+                        class="user-avatar" 
+                        referrerpolicy="no-referrer"
+                    />
+                {/if}
+                <span class="user-name">
+                    {data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name || 'User'}
+                </span>
+            </div>
             <button class="theme-switch logout-btn" onclick={handleLogout}>
-                ログアウト
+                Logout
             </button>
         {:else}
             <button class="theme-switch login-btn" onclick={() => goto('/login')}>
-                ログイン
+                Login
             </button>
         {/if}
         <button class="theme-switch" onclick={toggleTheme}>
@@ -342,6 +355,36 @@
         z-index: 1000;
         display: flex;
         gap: 8px;
+        align-items: center;
+    }
+
+    .user-profile {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        padding: 4px 12px 4px 4px;
+        border-radius: 20px;
+        backdrop-filter: blur(10px);
+    }
+
+    .user-avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+
+    .user-name {
+        font-size: 11px;
+        color: var(--text-color);
+        font-weight: 600;
+        max-width: 100px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-family: system-ui, sans-serif;
     }
 
     .theme-switch {
