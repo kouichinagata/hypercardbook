@@ -214,7 +214,7 @@
                 class:active={activeTab === 'source'} 
                 onclick={() => activeTab = 'source'}
             >
-                Source (Markdown)
+                Code (Markdown)
             </button>
         </div>
 
