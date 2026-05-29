@@ -38,13 +38,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             });
         }
 
-        if (!slug) {
-            slug = `book-${Date.now()}`;
-        }
-
         const bookData: any = {
             user_id: session.user.id,
-            slug,
             title,
             author: author || null,
             cover_image: coverImage || null,
@@ -54,6 +49,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
         if (id) {
             bookData.id = id;
+            // Fetch existing slug to prevent overwriting with timestamp
+            const { data: existingBook } = await supabase
+                .from('books')
+                .select('slug')
+                .eq('id', id)
+                .single();
+
+            if (existingBook) {
+                bookData.slug = slug || existingBook.slug;
+            } else {
+                bookData.slug = slug || `book-${Date.now()}`;
+            }
+        } else {
+            bookData.slug = slug || `book-${Date.now()}`;
         }
 
         const { data, error: dbError } = await supabase

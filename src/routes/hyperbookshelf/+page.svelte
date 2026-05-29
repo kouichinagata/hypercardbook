@@ -121,12 +121,6 @@
                                         <div class="book-cover-author">著者：{book.author}</div>
                                     {/if}
                                 </div>
-                                <div class="book-tooltip">
-                                    <h4>{book.title}</h4>
-                                    {#if book.author}
-                                        <p>著者：{book.author}</p>
-                                    {/if}
-                                </div>
                             </div>
                         {/each}
                     </div>
@@ -264,7 +258,7 @@
         background-color: var(--book-cover-bg);
         color: white;
         border-radius: 2px 4px 4px 2px;
-        box-shadow: 3px 3px 8px rgba(0,0,0,0.5);
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0,0,0,0.4);
         transition: 0.3s;
         display: flex;
         flex-direction: column;
@@ -327,7 +321,7 @@
     /* white (光沢のある白) */
     .book-cover[data-theme-color="white"] {
         background: linear-gradient(135deg, #ffffff 0%, #f7f7f7 50%, #e3e3e3 100%);
-        box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 1), inset 0 -2px 3px rgba(0, 0, 0, 0.1);
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0, 0, 0, 0.25), inset 0 2px 3px rgba(255, 255, 255, 1), inset 0 -2px 3px rgba(0, 0, 0, 0.1);
         color: #1a1a1a;
         border: 1px solid rgba(0, 0, 0, 0.15);
     }
@@ -341,7 +335,7 @@
     /* blue (ビジネス、男の子向け) */
     .book-cover[data-theme-color="blue"] {
         background: linear-gradient(135deg, #0f2b5c 0%, #1e3c72 100%);
-        box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.5), inset 0 2px 3px rgba(255, 255, 255, 0.15);
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0, 0, 0, 0.4), inset 0 2px 3px rgba(255, 255, 255, 0.15);
         color: #ffffff;
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
@@ -355,7 +349,7 @@
     /* pink (女性用、女の子向け) */
     .book-cover[data-theme-color="pink"] {
         background: linear-gradient(135deg, #ffdeed 0%, #ffb3d1 100%);
-        box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.6);
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0, 0, 0, 0.25), inset 0 2px 3px rgba(255, 255, 255, 0.6);
         color: #4a4a4a;
         border: 1px solid rgba(255, 179, 209, 0.4);
     }
@@ -369,7 +363,7 @@
     /* gold (皮表紙風茶に金色タイトル) */
     .book-cover[data-theme-color="gold"] {
         background: linear-gradient(135deg, #4e2f15 0%, #2e1605 100%);
-        box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(0, 0, 0, 0.4);
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #2e1605, 6px 8px 10px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.4);
         border-left: 2px solid rgba(255, 215, 0, 0.35);
         color: #ffd700;
         border: 1px solid rgba(78, 47, 21, 0.4);
@@ -382,36 +376,6 @@
         color: #e6c300;
     }
 
-    /* ホバー時の本の浮き上がり＆3D回転 */
-    .book-item:hover {
-        transform: translateY(-12px) translateZ(10px) rotateY(-8deg);
-        z-index: 20;
-    }
-    
-    .book-item:hover .book-cover {
-        box-shadow: 8px 12px 20px rgba(0,0,0,0.6);
-    }
-
-    /* 本の下部に浮かび上がる簡易吹き出し（書籍情報） */
-    .book-tooltip {
-        position: absolute; bottom: 105%; left: 50%;
-        transform: translateX(-50%) translateY(10px);
-        background: rgba(26, 18, 11, 0.95);
-        color: #f5ebe0; padding: 6px 12px; border-radius: 6px;
-        font-size: 0.75rem; width: 140px; text-align: center;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-        pointer-events: none; opacity: 0;
-        transition: opacity 0.3s, transform 0.3s;
-        z-index: 100; box-sizing: border-box;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        font-family: system-ui, -apple-system, sans-serif;
-    }
-    .book-tooltip h4 { margin: 0 0 3px 0; font-size: 0.8rem; font-weight: bold; }
-    .book-tooltip p { margin: 0; opacity: 0.8; font-size: 0.7rem; }
-
-    .book-item:hover .book-tooltip {
-        opacity: 1; transform: translateX(-50%) translateY(0);
-    }
 
     /* --- エラー表示 --- */
     .error-message {
@@ -448,7 +412,6 @@
     @media (max-width: 600px) {
         .shelf-books-area { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 20px; padding: 10px 20px 0; min-height: 180px;}
         .book-item { width: 80px; height: 120px; }
-        .book-tooltip { width: 110px; }
         .book-cover { padding: 4px; }
         .book-cover-img { max-height: 50px; margin-bottom: 4px; }
         .book-cover-title { font-size: 0.55rem; line-height: 1.1; }

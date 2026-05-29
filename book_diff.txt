@@ -1,0 +1,85 @@
+diff --git a/src/lib/components/Book.svelte b/src/lib/components/Book.svelte
+index 56aa70d..28032c2 100644
+--- a/src/lib/components/Book.svelte
++++ b/src/lib/components/Book.svelte
+@@ -4,7 +4,7 @@
+     import { goto } from '$app/navigation';
+     import { browser } from '$app/environment';
+ 
+-    let { markdown = '', backUrl = '' } = $props();
++    let { markdown = '', backUrl = '', handleImageClick = () => {} } = $props();
+ 
+     // Book state
+     let title = $state('');
+@@ -387,7 +387,25 @@
+     }
+ 
+     function handleBookClick(e: MouseEvent) {
+-        if ((e.target as HTMLElement).closest('a') || (e.target as HTMLElement).closest('.control-panel')) {
++        const target = e.target as HTMLElement;
++        console.log('handleBookClick target:', target);
++        if (target.closest('a') || target.closest('.control-panel')) {
++            return;
++        }
++
++        const img = target.closest('img');
++        if (img) {
++            console.log('Image click captured! src:', img.getAttribute('src'), 'alt:', img.getAttribute('alt'));
++            e.preventDefault();
++            e.stopPropagation();
++            const src = img.getAttribute('src') || '';
++            const alt = img.getAttribute('alt') || '';
++            if (handleImageClick) {
++                console.log('Invoking handleImageClick callback. String value:', handleImageClick.toString());
++                handleImageClick({ src, alt });
++            } else {
++                console.warn('handleImageClick callback is undefined!');
++            }
+             return;
+         }
+         
+@@ -464,6 +482,15 @@
+         const savedTheme = document.documentElement.getAttribute('data-theme') || 'light';
+         uiTheme = savedTheme;
+ 
++        // Add capture listener for image errors to add .broken-image styling
++        const handleImageError = (e: Event) => {
++            const target = e.target as HTMLElement;
++            if (target && target.tagName === 'IMG') {
++                target.classList.add('broken-image');
++            }
++        };
++        document.addEventListener('error', handleImageError, true);
++
+         // Apply viewMode based on width
+         const isNarrow = window.innerWidth <= 768;
+         viewMode = isNarrow ? 'vertical' : 'spread';
+@@ -500,6 +527,7 @@
+         return () => {
+             window.removeEventListener('resize', adjustBookScale);
+             document.removeEventListener('fullscreenchange', handleFullscreenChange);
++            document.removeEventListener('error', handleImageError, true);
+         };
+     });
+ </script>
+@@ -647,7 +675,6 @@
+             oninput={handleSliderInput} 
+             class="page-slider"
+         >
+-        <span class="page-progress">{getProgressText()}</span>
+         <button class="control-btn" onclick={goNext} title="次のページへ">▶</button>
+         <button class="control-btn" onclick={goLast} title="最後のページへ">⇥</button>
+         <button class="control-btn" onclick={toggleFullscreen} title="全画面表示">
+@@ -1243,4 +1270,12 @@
+     .book-workspace[data-book-theme="gold"] .markdown-body :global(a) {
+         color: #8b5a2b !important;
+     }
++
++    :global(.book-workspace img.broken-image) {
++        border: 2px dashed rgba(239, 68, 68, 0.5) !important;
++        min-width: 150px !important;
++        min-height: 150px !important;
++        background-color: rgba(239, 68, 68, 0.05) !important;
++        cursor: pointer;
++    }
+ </style>

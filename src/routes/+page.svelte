@@ -122,7 +122,7 @@
 
     // Delete handler
     async function handleDeleteBook(book: any) {
-        if (!confirm(`本当に「${book.title}」を削除しますか？`)) return;
+        if (!confirm(`Are you sure you want to delete "${book.title}"?`)) return;
 
         try {
             const response = await fetch('/api/delete', {
@@ -138,11 +138,40 @@
                 }
             } else {
                 const errData = await response.json();
-                alert(`削除に失敗しました: ${errData.error}`);
+                alert(`Failed to delete: ${errData.error}`);
             }
         } catch (err) {
             console.error('Delete book error:', err);
-            alert('削除中にエラーが発生しました。');
+            alert('An error occurred during deletion.');
+        }
+    }
+
+    // Download handler
+    async function handleDownloadBook(book: any) {
+        try {
+            const { data, error } = await supabase
+                .from('books')
+                .select('markdown_content')
+                .eq('id', book.id)
+                .single();
+
+            if (error || !data?.markdown_content) {
+                alert('Failed to find download data.');
+                return;
+            }
+
+            const blob = new Blob([data.markdown_content], { type: 'text/markdown;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${book.title || 'book'}.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Download book error:', err);
+            alert('An error occurred during download.');
         }
     }
 
@@ -238,32 +267,38 @@
                         <div class="shelf-books-area">
                             {#each rowBooks as book}
                                 <div class="book-item-wrapper">
-                                    <!-- Prompt, Edit, Delete Buttons positioned above the book cover -->
+                                    <!-- Prompt, Edit, Delete, Download Buttons positioned above the book cover -->
                                     <div class="book-action-bar">
                                         <button 
                                             class="action-btn prompt-btn" 
                                             class:selected={selectedBookId === book.id}
                                             onclick={() => handlePromptSelect(book)}
-                                            title="この本をベースに生成"
                                         >
                                             Prompt
                                         </button>
                                         {#if data.currentUserId && book.userId === data.currentUserId}
                                             <button 
-                                                class="action-btn edit-btn" 
+                                                class="action-btn edit-btn icon-btn" 
                                                 onclick={() => handleEditBook(book)}
-                                                title="既存の編集チャットを開く"
+                                                title="Edit"
                                             >
-                                                Edit
+                                                ✍️
                                             </button>
                                             <button 
-                                                class="action-btn delete-btn" 
+                                                class="action-btn delete-btn icon-btn" 
                                                 onclick={() => handleDeleteBook(book)}
-                                                title="本を削除"
+                                                title="Delete"
                                             >
-                                                Delete
+                                                🗑️
                                             </button>
                                         {/if}
+                                        <button 
+                                            class="action-btn download-btn icon-btn" 
+                                            onclick={() => handleDownloadBook(book)}
+                                            title="Download"
+                                        >
+                                            💾
+                                        </button>
                                     </div>
 
                                     <!-- Interactive 3D Book Cover -->
@@ -289,13 +324,13 @@
                                             {/if}
                                             <div class="book-cover-title">{book.title}</div>
                                             {#if book.author}
-                                                <div class="book-cover-author">著者：{book.author}</div>
+                                                <div class="book-cover-author">Author: {book.author}</div>
                                             {/if}
                                         </div>
                                         <div class="book-tooltip">
                                             <h4>{book.title}</h4>
                                             {#if book.author}
-                                                <p>著者：{book.author}</p>
+                                                <p>Author: {book.author}</p>
                                             {/if}
                                         </div>
                                     </div>
@@ -561,25 +596,42 @@
     /* --- Action Panel Above Book --- */
     .book-action-bar {
         display: flex;
-        gap: 4px;
+        gap: 3px;
         margin-bottom: 8px;
         width: 110px;
-        justify-content: space-between;
+        align-items: center;
+        justify-content: center;
     }
 
     .action-btn {
-        flex: 1;
-        padding: 3px 0;
+        height: 24px;
+        padding: 0 4px;
         font-size: 9px;
         border-radius: 4px;
         cursor: pointer;
         border: 1px solid rgba(255, 255, 255, 0.15);
         background: rgba(255, 255, 255, 0.05);
         color: #f5ebe0;
-        text-align: center;
-        font-family: system-ui, sans-serif;
-        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         transition: all 0.2s;
+        box-sizing: border-box;
+        font-family: system-ui, sans-serif;
+    }
+
+    .action-btn.prompt-btn {
+        padding: 0 6px;
+        font-weight: 500;
+        flex-shrink: 0;
+    }
+
+    .action-btn.icon-btn {
+        width: 22px;
+        height: 24px;
+        font-size: 11px;
+        flex-shrink: 0;
+        padding: 0;
     }
 
     .action-btn:hover {
@@ -626,7 +678,7 @@
         background-color: var(--book-cover-bg);
         color: white;
         border-radius: 2px 4px 4px 2px;
-        box-shadow: 3px 3px 8px rgba(0,0,0,0.5);
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0,0,0,0.4);
         transition: 0.3s;
         display: flex;
         flex-direction: column;
@@ -687,7 +739,7 @@
 
     .book-cover[data-theme-color="white"] {
         background: linear-gradient(135deg, #ffffff 0%, #f7f7f7 50%, #e3e3e3 100%);
-        box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 1), inset 0 -2px 3px rgba(0, 0, 0, 0.1);
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0, 0, 0, 0.25), inset 0 2px 3px rgba(255, 255, 255, 1), inset 0 -2px 3px rgba(0, 0, 0, 0.1);
         color: #1a1a1a;
         border: 1px solid rgba(0, 0, 0, 0.15);
     }
@@ -700,7 +752,7 @@
 
     .book-cover[data-theme-color="blue"] {
         background: linear-gradient(135deg, #0f2b5c 0%, #1e3c72 100%);
-        box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.5), inset 0 2px 3px rgba(255, 255, 255, 0.15);
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0, 0, 0, 0.4), inset 0 2px 3px rgba(255, 255, 255, 0.15);
         color: #ffffff;
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
@@ -713,7 +765,7 @@
 
     .book-cover[data-theme-color="pink"] {
         background: linear-gradient(135deg, #ffdeed 0%, #ffb3d1 100%);
-        box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.6);
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0, 0, 0, 0.25), inset 0 2px 3px rgba(255, 255, 255, 0.6);
         color: #4a4a4a;
         border: 1px solid rgba(255, 179, 209, 0.4);
     }
@@ -726,7 +778,7 @@
 
     .book-cover[data-theme-color="gold"] {
         background: linear-gradient(135deg, #4e2f15 0%, #2e1605 100%);
-        box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(0, 0, 0, 0.4);
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #2e1605, 6px 8px 10px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.4);
         border-left: 2px solid rgba(255, 215, 0, 0.35);
         color: #ffd700;
         border: 1px solid rgba(78, 47, 21, 0.4);
@@ -739,36 +791,6 @@
         color: #e6c300;
     }
 
-    /* Hover */
-    .book-item:hover {
-        transform: translateY(-12px) translateZ(10px) rotateY(-8deg);
-        z-index: 20;
-    }
-    
-    .book-item:hover .book-cover {
-        box-shadow: 8px 12px 20px rgba(0,0,0,0.6);
-    }
-
-    /* Tooltip */
-    .book-tooltip {
-        position: absolute; bottom: 105%; left: 50%;
-        transform: translateX(-50%) translateY(10px);
-        background: rgba(26, 18, 11, 0.95);
-        color: #f5ebe0; padding: 6px 12px; border-radius: 6px;
-        font-size: 0.75rem; width: 140px; text-align: center;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-        pointer-events: none; opacity: 0;
-        transition: opacity 0.3s, transform 0.3s;
-        z-index: 100; box-sizing: border-box;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        font-family: system-ui, -apple-system, sans-serif;
-    }
-    .book-tooltip h4 { margin: 0 0 3px 0; font-size: 0.8rem; font-weight: bold; }
-    .book-tooltip p { margin: 0; opacity: 0.8; font-size: 0.7rem; }
-
-    .book-item:hover .book-tooltip {
-        opacity: 1; transform: translateX(-50%) translateY(0);
-    }
 
     .empty-shelf {
         font-size: 16px;
@@ -832,10 +854,7 @@
             width: 80px;
             height: 120px;
         }
-        
-        .book-tooltip {
-            width: 110px;
-        }
+
         
         .book-cover {
             padding: 4px;
@@ -857,11 +876,23 @@
 
         .book-action-bar {
             width: 80px;
+            gap: 2px;
         }
 
         .action-btn {
+            height: 18px;
             font-size: 8px;
-            padding: 2px 0;
+            padding: 0 3px;
+        }
+
+        .action-btn.prompt-btn {
+            padding: 0 4px;
+        }
+
+        .action-btn.icon-btn {
+            width: 16px;
+            height: 18px;
+            font-size: 9px;
         }
 
         .measure-container {
