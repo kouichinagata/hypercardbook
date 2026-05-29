@@ -601,6 +601,8 @@
         width: 110px;
         align-items: center;
         justify-content: center;
+        position: relative;
+        z-index: 30;
     }
 
     .action-btn {
@@ -791,6 +793,52 @@
         color: #e6c300;
     }
 
+    /* Hover */
+    .book-item:hover {
+        transform: translateY(-12px) translateZ(10px) rotateY(-8deg);
+        z-index: 20;
+    }
+    
+    .book-item:hover .book-cover {
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 10px 14px 22px rgba(0,0,0,0.5);
+    }
+
+    /* Tooltip */
+    .book-tooltip {
+        position: absolute; bottom: 105%; left: 50%;
+        transform: translateX(-50%) translateY(10px);
+        background: rgba(26, 18, 11, 0.95);
+        color: #f5ebe0; padding: 6px 12px; border-radius: 6px;
+        font-size: 0.75rem; width: 140px; text-align: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        pointer-events: none; opacity: 0;
+        transition: opacity 0.3s, transform 0.3s;
+        z-index: 100; box-sizing: border-box;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        font-family: system-ui, -apple-system, sans-serif;
+    }
+    .book-tooltip h4 { margin: 0 0 3px 0; font-size: 0.8rem; font-weight: bold; }
+    .book-tooltip p { margin: 0; opacity: 0.8; font-size: 0.7rem; }
+
+    .book-item:hover .book-tooltip {
+        opacity: 1; transform: translateX(-50%) translateY(0);
+    }
+    
+    .book-item:hover .book-cover[data-theme-color="white"] {
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 10px 14px 22px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 1), inset 0 -2px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    .book-item:hover .book-cover[data-theme-color="blue"] {
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 10px 14px 22px rgba(0, 0, 0, 0.5), inset 0 2px 3px rgba(255, 255, 255, 0.15);
+    }
+    
+    .book-item:hover .book-cover[data-theme-color="pink"] {
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 10px 14px 22px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.6);
+    }
+    
+    .book-item:hover .book-cover[data-theme-color="gold"] {
+        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #2e1605, 10px 14px 22px rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(0, 0, 0, 0.4);
+    }
 
     .empty-shelf {
         font-size: 16px;
@@ -853,6 +901,10 @@
         .book-item {
             width: 80px;
             height: 120px;
+        }
+        
+        .book-tooltip {
+            width: 110px;
         }
 
         

@@ -4,7 +4,7 @@
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
 
-    let { markdown = '', backUrl = '', handleImageClick = () => {} } = $props();
+    let { markdown = '', backUrl = '' } = $props();
 
     // Book state
     let title = $state('');
@@ -387,25 +387,7 @@
     }
 
     function handleBookClick(e: MouseEvent) {
-        const target = e.target as HTMLElement;
-        console.log('handleBookClick target:', target);
-        if (target.closest('a') || target.closest('.control-panel')) {
-            return;
-        }
-
-        const img = target.closest('img');
-        if (img) {
-            console.log('Image click captured! src:', img.getAttribute('src'), 'alt:', img.getAttribute('alt'));
-            e.preventDefault();
-            e.stopPropagation();
-            const src = img.getAttribute('src') || '';
-            const alt = img.getAttribute('alt') || '';
-            if (handleImageClick) {
-                console.log('Invoking handleImageClick callback. String value:', handleImageClick.toString());
-                handleImageClick({ src, alt });
-            } else {
-                console.warn('handleImageClick callback is undefined!');
-            }
+        if ((e.target as HTMLElement).closest('a') || (e.target as HTMLElement).closest('.control-panel')) {
             return;
         }
         

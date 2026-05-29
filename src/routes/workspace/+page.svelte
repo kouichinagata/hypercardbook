@@ -213,21 +213,6 @@
         }
     }
 
-    function handlePreviewImageClick(e: { src: string; alt: string }) {
-        console.log('handlePreviewImageClick in workspace called! src:', e.src, 'alt:', e.alt);
-        replaceTargetUrl = e.src;
-        replaceTargetAlt = e.alt;
-        showMediaPanel = true;
-
-        // Auto search by alt text (using space instead of hyphens)
-        const cleanQuery = e.alt ? e.alt.replace(/[-_]/g, ' ').trim() : '';
-        mediaSearchQuery = cleanQuery;
-        if (cleanQuery) {
-            searchMedia();
-        } else {
-            mediaSearchResults = [];
-        }
-    }
 
     function openInsertMedia() {
         replaceTargetUrl = '';
@@ -685,7 +670,7 @@
         <div class="panel-body">
             <div class="preview-container" class:hidden={activeTab !== 'preview'}>
                 {#if markdown}
-                    <Book {markdown} handleImageClick={handlePreviewImageClick} />
+                    <Book {markdown} />
                 {:else}
                     <div class="empty-preview">
                         <div class="spinner"></div>
