@@ -1,5 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
+import fs from 'fs';
+import path from 'path';
 
 export const load: PageServerLoad = async ({ url, locals }) => {
     const bookId = url.searchParams.get('id');
@@ -13,6 +15,25 @@ export const load: PageServerLoad = async ({ url, locals }) => {
         };
     }
 
+    // 1. Check if the bookId corresponds to a static file in the 'samples' directory first
+    const sampleFilename = bookId.endsWith('.md') ? bookId : `${bookId}.md`;
+    const sampleFilePath = path.resolve('samples', sampleFilename);
+
+    if (fs.existsSync(sampleFilePath)) {
+        try {
+            const markdownContent = fs.readFileSync(sampleFilePath, 'utf-8');
+            return {
+                markdown: markdownContent,
+                bookId: bookId,
+                initialChatHistory: []
+            };
+        } catch (err) {
+            console.error(`Failed to read sample file in workspace loader ${bookId}:`, err);
+            throw error(500, { message: 'Failed to read sample file' });
+        }
+    }
+
+    // 2. Otherwise, query Supabase database as usual
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookId);
 
     const bookQuery = supabase.from('books').select('id, markdown_content');

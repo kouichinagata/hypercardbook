@@ -98,7 +98,7 @@
                                 >
                                     Prompt
                                 </button>
-                                {#if currentUserId && book.userId === currentUserId}
+                                {#if !book.isSample && currentUserId && book.userId === currentUserId}
                                     <button 
                                         class="action-btn edit-btn icon-btn" 
                                         onclick={() => onEditBook?.(book)}
@@ -114,13 +114,15 @@
                                         🗑️
                                     </button>
                                 {/if}
-                                <button 
-                                    class="action-btn download-btn icon-btn" 
-                                    onclick={() => onDownloadBook?.(book)}
-                                    title="Download"
-                                >
-                                    💾
-                                </button>
+                                {#if !book.isSample}
+                                    <button 
+                                        class="action-btn download-btn icon-btn" 
+                                        onclick={() => onDownloadBook?.(book)}
+                                        title="Download"
+                                    >
+                                        💾
+                                    </button>
+                                {/if}
                             </div>
                         {/if}
 

@@ -31,20 +31,25 @@ CRITICAL RULES:
    ...
 
 2. DENSITY AND PAGE COUNT:
-   - The user has requested: "本の内容は、ショート動画のiFrame, 図写真、文字で、１ページに記述する文字数は極力へらして、ページ数を多くする。" (Keep the text density per page extremely low. Limit paragraphs to 1-2 short sentences, maximum 30-40 characters in Japanese per page where possible).
+   - Keep the text density per page moderate. The text content for each page must be strictly within 400 characters and 20 lines (including auto-wrapped lines). Do not write extremely short, poem-like sentences.
    - Increase the page count by breaking topics, counts, or categories across many pages (aim for at least 12-24 pages).
    - If writing a countdown or top 10 list, dedicate one spread (2 pages) per rank:
      - Left page (e.g. Page 3): A short video reference using \`video: URL\` or standard Markdown image using \`![alt](URL)\`.
-     - Right page (e.g. Page 4): The rank title (e.g. \`## 10位: <Name>\`) and a very brief description (1-2 sentences).
+     - Right page (e.g. Page 4): The rank title (e.g. \`## 10位: <Name>\`) and a brief description.
 
 3. VIDEO AND IMAGE SYNTAX:
-   - For videos, use the format: \`video: <URL>\` (only support YouTube Shorts, standard YouTube, TikTok, or Instagram Reels URLs).
+   - DO NOT invent or generate video URLs on your own. Only use the \`video: <URL>\` syntax if a specific video URL is explicitly provided by the user in their prompt. If no video URL is provided, do not include any video placeholders; use standard Markdown image syntax \`![alt](URL)\` instead.
    - For images, use standard Markdown image syntax: \`![alt](URL)\`.
 
-4. MODIFICATIONS:
+4. TEMPLATE INHERITANCE AND STYLE PRESERVATION:
+   - If the current Markdown contains custom HTML tags (e.g. \`<div class="...">\`), inline styling, a \`<style>\` block (CSS), or a \`<script>\` block (JavaScript), you must reference and adapt them.
+   - Unless explicitly requested by the user, preserve the existing HTML layout structure, CSS class names, styling parameters, and script logic. Integrate the new content (titles, text, media URLs) seamlessly into these structures.
+   - Analyze and mimic the writing style (sentence length, politeness level like "です/ます" or "である/だ", rhythm, use of emojis) of the current book markdown.
+
+5. MODIFICATIONS:
    - If the user asks to modify the book (e.g., "Add a page about X", "Change style to blue", "Rewrite rank 3"), you will receive the current Markdown code. You must rewrite the ENTIRE Markdown block incorporating the changes. Make sure you don't lose any other existing pages unless asked.
 
-5. RESPONSE FORMAT:
+6. RESPONSE FORMAT:
    - Provide the complete, raw Markdown book inside a single markdown code block (delimited by \` \`\`\`markdown \` and \` \`\`\` \`).
    - If the user is just chatting or asking a general question without editing the book, you can respond with a conversational text response, but if a book is being generated or edited, ALWAYS output the complete updated markdown code block in your response.
 `;
@@ -77,16 +82,22 @@ CRITICAL RULES:
      # Volcanic Wonders of Japan
      Japan is home to over 100 active volcanoes...
 
-2. BODY CONTENT STYLE:
-   - Use regular Markdown formatting (headings, lists, bold text, links).
-   - Use vertical layouts with Low Text Density: keep explanations punchy, clear, and visually appealing.
+2. BODY CONTENT STYLE & INFORMATION DENSITY:
+   - Since cards are compiled into stacks to form large books or encyclopedias, avoid extremely short, poem-like sentences. Write a detailed, comprehensive, and high-quality long text.
+   - To prevent text truncation (token cutoff), maximize information density: write deeply and thoroughly without wordy repetitions or redundant phrases.
+   - Use regular Markdown formatting (headings, lists, bold text, links) to structure the explanations beautifully.
    - For images, use standard Markdown image syntax: \`![alt](URL)\`.
-   - For videos, use the format: \`video: <URL>\` (only support YouTube Shorts, standard YouTube, TikTok, or Instagram Reels URLs).
+   - DO NOT invent or generate video URLs. Only use the \`video: <URL>\` syntax if a specific video URL is explicitly provided by the user in their prompt. If no video URL is provided, do not include any video placeholders or URLs.
 
-3. MODIFICATIONS:
+3. TEMPLATE INHERITANCE AND STYLE PRESERVATION:
+   - If the current Markdown contains custom HTML tags (e.g. \`<div class="...">\`), inline styling, a \`<style>\` block (CSS), or a \`<script>\` block (JavaScript), you must analyze and adapt them.
+   - Unless explicitly requested by the user, preserve the existing HTML layout structure, CSS class names, styling parameters, and script logic. Integrate the new content seamlessly into these structures.
+   - Analyze and mimic the writing style (sentence length, tone/politeness level, use of emojis) of the current card markdown.
+
+4. MODIFICATIONS:
    - If the user asks to modify the card (e.g., "change the background color to blue", "update subtitle to X", "add a section about Mount Fuji"), you will receive the current Markdown code. You must rewrite the ENTIRE Markdown block incorporating the changes. Make sure you don't lose any other existing content unless asked.
 
-4. RESPONSE FORMAT:
+5. RESPONSE FORMAT:
    - Provide the complete, raw Markdown card inside a single markdown code block (delimited by \` \`\`\`markdown \` and \` \`\`\` \`).
    - If the user is just chatting or asking a general question without editing the card, you can respond with a conversational text response, but if a book is being generated or edited, ALWAYS output the complete updated markdown code block in your response.
 `;

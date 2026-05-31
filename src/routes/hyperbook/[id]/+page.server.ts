@@ -13,8 +13,19 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 
     let markdownContent = '';
 
-    // 1. If books parameter is specified in the URL, load directly from filesystem, bypass DB
-    if (booksParam) {
+    // Check if the book ID matches a file in the 'samples' directory (sample books)
+    const sampleFilename = id.endsWith('.md') ? id : `${id}.md`;
+    const sampleFilePath = path.resolve('samples', sampleFilename);
+
+    if (fs.existsSync(sampleFilePath)) {
+        try {
+            markdownContent = fs.readFileSync(sampleFilePath, 'utf-8');
+        } catch (err) {
+            console.error(`Failed to read sample file ${sampleFilename}:`, err);
+            throw error(500, { message: 'Failed to read sample file' });
+        }
+    } else if (booksParam) {
+        // 1. If books parameter is specified in the URL, load directly from filesystem, bypass DB
         const booksDir = path.resolve('static/books');
         const filename = id.endsWith('.md') ? id : `${id}.md`;
         const filePath = path.join(booksDir, filename);

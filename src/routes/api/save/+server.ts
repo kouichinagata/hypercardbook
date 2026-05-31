@@ -51,7 +51,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             markdown_content: markdown
         };
 
-        if (id) {
+        const isUuid = id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) : false;
+
+        if (id && isUuid) {
             bookData.id = id;
             // Fetch existing slug to prevent overwriting with timestamp
             const { data: existingBook } = await supabase

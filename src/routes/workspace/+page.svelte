@@ -197,7 +197,8 @@
                 if (response.ok) {
                     const resData = await response.json();
                     saveStatus = 'Synced';
-                    if (resData.id && !bookUuid) {
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookUuid || '');
+                    if (resData.id && (!bookUuid || !isUuid)) {
                         bookUuid = resData.id;
                         goto(`/workspace?id=${resData.id}`, { replaceState: true, noScroll: true, keepFocus: true });
                     }
@@ -894,7 +895,7 @@
                     <div class="message-bubble" class:user={message.role === 'user'} class:ai={message.role === 'model'}>
                         <div class="bubble-avatar">{message.role === 'user' ? '👤' : '🤖'}</div>
                         <div class="bubble-content">
-                            {message.text.replace(/```(?:markdown)?[\s\S]*?```/gi, mode === 'card' ? '[カードを生成・更新しました]' : '[本を生成・更新しました]').trim()}
+                            {@html (marked.parse(message.text.replace(/```(?:markdown)?[\s\S]*?```/gi, mode === 'card' ? '[カードを生成・更新しました]' : '[本を生成・更新しました]').trim()))}
                         </div>
                     </div>
                 {/each}
@@ -1138,7 +1139,48 @@
         line-height: 1.5;
         max-width: 80%;
         word-wrap: break-word;
-        white-space: pre-wrap;
+        white-space: normal;
+    }
+
+    .bubble-content :global(p) {
+        margin: 0 0 8px 0;
+    }
+    
+    .bubble-content :global(p:last-child) {
+        margin-bottom: 0;
+    }
+
+    .bubble-content :global(ul), .bubble-content :global(ol) {
+        margin: 8px 0;
+        padding-left: 20px;
+    }
+
+    .bubble-content :global(li) {
+        margin-bottom: 4px;
+    }
+
+    .bubble-content :global(pre) {
+        background: rgba(0, 0, 0, 0.25);
+        padding: 10px;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin: 8px 0;
+    }
+
+    .bubble-content :global(code) {
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 13px;
+        background: rgba(0, 0, 0, 0.15);
+        padding: 2px 4px;
+        border-radius: 4px;
+        word-break: break-all;
+    }
+
+    .bubble-content :global(pre code) {
+        background: none;
+        padding: 0;
+        border-radius: 0;
+        word-break: normal;
     }
 
     .message-bubble.user {
