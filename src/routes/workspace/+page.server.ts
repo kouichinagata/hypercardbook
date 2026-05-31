@@ -3,7 +3,7 @@ import { error } from '@sveltejs/kit';
 import fs from 'fs';
 import path from 'path';
 
-export const load: PageServerLoad = async ({ url, locals }) => {
+export const load: PageServerLoad = async ({ url, locals, fetch }) => {
     const bookId = url.searchParams.get('id');
     const supabase = locals.supabase;
 
@@ -17,18 +17,18 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
     // 1. Check if the bookId corresponds to a static file in the 'samples' directory first
     const sampleFilename = bookId.endsWith('.md') ? bookId : `${bookId}.md`;
-    const sampleFilePath = path.resolve('samples', sampleFilename);
+    const res = await fetch(`/samples/${sampleFilename}`);
 
-    if (fs.existsSync(sampleFilePath)) {
+    if (res.ok) {
         try {
-            const markdownContent = fs.readFileSync(sampleFilePath, 'utf-8');
+            const markdownContent = await res.text();
             return {
                 markdown: markdownContent,
                 bookId: bookId,
                 initialChatHistory: []
             };
         } catch (err) {
-            console.error(`Failed to read sample file in workspace loader ${bookId}:`, err);
+            console.error(`Failed to read fetched sample file in workspace loader ${bookId}:`, err);
             throw error(500, { message: 'Failed to read sample file' });
         }
     }

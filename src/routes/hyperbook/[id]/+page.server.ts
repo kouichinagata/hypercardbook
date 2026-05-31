@@ -3,7 +3,7 @@ import { error } from '@sveltejs/kit';
 import fs from 'fs';
 import path from 'path';
 
-export const load: PageServerLoad = async ({ params, locals, url }) => {
+export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
     const { id } = params;
     const supabase = locals.supabase;
     const booksParam = url.searchParams.get('books');
@@ -15,13 +15,13 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 
     // Check if the book ID matches a file in the 'samples' directory (sample books)
     const sampleFilename = id.endsWith('.md') ? id : `${id}.md`;
-    const sampleFilePath = path.resolve('samples', sampleFilename);
-
-    if (fs.existsSync(sampleFilePath)) {
+    const res = await fetch(`/samples/${sampleFilename}`);
+    
+    if (res.ok) {
         try {
-            markdownContent = fs.readFileSync(sampleFilePath, 'utf-8');
+            markdownContent = await res.text();
         } catch (err) {
-            console.error(`Failed to read sample file ${sampleFilename}:`, err);
+            console.error(`Failed to read fetched sample file ${sampleFilename}:`, err);
             throw error(500, { message: 'Failed to read sample file' });
         }
     } else if (booksParam) {

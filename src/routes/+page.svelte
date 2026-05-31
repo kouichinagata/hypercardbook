@@ -186,24 +186,24 @@
                 <textarea
                     bind:this={textareaEl}
                     bind:value={prompt}
-                    placeholder={placeholderText}
+                    placeholder={data.currentUserId ? placeholderText : "ログインすると本の作成やプロンプトの入力が行えます。"}
                     required
                     rows="4"
-                    disabled={isSubmitting}
+                    disabled={!data.currentUserId || isSubmitting}
                 ></textarea>
                 <div class="mode-toggle-container">
                     <label class="mode-toggle-label">
-                        <input type="radio" name="mode" value="book" bind:group={selectedMode} disabled={isSubmitting} />
+                        <input type="radio" name="mode" value="book" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
                         <span>Book</span>
                     </label>
                     <label class="mode-toggle-label">
-                        <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={isSubmitting} />
+                        <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
                         <span>Card</span>
                     </label>
                 </div>
             </div>
             
-            <button type="submit" class="submit-btn" disabled={isSubmitting}>
+            <button type="submit" class="submit-btn" disabled={!data.currentUserId || isSubmitting || !prompt.trim()}>
                 {#if isSubmitting}
                     <div class="spinner"></div>
                 {:else}

@@ -1,8 +1,6 @@
 import type { PageServerLoad } from './$types';
-import fs from 'fs';
-import path from 'path';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, fetch }) => {
     const supabase = locals.supabase;
     const session = locals.session;
 
@@ -55,68 +53,59 @@ export const load: PageServerLoad = async ({ locals }) => {
         }
     }
 
-    // Load sample books from the 'samples' directory
-    const samplesDir = path.resolve('samples');
+    // Load sample books from the static files
+    const SAMPLE_FILES = ['sample001.md', 'sample002.md', 'sample003.md', 'sample004.md', 'sample005.md'];
     let sampleBooks: any[] = [];
-    if (fs.existsSync(samplesDir)) {
+
+    for (const filename of SAMPLE_FILES) {
         try {
-            const files = fs.readdirSync(samplesDir);
-            const mdFiles = files.filter(f => f.endsWith('.md'));
+            const res = await fetch(`/samples/${filename}`);
+            if (!res.ok) continue;
             
-            sampleBooks = mdFiles.map(filename => {
-                const filePath = path.join(samplesDir, filename);
-                try {
-                    const content = fs.readFileSync(filePath, 'utf-8');
-                    const fmMatch = content.match(/^---\s*([\s\S]*?)\s*---/);
-                    
-                    let id = filename.replace('.md', '');
-                    let title = '無題のサンプル';
-                    let author = '';
-                    let coverImage = '';
-                    let themeColor = '';
-                    let playMode = 'book';
-                    let subTitle = '';
+            const content = await res.text();
+            const fmMatch = content.match(/^---\s*([\s\S]*?)\s*---/);
+            
+            let id = filename.replace('.md', '');
+            let title = '無題のサンプル';
+            let author = '';
+            let coverImage = '';
+            let themeColor = '';
+            let playMode = 'book';
+            let subTitle = '';
 
-                    if (fmMatch) {
-                        const lines = fmMatch[1].split('\n');
-                        lines.forEach((line: string) => {
-                            const parts = line.split(':');
-                            if (parts.length >= 2) {
-                                const k = parts[0].trim();
-                                const v = parts.slice(1).join(':').trim();
-                                // Keep ID file-name based; do not override with frontmatter ID to avoid 404s
-                                // if (k === 'id') id = v.replace(/[^a-zA-Z0-9-_]/g, '');
-                                if (k === 'title') title = v;
-                                if (k === 'author') author = v;
-                                if (k === 'cover_image') coverImage = v;
-                                if (k === 'theme_color') themeColor = v;
-                                if (k === 'play_mode') playMode = v;
-                                if (k === 'sub_title') subTitle = v;
-                            }
-                        });
+            if (fmMatch) {
+                const lines = fmMatch[1].split('\n');
+                lines.forEach((line: string) => {
+                    const parts = line.split(':');
+                    if (parts.length >= 2) {
+                        const k = parts[0].trim();
+                        const v = parts.slice(1).join(':').trim();
+                        if (k === 'title') title = v;
+                        if (k === 'author') author = v;
+                        if (k === 'cover_image') coverImage = v;
+                        if (k === 'theme_color') themeColor = v;
+                        if (k === 'play_mode') playMode = v;
+                        if (k === 'sub_title') subTitle = v;
                     }
+                });
+            }
 
-                    const isCard = playMode === 'card';
+            const isCard = playMode === 'card';
 
-                    return {
-                        id,
-                        slug: id,
-                        title,
-                        author,
-                        coverImage,
-                        themeColor: themeColor || (isCard ? 'white' : 'black'),
-                        userId: null,
-                        isCard,
-                        subTitle,
-                        isSample: true
-                    };
-                } catch (err) {
-                    console.error(`Failed to read sample file ${filename}:`, err);
-                    return null;
-                }
-            }).filter(b => b !== null);
+            sampleBooks.push({
+                id,
+                slug: id,
+                title,
+                author,
+                coverImage,
+                themeColor: themeColor || (isCard ? 'white' : 'black'),
+                userId: null,
+                isCard,
+                subTitle,
+                isSample: true
+            });
         } catch (err) {
-            console.error('Failed to read samples directory:', err);
+            console.error(`Failed to fetch sample book ${filename}:`, err);
         }
     }
 

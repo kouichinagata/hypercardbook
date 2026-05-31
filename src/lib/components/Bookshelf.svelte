@@ -96,6 +96,7 @@
                                         class="action-btn prompt-btn" 
                                         class:selected={selectedBookId === book.id}
                                         onclick={() => onPromptSelect?.(book)}
+                                        disabled={!currentUserId}
                                     >
                                         Prompt
                                     </button>
@@ -283,6 +284,15 @@
         transition: all 0.2s;
         box-sizing: border-box;
         font-family: system-ui, sans-serif;
+    }
+
+    .action-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        background: rgba(255, 255, 255, 0.01) !important;
+        border-color: rgba(255, 255, 255, 0.05) !important;
+        color: rgba(255, 255, 255, 0.3) !important;
+        pointer-events: none;
     }
 
     .action-btn.prompt-btn {
