@@ -128,11 +128,6 @@
                 const videoUrl = videoMatch[1].trim();
                 return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
             }
-            const imageMatch = trimmed.match(/^image:\s*(.*)/);
-            if (imageMatch) {
-                const imageUrl = imageMatch[1].trim();
-                return `<div class="image-container"><img src="${normalizePath(imageUrl)}" alt="画像"></div>`;
-            }
             return line;
         });
         

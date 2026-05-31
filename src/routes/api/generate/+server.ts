@@ -34,12 +34,12 @@ CRITICAL RULES:
    - The user has requested: "本の内容は、ショート動画のiFrame, 図写真、文字で、１ページに記述する文字数は極力へらして、ページ数を多くする。" (Keep the text density per page extremely low. Limit paragraphs to 1-2 short sentences, maximum 30-40 characters in Japanese per page where possible).
    - Increase the page count by breaking topics, counts, or categories across many pages (aim for at least 12-24 pages).
    - If writing a countdown or top 10 list, dedicate one spread (2 pages) per rank:
-     - Left page (e.g. Page 3): A short video reference using \`video: URL\` or image using \`image: URL\`.
+     - Left page (e.g. Page 3): A short video reference using \`video: URL\` or standard Markdown image using \`![alt](URL)\`.
      - Right page (e.g. Page 4): The rank title (e.g. \`## 10位: <Name>\`) and a very brief description (1-2 sentences).
 
 3. VIDEO AND IMAGE SYNTAX:
    - For videos, use the format: \`video: <URL>\` (only support YouTube Shorts, standard YouTube, TikTok, or Instagram Reels URLs).
-   - For images, use the format: \`image: <URL>\` or standard Markdown image: \`![alt](URL)\`.
+   - For images, use standard Markdown image syntax: \`![alt](URL)\`.
 
 4. MODIFICATIONS:
    - If the user asks to modify the book (e.g., "Add a page about X", "Change style to blue", "Rewrite rank 3"), you will receive the current Markdown code. You must rewrite the ENTIRE Markdown block incorporating the changes. Make sure you don't lose any other existing pages unless asked.

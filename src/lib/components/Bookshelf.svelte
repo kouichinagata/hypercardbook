@@ -166,7 +166,7 @@
                                     <div class="book-cover-title">{book.title}</div>
                                     {#if book.author}
                                         <div class="book-cover-author">
-                                            {fromPage === 'hyperbookshelf' ? '著者：' : 'Author: '}{book.author}
+                                            {book.author}
                                         </div>
                                     {/if}
                                 </div>
@@ -175,9 +175,9 @@
                                 <h4>{book.title}</h4>
                                 {#if book.isCard && book.subTitle}
                                     <p>{book.subTitle}</p>
-                                {:else if book.author}
+                                  {:else if book.author}
                                     <p>
-                                        {fromPage === 'hyperbookshelf' ? '著者：' : 'Author: '}{book.author}
+                                        {book.author}
                                     </p>
                                 {/if}
                             </div>
