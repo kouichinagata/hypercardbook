@@ -129,12 +129,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const activeSystemInstruction = mode === 'card' ? cardSystemInstruction : systemInstruction;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.5-flash',
             contents: contents,
             config: {
                 systemInstruction: activeSystemInstruction,
                 temperature: 0.7,
-                maxOutputTokens: 8192,
+                maxOutputTokens: 65536,
             }
         });
 
