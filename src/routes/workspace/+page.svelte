@@ -926,7 +926,7 @@
                 <input
                     type="text"
                     bind:value={currentInput}
-                    placeholder={data.session?.user ? "Please enter a prompt to correct the book." : "ログインするとプロンプトの入力が行えます。"}
+                    placeholder="Please enter a prompt to correct the book."
                     disabled={!data.session?.user || isGenerating}
                 />
                 <button type="submit" disabled={!data.session?.user || isGenerating || !currentInput.trim()}>

@@ -186,7 +186,7 @@
                 <textarea
                     bind:this={textareaEl}
                     bind:value={prompt}
-                    placeholder={data.currentUserId ? placeholderText : "ログインすると本の作成やプロンプトの入力が行えます。"}
+                    placeholder={placeholderText}
                     required
                     rows="4"
                     disabled={!data.currentUserId || isSubmitting}
