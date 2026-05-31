@@ -91,13 +91,15 @@
                     <div class="book-item-wrapper">
                         {#if showActions}
                             <div class="book-action-bar">
-                                <button 
-                                    class="action-btn prompt-btn" 
-                                    class:selected={selectedBookId === book.id}
-                                    onclick={() => onPromptSelect?.(book)}
-                                >
-                                    Prompt
-                                </button>
+                                {#if book.isSample || (currentUserId && book.userId === currentUserId)}
+                                    <button 
+                                        class="action-btn prompt-btn" 
+                                        class:selected={selectedBookId === book.id}
+                                        onclick={() => onPromptSelect?.(book)}
+                                    >
+                                        Prompt
+                                    </button>
+                                {/if}
                                 {#if !book.isSample && currentUserId && book.userId === currentUserId}
                                     <button 
                                         class="action-btn edit-btn icon-btn" 
@@ -114,7 +116,7 @@
                                         🗑️
                                     </button>
                                 {/if}
-                                {#if !book.isSample}
+                                {#if !book.isSample && currentUserId && book.userId === currentUserId}
                                     <button 
                                         class="action-btn download-btn icon-btn" 
                                         onclick={() => onDownloadBook?.(book)}
