@@ -289,7 +289,17 @@
             mode = parsedIsCard ? 'card' : 'book';
         }
 
-        const initPrompt = page.url.searchParams.get('prompt');
+        let initPrompt = page.url.searchParams.get('prompt');
+        if (!initPrompt) {
+            try {
+                initPrompt = sessionStorage.getItem('workspace_init_prompt');
+                if (initPrompt) {
+                    sessionStorage.removeItem('workspace_init_prompt');
+                }
+            } catch (err) {
+                console.error('Failed to read prompt from sessionStorage:', err);
+            }
+        }
 
         (async () => {
             if (initPrompt) {

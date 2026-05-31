@@ -65,8 +65,12 @@
         if (!prompt.trim() || isSubmitting) return;
 
         isSubmitting = true;
-        const encodedPrompt = encodeURIComponent(prompt.trim());
-        let targetUrl = `/workspace?prompt=${encodedPrompt}&mode=${selectedMode}`;
+        try {
+            sessionStorage.setItem('workspace_init_prompt', prompt.trim());
+        } catch (err) {
+            console.error('Failed to store prompt in sessionStorage:', err);
+        }
+        let targetUrl = `/workspace?mode=${selectedMode}`;
         if (selectedBookId) {
             targetUrl += `&id=${selectedBookId}`;
         }
