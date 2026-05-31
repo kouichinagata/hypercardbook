@@ -138,7 +138,7 @@
     }
 
 
-    let placeholderText = "Please enter the prompt to create the book.";
+
 </script>
 
 <div class="landing-container" data-theme={uiTheme}>
@@ -181,7 +181,7 @@
                 <textarea
                     bind:this={textareaEl}
                     bind:value={prompt}
-                    placeholder={placeholderText}
+                    placeholder="Please enter the prompt to create the book."
                     required
                     rows="4"
                     disabled={!data.currentUserId || isSubmitting}
