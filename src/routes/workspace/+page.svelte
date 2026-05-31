@@ -174,11 +174,11 @@
 
     // Auto-save logic
     let saveTimeout: NodeJS.Timeout | null = null;
-    let saveStatus = $state('Synced'); // 'Synced', 'Saving...', 'Error'
+    let saveStatus = $state('Synced'); // 'Synced', 'Saving...', 'Error', 'Read Only'
 
     // Watch markdown changes and trigger debounced auto-save
     $effect(() => {
-        if (markdown) {
+        if (markdown && data.session?.user) {
             triggerAutoSave();
         }
     });
@@ -271,6 +271,10 @@
 
     onMount(() => {
         document.body.classList.add('scroll-locked');
+
+        if (!data.session?.user) {
+            saveStatus = 'Read Only';
+        }
 
         // Populate state from Page Loader Data
         markdown = data.markdown || '';
@@ -885,7 +889,7 @@
                     <button class="back-home-btn" onclick={() => goto('/')}>back</button>
                     <h2>Chat</h2>
                 </div>
-                <div class="status-indicator" class:saving={saveStatus === 'Saving...'} class:error={saveStatus === 'Error'}>
+                <div class="status-indicator" class:saving={saveStatus === 'Saving...'} class:error={saveStatus === 'Error'} class:read-only={saveStatus === 'Read Only'}>
                     {saveStatus}
                 </div>
             </div>
@@ -922,10 +926,10 @@
                 <input
                     type="text"
                     bind:value={currentInput}
-                    placeholder="Please enter a prompt to correct the book."
-                    disabled={isGenerating}
+                    placeholder={data.session?.user ? "Please enter a prompt to correct the book." : "ログインするとプロンプトの入力が行えます。"}
+                    disabled={!data.session?.user || isGenerating}
                 />
-                <button type="submit" disabled={isGenerating || !currentInput.trim()}>
+                <button type="submit" disabled={!data.session?.user || isGenerating || !currentInput.trim()}>
                     Run
                 </button>
             </form>
@@ -952,7 +956,7 @@
                 </button>
             </div>
             {#if activeTab === 'source'}
-                <button class="insert-media-btn" onclick={openInsertMedia}>
+                <button class="insert-media-btn" onclick={openInsertMedia} disabled={!data.session?.user}>
                     🖼️ Insert Image
                 </button>
             {/if}
@@ -1019,6 +1023,7 @@
                 placeholder="YAML frontmatter and Markdown format..."
                 class="source-editor"
                 class:hidden={activeTab !== 'source'}
+                readonly={!data.session?.user}
             ></textarea>
         </div>
     </div>
@@ -1101,6 +1106,11 @@
     .status-indicator.error {
         color: #ef4444;
         background: rgba(239, 68, 68, 0.1);
+    }
+
+    .status-indicator.read-only {
+        color: #9ca3af;
+        background: rgba(156, 163, 175, 0.15);
     }
 
     .chat-list {
@@ -1313,6 +1323,14 @@
         background: rgba(139, 92, 246, 0.25);
         border-color: rgba(139, 92, 246, 0.5);
         color: #ffffff;
+    }
+
+    .insert-media-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.1);
+        color: #9ca3af;
     }
 
     /* Media Panel (Drawer) */
