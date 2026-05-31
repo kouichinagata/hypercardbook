@@ -138,12 +138,7 @@
     }
 
 
-    // Computed placeholder text based on book context selection
-    let placeholderText = $derived(
-        selectedBookId 
-            ? "Please enter the prompt to create the book. (Based on selected book's settings)" 
-            : "Please enter the prompt to create the book."
-    );
+    let placeholderText = "Please enter the prompt to create the book.";
 </script>
 
 <div class="landing-container" data-theme={uiTheme}>
