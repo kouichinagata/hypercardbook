@@ -19,7 +19,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         let title = '無題の書籍';
         let author = '';
         let coverImage = '';
-        let themeColor = 'black';
+        let themeColor = '';
+        let playMode = 'book';
 
         const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
         if (fmMatch) {
@@ -34,16 +35,19 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                     if (k === 'author') author = v;
                     if (k === 'cover_image') coverImage = v;
                     if (k === 'theme_color') themeColor = v;
+                    if (k === 'play_mode') playMode = v;
                 }
             });
         }
+
+        const isCard = playMode === 'card';
 
         const bookData: any = {
             user_id: session.user.id,
             title,
             author: author || null,
             cover_image: coverImage || null,
-            theme_color: themeColor || 'black',
+            theme_color: themeColor || (isCard ? 'white' : 'black'),
             markdown_content: markdown
         };
 

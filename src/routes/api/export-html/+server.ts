@@ -1,0 +1,150 @@
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import fs from 'fs';
+import path from 'path';
+import { marked } from 'marked';
+
+export const POST: RequestHandler = async ({ request }) => {
+    try {
+        const { markdown, id } = await request.json();
+        
+        if (!markdown) {
+            return json({ error: 'No markdown content provided.' }, { status: 400 });
+        }
+
+        // Parse frontmatter
+        let slug = id || `card-${Date.now()}`;
+        let cardTitle = '無題のカード';
+        let cardSubTitle = '';
+        let cardCoverImage = '';
+        let cardThemeColor = 'white';
+
+        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+        if (fmMatch) {
+            const fmLines = fmMatch[1].split('\n');
+            fmLines.forEach((line: string) => {
+                const parts = line.split(':');
+                if (parts.length >= 2) {
+                    const k = parts[0].trim();
+                    const v = parts.slice(1).join(':').trim();
+                    if (k === 'id') slug = v.replace(/[^a-zA-Z0-9-_]/g, '');
+                    if (k === 'title') cardTitle = v;
+                    if (k === 'sub_title') cardSubTitle = v;
+                    if (k === 'cover_image') cardCoverImage = v;
+                    if (k === 'theme_color') cardThemeColor = v;
+                }
+            });
+        }
+
+        // Extract style blocks
+        const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
+        let styleMatch;
+        let userStyles = '';
+        while ((styleMatch = styleRegex.exec(markdown)) !== null) {
+            userStyles += styleMatch[1] + '\n';
+        }
+
+        // Extract script blocks
+        const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
+        let scriptMatch;
+        let userScripts = '';
+        while ((scriptMatch = scriptRegex.exec(markdown)) !== null) {
+            userScripts += scriptMatch[1] + '\n';
+        }
+
+        // Strip style/script tags from markdown body to avoid parsing them as code blocks
+        let cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
+        cleanMd = cleanMd.replace(/<style>[\s\S]*?<\/style>/gi, '');
+        cleanMd = cleanMd.replace(/<script>[\s\S]*?<\/script>/gi, '');
+
+        // Normalize paths & process videos/images
+        const lines = cleanMd.split('\n');
+        const processedLines = lines.map((line: string) => {
+            const trimmed = line.trim();
+            const videoMatch = trimmed.match(/^video:\s*(.*)/);
+            if (videoMatch) {
+                const videoUrl = videoMatch[1].trim();
+                return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
+            }
+            const imageMatch = trimmed.match(/^image:\s*(.*)/);
+            if (imageMatch) {
+                const imageUrl = imageMatch[1].trim();
+                return `<div class="image-container"><img src="${normalizePath(imageUrl)}" alt="画像"></div>`;
+            }
+            return line;
+        });
+
+        let bodyHtml = marked.parse(processedLines.join('\n')) as string;
+        bodyHtml = bodyHtml.replace(/src="books\//g, 'src="/books/');
+
+        // Assemble standalone HTML template
+        const standaloneHtml = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${cardTitle}</title>
+    <style>
+        ${userStyles}
+    </style>
+</head>
+<body>
+    ${bodyHtml}
+    
+    <script>
+        ${userScripts}
+    </script>
+</body>
+</html>`;
+
+        // Write HTML to static/html/[slug].html
+        const dirPath = path.resolve('static/html');
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+        }
+        
+        const filename = `${slug}.html`;
+        fs.writeFileSync(path.join(dirPath, filename), standaloneHtml, 'utf-8');
+
+        return json({ url: `/html/${filename}` });
+    } catch (err: any) {
+        console.error('Export HTML Error:', err);
+        return json({ error: err.message || 'Failed to export HTML.' }, { status: 500 });
+    }
+};
+
+function normalizePath(url: string): string {
+    if (!url) return '';
+    const trimmed = url.trim();
+    if (trimmed.startsWith('books/') && !trimmed.startsWith('/')) {
+        return '/' + trimmed;
+    }
+    return trimmed;
+}
+
+function getEmbedUrl(url: string): string {
+    if (!url) return '';
+    if (url.includes('tiktok.com')) {
+        const parts = url.split('/');
+        const videoId = parts[parts.length - 1].split('?')[0];
+        return `https://www.tiktok.com/embed/v2/${videoId}`;
+    }
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        let videoId = '';
+        if (url.includes('/shorts/')) {
+            videoId = url.split('/shorts/')[1].split('?')[0];
+        } else if (url.includes('v=')) {
+            videoId = url.split('v=')[1].split('&')[0];
+        } else if (url.includes('youtu.be/')) {
+            videoId = url.split('youtu.be/')[1].split('?')[0];
+        }
+        return `https://www.youtube.com/embed/${videoId}`;
+    }
+    if (url.includes('instagram.com/reel/') || url.includes('instagram.com/p/')) {
+        const keyword = url.includes('/reel/') ? '/reel/' : '/p/';
+        const parts = url.split(keyword);
+        const postId = parts[1].split('/')[0].split('?')[0];
+        return `https://www.instagram.com/${keyword === '/reel/' ? 'reel' : 'p'}/${postId}/embed`;
+    }
+    return url;
+}

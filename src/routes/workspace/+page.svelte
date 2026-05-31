@@ -3,6 +3,7 @@
     import { page } from '$app/state';
     import { goto } from '$app/navigation';
     import Book from '$lib/components/Book.svelte';
+    import { marked } from 'marked';
 
     let { data } = $props();
 
@@ -10,6 +11,8 @@
     let markdown = $state('');
     let bookUuid = $state('');
     let activeTab = $state('preview'); // 'preview' or 'source'
+    let mode = $state('book'); // 'book' or 'card'
+    let replaceTargetIsCover = $state(false);
 
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
@@ -43,6 +46,136 @@
     let currentInput = $state('');
     let isGenerating = $state(false);
     let errorMsg = $state('');
+    // Derived properties for Card layout preview
+    let cardTitle = $derived.by(() => {
+        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+        if (fmMatch) {
+            const fmLines = fmMatch[1].split('\n');
+            for (let line of fmLines) {
+                const parts = line.split(':');
+                if (parts.length >= 2 && parts[0].trim() === 'title') {
+                    return parts.slice(1).join(':').trim();
+                }
+            }
+        }
+        return 'Untitled Card';
+    });
+
+    let cardSlug = $derived.by(() => {
+        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+        if (fmMatch) {
+            const fmLines = fmMatch[1].split('\n');
+            for (let line of fmLines) {
+                const parts = line.split(':');
+                if (parts.length >= 2 && parts[0].trim() === 'id') {
+                    return parts.slice(1).join(':').trim().replace(/[^a-zA-Z0-9-_]/g, '');
+                }
+            }
+        }
+        return '';
+    });
+
+    let cardSubTitle = $derived.by(() => {
+        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+        if (fmMatch) {
+            const fmLines = fmMatch[1].split('\n');
+            for (let line of fmLines) {
+                const parts = line.split(':');
+                if (parts.length >= 2 && parts[0].trim() === 'sub_title') {
+                    return parts.slice(1).join(':').trim();
+                }
+            }
+        }
+        return '';
+    });
+
+    let cardCoverImage = $derived.by(() => {
+        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+        if (fmMatch) {
+            const fmLines = fmMatch[1].split('\n');
+            for (let line of fmLines) {
+                const parts = line.split(':');
+                if (parts.length >= 2 && parts[0].trim() === 'cover_image') {
+                    return normalizePath(parts.slice(1).join(':').trim());
+                }
+            }
+        }
+        return '';
+    });
+
+    let cardThemeColor = $derived.by(() => {
+        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+        if (fmMatch) {
+            const fmLines = fmMatch[1].split('\n');
+            for (let line of fmLines) {
+                const parts = line.split(':');
+                if (parts.length >= 2 && parts[0].trim() === 'theme_color') {
+                    return parts.slice(1).join(':').trim();
+                }
+            }
+        }
+        return 'white';
+    });
+
+    let cardBodyHtml = $derived.by(() => {
+        if (!markdown) return '';
+        const cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
+        const lines = cleanMd.split('\n');
+        const processedLines = lines.map(line => {
+            const trimmed = line.trim();
+            const videoMatch = trimmed.match(/^video:\s*(.*)/);
+            if (videoMatch) {
+                const videoUrl = videoMatch[1].trim();
+                return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
+            }
+            const imageMatch = trimmed.match(/^image:\s*(.*)/);
+            if (imageMatch) {
+                const imageUrl = imageMatch[1].trim();
+                return `<div class="image-container"><img src="${normalizePath(imageUrl)}" alt="画像"></div>`;
+            }
+            return line;
+        });
+        
+        let html = marked.parse(processedLines.join('\n')) as string;
+        html = html.replace(/src="books\//g, 'src="/books/');
+        return html;
+    });
+
+    function normalizePath(url: string): string {
+        if (!url) return '';
+        const trimmed = url.trim();
+        if (trimmed.startsWith('books/') && !trimmed.startsWith('/')) {
+            return '/' + trimmed;
+        }
+        return trimmed;
+    }
+
+    function getEmbedUrl(url: string): string {
+        if (!url) return '';
+        if (url.includes('tiktok.com')) {
+            const parts = url.split('/');
+            const videoId = parts[parts.length - 1].split('?')[0];
+            return `https://www.tiktok.com/embed/v2/${videoId}`;
+        }
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            let videoId = '';
+            if (url.includes('/shorts/')) {
+                videoId = url.split('/shorts/')[1].split('?')[0];
+            } else if (url.includes('v=')) {
+                videoId = url.split('v=')[1].split('&')[0];
+            } else if (url.includes('youtu.be/')) {
+                videoId = url.split('youtu.be/')[1].split('?')[0];
+            }
+            return `https://www.youtube.com/embed/${videoId}`;
+        }
+        if (url.includes('instagram.com/reel/') || url.includes('instagram.com/p/')) {
+            const keyword = url.includes('/reel/') ? '/reel/' : '/p/';
+            const parts = url.split(keyword);
+            const postId = parts[1].split('/')[0].split('?')[0];
+            return `https://www.instagram.com/${keyword === '/reel/' ? 'reel' : 'p'}/${postId}/embed`;
+        }
+        return url;
+    }
 
     // Auto-save logic
     let saveTimeout: NodeJS.Timeout | null = null;
@@ -113,7 +246,8 @@
                     prompt: promptText,
                     history: chatHistory.slice(0, -1), // Send previous history
                     currentMarkdown: markdown,
-                    bookId: bookUuid
+                    bookId: bookUuid,
+                    mode: mode
                 })
             });
 
@@ -127,6 +261,8 @@
             chatHistory = [...chatHistory, { role: 'model', text: dataRes.text }];
             if (dataRes.markdown) {
                 markdown = dataRes.markdown;
+                const parsedIsCard = dataRes.markdown.includes('play_mode: card');
+                mode = parsedIsCard ? 'card' : 'book';
             }
         } catch (err: any) {
             console.error('Generation failed:', err);
@@ -144,6 +280,14 @@
         markdown = data.markdown || '';
         bookUuid = data.bookId || '';
         chatHistory = data.initialChatHistory || [];
+
+        const urlMode = page.url.searchParams.get('mode');
+        if (urlMode === 'card') {
+            mode = 'card';
+        } else if (markdown) {
+            const parsedIsCard = markdown.includes('play_mode: card');
+            mode = parsedIsCard ? 'card' : 'book';
+        }
 
         const initPrompt = page.url.searchParams.get('prompt');
 
@@ -227,11 +371,56 @@
             if (!confirm('Do you want to apply these changes?')) {
                 return;
             }
-            replaceImageUrl(url);
+            if (replaceTargetIsCover) {
+                // Replace cover_image in frontmatter
+                const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+                if (fmMatch) {
+                    const fmLines = fmMatch[1].split('\n');
+                    let coverImageFound = false;
+                    const updatedLines = fmLines.map(line => {
+                        const parts = line.split(':');
+                        if (parts.length >= 2 && parts[0].trim() === 'cover_image') {
+                            coverImageFound = true;
+                            return `cover_image: ${url}`;
+                        }
+                        return line;
+                    });
+                    if (!coverImageFound) {
+                        updatedLines.push(`cover_image: ${url}`);
+                    }
+                    markdown = `---\n${updatedLines.join('\n')}\n---` + markdown.replace(/^---\s*[\s\S]*?\s*---/, '');
+                } else {
+                    markdown = `---\ncover_image: ${url}\n---\n` + markdown;
+                }
+            } else {
+                replaceImageUrl(url);
+            }
         } else {
             insertImageAtCursor(url, altText || '画像');
         }
         showMediaPanel = false;
+    }
+
+    function handleWebViewClick(e: MouseEvent) {
+        const target = e.target as HTMLElement;
+        if (target && target.tagName === 'IMG') {
+            const src = target.getAttribute('src') || '';
+            const alt = target.getAttribute('alt') || '';
+            const isCover = target.classList.contains('clicked-img-cover') || target.classList.contains('cover-image') || target.id === 'coverImg';
+            
+            replaceTargetUrl = src;
+            replaceTargetAlt = alt;
+            replaceTargetIsCover = isCover;
+            showMediaPanel = true;
+            
+            const cleanQuery = alt ? alt.replace(/[-_]/g, ' ').trim() : '';
+            mediaSearchQuery = cleanQuery;
+            if (cleanQuery) {
+                searchMedia();
+            } else {
+                mediaSearchResults = [];
+            }
+        }
     }
 
     function replaceImageUrl(newUrl: string) {
@@ -456,6 +645,102 @@
             alert('Failed to download image.');
         }
     }
+
+    // HTML Export helper functions
+    function handleDownloadHtml() {
+        const titleText = cardTitle || 'Untitled Card';
+        const slug = cardSlug || `card-${Date.now()}`;
+        
+        // Extract style and script content
+        const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
+        let styleMatch;
+        let userStyles = '';
+        while ((styleMatch = styleRegex.exec(markdown)) !== null) {
+            userStyles += styleMatch[1] + '\n';
+        }
+
+        const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
+        let scriptMatch;
+        let userScripts = '';
+        while ((scriptMatch = scriptRegex.exec(markdown)) !== null) {
+            userScripts += scriptMatch[1] + '\n';
+        }
+
+        const standaloneHtml = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${titleText}</title>
+    <style>
+        ${userStyles}
+    </style>
+</head>
+<body>
+    ${cardBodyHtml}
+    
+    <${'script'}>
+        ${userScripts}
+    </${'script'}>
+</body>
+</html>`;
+
+        const blob = new Blob([standaloneHtml], { type: 'text/html;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${slug}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    let isExportingHtml = $state(false);
+    async function handleExportHtmlLink() {
+        if (isExportingHtml) return;
+
+        // Open the tab synchronously to prevent browser popup blockers
+        const newTab = window.open('', '_blank');
+        if (!newTab) {
+            alert('Popup blocker is active. Please allow popups for this site.');
+            return;
+        }
+
+        // Show a temporary loading text/styling in the new tab
+        newTab.document.write('<html><head><title>Exporting HTML...</title><style>body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f4eae1; color: #333; } .loader { text-align: center; }</style></head><body><div class="loader"><h2>Generating standalone HTML...</h2><p>Please wait a moment.</p></div></body></html>');
+
+        isExportingHtml = true;
+        
+        try {
+            const response = await fetch('/api/export-html', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    markdown,
+                    id: bookUuid || cardSlug
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || `HTTP error ${response.status}`);
+            }
+
+            const dataRes = await response.json();
+            if (dataRes.url) {
+                newTab.location.href = dataRes.url;
+            } else {
+                throw new Error('No URL returned from export API');
+            }
+        } catch (err: any) {
+            console.error('Export HTML failed:', err);
+            newTab.close();
+            alert(`Failed to export HTML: ${err.message || err}`);
+        } finally {
+            isExportingHtml = false;
+        }
+    }
 </script>
 
 <div class="workspace-layout">
@@ -604,7 +889,7 @@
                     <div class="message-bubble" class:user={message.role === 'user'} class:ai={message.role === 'model'}>
                         <div class="bubble-avatar">{message.role === 'user' ? '👤' : '🤖'}</div>
                         <div class="bubble-content">
-                            {message.text.replace(/```markdown[\s\S]*?```/g, '[本を生成・更新しました]').trim()}
+                            {message.text.replace(/```(?:markdown)?[\s\S]*?```/gi, mode === 'card' ? '[カードを生成・更新しました]' : '[本を生成・更新しました]').trim()}
                         </div>
                     </div>
                 {/each}
@@ -669,13 +954,56 @@
 
         <div class="panel-body">
             <div class="preview-container" class:hidden={activeTab !== 'preview'}>
-                {#if markdown}
-                    <Book {markdown} />
-                {:else}
-                    <div class="empty-preview">
-                        <div class="spinner"></div>
-                        <p>本を生成しています。しばらくお待ちください...</p>
+                {#if mode === 'card'}
+                    {#if cardSlug}
+                        <div class="card-action-container" style="position: absolute; top: 20px; right: 20px; z-index: 100; display: flex; gap: 8px;">
+                            <button class="card-action-btn" onclick={handleDownloadHtml} title="Download HTML">
+                                💾
+                            </button>
+                            <button class="card-action-btn" onclick={handleExportHtmlLink} disabled={isExportingHtml} title="Export HTML">
+                                🌐
+                            </button>
+                            <a class="card-action-btn" href="/hyperbook/{cardSlug}?embed=true" target="_blank" title="New tab">
+                                🔗
+                            </a>
+                        </div>
+                    {/if}
+                    <div 
+                        class="card-webview-frame" 
+                        data-theme-color={cardThemeColor}
+                        onclick={handleWebViewClick}
+                        role="presentation"
+                    >
+                        <div class="card-webview-header">
+                            <h1 class="card-webview-title">{cardTitle}</h1>
+                            {#if cardCoverImage}
+                                <div class="card-webview-cover-wrapper">
+                                    <img 
+                                        src={cardCoverImage} 
+                                        alt={cardTitle} 
+                                        class="card-cover-img clicked-img-cover" 
+                                    />
+                                </div>
+                            {/if}
+                            {#if cardSubTitle}
+                                <p class="card-webview-subtitle">{cardSubTitle}</p>
+                            {/if}
+                        </div>
+                        <div class="card-webview-body markdown-body">
+                            {@html cardBodyHtml}
+                        </div>
                     </div>
+                {:else}
+                    {#if markdown}
+                        <div onclick={handleWebViewClick} role="presentation" style="width: 100%; height: 100%;">
+                            <Book {markdown} id={bookUuid} />
+                        </div>
+                    {:else}
+                        <div class="empty-preview">
+                            <div class="spinner"></div>
+                            <p>本を生成しています。しばらくお待ちください...</p>
+                        </div>
+                    {/if}
                 {/if}
             </div>
             
@@ -1178,6 +1506,8 @@
     .preview-container {
         width: 100%;
         height: 100%;
+        position: relative;
+        overflow: hidden;
     }
 
     .source-editor {
@@ -1336,5 +1666,167 @@
     .media-more-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+
+    .card-action-btn {
+        padding: 8px 12px;
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(22, 22, 22, 0.8);
+        color: #ffffff;
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.3s;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    
+    .card-action-btn:hover {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.4);
+        transform: scale(1.05);
+    }
+
+    .card-action-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    /* Card WebView Preview Frame */
+    .card-webview-frame {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100%;
+        max-width: 600px;
+        padding: 40px 30px;
+        box-sizing: border-box;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        transition: background-color 0.3s, color 0.3s;
+        font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    .card-webview-frame[data-theme-color="white"] {
+        background-color: #ffffff;
+        color: #1a1a1a;
+    }
+
+    .card-webview-frame[data-theme-color="black"] {
+        background-color: #161616;
+        color: #ffffff;
+    }
+
+    .card-webview-frame[data-theme-color="blue"] {
+        background: linear-gradient(135deg, #0f2b5c 0%, #1e3c72 100%);
+        color: #ffffff;
+    }
+
+    .card-webview-frame[data-theme-color="pink"] {
+        background: linear-gradient(135deg, #ffdeed 0%, #ffb3d1 100%);
+        color: #4a4a4a;
+    }
+
+    .card-webview-frame[data-theme-color="gold"] {
+        background: linear-gradient(135deg, #4e2f15 0%, #2e1605 100%);
+        color: #ffd700;
+    }
+
+    .card-webview-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        text-align: center;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        padding-bottom: 24px;
+    }
+
+    .card-webview-frame[data-theme-color="black"] .card-webview-header,
+    .card-webview-frame[data-theme-color="blue"] .card-webview-header,
+    .card-webview-frame[data-theme-color="gold"] .card-webview-header {
+        border-bottom-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .card-webview-title {
+        font-size: 28px;
+        font-weight: 800;
+        margin: 0;
+        line-height: 1.3;
+    }
+
+    .card-webview-cover-wrapper {
+        width: 100%;
+        max-height: 300px;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+
+    .card-webview-cover-wrapper:hover {
+        transform: scale(1.02);
+    }
+
+    .card-webview-cover-wrapper img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .card-webview-subtitle {
+        font-size: 16px;
+        font-weight: 500;
+        margin: 0;
+        opacity: 0.85;
+    }
+
+    .card-webview-body {
+        font-size: 15px;
+        line-height: 1.7;
+    }
+
+    :global(.card-webview-body img) {
+        max-width: 100%;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: transform 0.2s;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        display: block;
+        margin: 16px auto;
+    }
+
+    :global(.card-webview-body img:hover) {
+        transform: scale(1.02);
+    }
+
+    :global(.card-webview-body .video-container) {
+        position: relative;
+        padding-bottom: 56.25%;
+        height: 0;
+        overflow: hidden;
+        border-radius: 8px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        margin: 16px 0;
+    }
+
+    :global(.card-webview-body .video-container iframe) {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border: none;
     }
 </style>

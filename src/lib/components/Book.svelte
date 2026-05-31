@@ -4,7 +4,7 @@
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
 
-    let { markdown = '', backUrl = '' } = $props();
+    let { markdown = '', backUrl = '', id = '' } = $props();
 
     // Book state
     let title = $state('');
@@ -13,6 +13,8 @@
     let authorImage = $state('');
     let authorBio = $state('');
     let themeColor = $state('black');
+    let parsedId = $state('');
+    let bookId = $derived(id || parsedId);
     let spreads = $state<Array<{ title: string; leftMarkdown: string; rightMarkdown: string }>>([]);
 
     let currentIndex = $state(-1); // -1 = Cover
@@ -84,6 +86,7 @@
         const trimmedMd = md.trim();
         
         // Reset properties
+        let parsedIdLocal = '';
         let parsedTitle = '';
         let parsedAuthor = '';
         let parsedCoverImage = '';
@@ -101,6 +104,7 @@
                 if (parts.length >= 2) {
                     const k = parts[0].trim();
                     const v = parts.slice(1).join(':').trim();
+                    if (k === 'id') parsedIdLocal = v.replace(/[^a-zA-Z0-9-_]/g, '');
                     if (k === 'title') parsedTitle = v;
                     if (k === 'author') parsedAuthor = v;
                     if (k === 'cover_image') parsedCoverImage = normalizePath(v);
@@ -147,6 +151,7 @@
         authorBio = parsedAuthorBio;
         themeColor = parsedThemeColor;
         spreads = parsedSpreads;
+        parsedId = parsedIdLocal;
     }
 
     function getEmbedUrl(url: string): string {
@@ -387,7 +392,11 @@
     }
 
     function handleBookClick(e: MouseEvent) {
-        if ((e.target as HTMLElement).closest('a') || (e.target as HTMLElement).closest('.control-panel')) {
+        if (
+            (e.target as HTMLElement).closest('a') || 
+            (e.target as HTMLElement).closest('.control-panel') ||
+            (e.target as HTMLElement).tagName === 'IMG'
+        ) {
             return;
         }
         
@@ -540,6 +549,11 @@
             <button class="theme-switch" onclick={toggleTheme}>
                 {uiTheme === 'dark' ? '☀️' : '🌙'}
             </button>
+            {#if bookId}
+                <a class="theme-switch" href="/hyperbook/{bookId}" target="_blank" title="New tab" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">
+                    🔗
+                </a>
+            {/if}
         </div>
         <div class="instruction-text">
             {currentIndex === -1 ? '表紙をクリックして読む' : ''}

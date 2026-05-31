@@ -2,9 +2,18 @@ import type { PageServerLoad } from './$types';
 import fs from 'fs';
 import path from 'path';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url }) => {
+    const booksParam = url.searchParams.get('books');
+    const titleParam = url.searchParams.get('title');
+    const logoParam = url.searchParams.get('logo');
+
     const booksDir = path.resolve('static/books');
-    const indexPath = path.join(booksDir, 'index.json');
+    
+    // Choose index path based on booksParam
+    let indexPath = path.join(booksDir, 'index.json');
+    if (booksParam) {
+        indexPath = path.join(booksDir, booksParam);
+    }
     
     let bookFiles: string[] = [];
     if (fs.existsSync(indexPath)) {
@@ -12,11 +21,11 @@ export const load: PageServerLoad = async () => {
             const data = fs.readFileSync(indexPath, 'utf-8');
             bookFiles = JSON.parse(data);
         } catch (err) {
-            console.error('Failed to read books/index.json', err);
+            console.error(`Failed to read books file at ${indexPath}:`, err);
         }
     }
 
-    if (bookFiles.length === 0 && fs.existsSync(booksDir)) {
+    if (bookFiles.length === 0 && !booksParam && fs.existsSync(booksDir)) {
         try {
             const files = fs.readdirSync(booksDir);
             bookFiles = files.filter(f => f.endsWith('.md') && f !== 'index.json');
@@ -37,7 +46,9 @@ export const load: PageServerLoad = async () => {
             let title = '無題の書籍';
             let author = '';
             let coverImage = '';
-            let themeColor = 'black';
+            let themeColor = '';
+            let playMode = 'book';
+            let subTitle = '';
 
             if (fmMatch) {
                 const lines = fmMatch[1].split('\n');
@@ -51,9 +62,13 @@ export const load: PageServerLoad = async () => {
                         if (k === 'author') author = v;
                         if (k === 'cover_image') coverImage = v;
                         if (k === 'theme_color') themeColor = v;
+                        if (k === 'play_mode') playMode = v;
+                        if (k === 'sub_title') subTitle = v;
                     }
                 });
             }
+
+            const isCard = playMode === 'card';
 
             return {
                 id,
@@ -61,7 +76,9 @@ export const load: PageServerLoad = async () => {
                 title,
                 author,
                 coverImage,
-                themeColor
+                themeColor: themeColor || (isCard ? 'white' : 'black'),
+                isCard,
+                subTitle
             };
         } catch (err) {
             console.error(`Failed to parse book file ${filename}:`, err);
@@ -70,6 +87,9 @@ export const load: PageServerLoad = async () => {
     }).filter(b => b !== null);
 
     return {
-        books
+        books,
+        title: titleParam,
+        logo: logoParam,
+        booksParam
     };
 };

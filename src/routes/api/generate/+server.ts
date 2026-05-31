@@ -13,11 +13,13 @@ CRITICAL RULES:
    - The frontmatter block MUST always contain:
      - id: <unique-short-slug, e.g. space-travel-2026>
      - title: <title of the book>
+     - play_mode: book
    - DO NOT include frontmatter fields like "author", "cover_image", or "theme_color" unless the user has explicitly requested them in their prompt. Do not populate them with default values.
    Example:
    ---
    id: space-travel-2026
    title: Space Travel History
+   play_mode: book
    ---
 
    Page 1:
@@ -47,9 +49,51 @@ CRITICAL RULES:
    - If the user is just chatting or asking a general question without editing the book, you can respond with a conversational text response, but if a book is being generated or edited, ALWAYS output the complete updated markdown code block in your response.
 `;
 
+const cardSystemInstruction = `
+You are HyperCard Creator, an AI assistant specialized in creating beautiful single-card Markdown documents.
+Your goal is to output a single, complete Markdown card document based on the user's prompt or modifications.
+
+CRITICAL RULES:
+1. OUTPUT FORMAT:
+   Your response must contain a YAML frontmatter block at the very top, followed directly by the Markdown body content.
+   - DO NOT use "Page X:" markers or any page pagination labels.
+   - The YAML frontmatter block MUST always contain:
+     - id: <unique-short-slug, e.g. volcanic-activity-japan>
+     - title: <title of the card>
+     - play_mode: card
+   - You can also include these frontmatter fields if specified by the user or already present:
+     - sub_title: <subtitle of the card (optional)>
+     - cover_image: <cover image URL>
+     - theme_color: <theme color, default is white if not specified>
+   - Example:
+     ---
+     id: volcanic-activity-japan
+     title: Volcanic Wonders of Japan
+     sub_title: Explanations of Japan's active volcanic zones
+     cover_image: https://images.unsplash.com/photo-...
+     theme_color: white
+     play_mode: card
+     ---
+     # Volcanic Wonders of Japan
+     Japan is home to over 100 active volcanoes...
+
+2. BODY CONTENT STYLE:
+   - Use regular Markdown formatting (headings, lists, bold text, links).
+   - Use vertical layouts with Low Text Density: keep explanations punchy, clear, and visually appealing.
+   - For images, use standard Markdown image syntax: \`![alt](URL)\`.
+   - For videos, use the format: \`video: <URL>\` (only support YouTube Shorts, standard YouTube, TikTok, or Instagram Reels URLs).
+
+3. MODIFICATIONS:
+   - If the user asks to modify the card (e.g., "change the background color to blue", "update subtitle to X", "add a section about Mount Fuji"), you will receive the current Markdown code. You must rewrite the ENTIRE Markdown block incorporating the changes. Make sure you don't lose any other existing content unless asked.
+
+4. RESPONSE FORMAT:
+   - Provide the complete, raw Markdown card inside a single markdown code block (delimited by \` \`\`\`markdown \` and \` \`\`\` \`).
+   - If the user is just chatting or asking a general question without editing the card, you can respond with a conversational text response, but if a book is being generated or edited, ALWAYS output the complete updated markdown code block in your response.
+`;
+
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
-        const { prompt, history = [], currentMarkdown = '', bookId } = await request.json();
+        const { prompt, history = [], currentMarkdown = '', bookId, mode = 'book' } = await request.json();
         const session = locals.session;
         const supabase = locals.supabase;
 
@@ -82,18 +126,33 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             }
         ];
 
+        const activeSystemInstruction = mode === 'card' ? cardSystemInstruction : systemInstruction;
+
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: contents,
             config: {
-                systemInstruction: systemInstruction,
+                systemInstruction: activeSystemInstruction,
                 temperature: 0.7,
+                maxOutputTokens: 8192,
             }
         });
 
         const replyText = response.text || '';
-        const mdBlockMatch = replyText.match(/```markdown([\s\S]*?)```/);
-        const extractedMarkdown = mdBlockMatch ? mdBlockMatch[1].trim() : '';
+        
+        let extractedMarkdown = '';
+        const mdBlockMatch = replyText.match(/```markdown([\s\S]*?)```/i);
+        if (mdBlockMatch) {
+            extractedMarkdown = mdBlockMatch[1].trim();
+        } else {
+            const genericBlockMatch = replyText.match(/```(?:[\w-]*\n)?([\s\S]*?)```/);
+            if (genericBlockMatch) {
+                extractedMarkdown = genericBlockMatch[1].trim();
+            } else if (replyText.includes('---')) {
+                const startIndex = replyText.indexOf('---');
+                extractedMarkdown = replyText.substring(startIndex).trim();
+            }
+        }
 
         // Persist chat history if bookId is available
         if (bookId) {

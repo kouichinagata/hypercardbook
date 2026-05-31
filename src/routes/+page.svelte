@@ -3,6 +3,7 @@
     import { goto, invalidateAll } from '$app/navigation';
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
+    import Bookshelf from '$lib/components/Bookshelf.svelte';
 
     let { data } = $props();
 
@@ -25,27 +26,17 @@
     let prompt = $state('');
     let isSubmitting = $state(false);
     let selectedBookId = $state('');
+    let selectedMode = $state('book'); // 'book' or 'card'
     let textareaEl = $state<HTMLTextAreaElement | null>(null);
 
-    // Bookshelf grid states
+    // Bookshelf theme state
     let uiTheme = $state('dark');
-    let measureElements = $state<HTMLDivElement[]>([]);
-    let shelfRows = $state<any[][]>([]);
 
     onMount(() => {
         const saved = localStorage.getItem('shelf-theme');
         if (saved) {
             uiTheme = saved;
         }
-
-        tick().then(() => {
-            recalculateRows();
-        });
-
-        window.addEventListener('resize', recalculateRows);
-        return () => {
-            window.removeEventListener('resize', recalculateRows);
-        };
     });
 
     function toggleTheme() {
@@ -53,46 +44,13 @@
         localStorage.setItem('shelf-theme', uiTheme);
     }
 
-    function recalculateRows() {
-        if (!data.books || data.books.length === 0) {
-            shelfRows = [];
-            return;
-        }
-
-        if (measureElements.length === 0) {
-            shelfRows = [data.books];
-            return;
-        }
-
-        const rowsMap = new Map<number, any[]>();
-        measureElements.forEach((el, index) => {
-            if (!el) return;
-            const offset = el.offsetTop;
-            if (!rowsMap.has(offset)) {
-                rowsMap.set(offset, []);
-            }
-            rowsMap.get(offset)!.push(data.books[index]);
-        });
-
-        const sortedOffsets = Array.from(rowsMap.keys()).sort((a, b) => a - b);
-        shelfRows = sortedOffsets.map(offset => rowsMap.get(offset)!);
-    }
-
-    // Reactively update shelfRows when loaded books data changes
-    $effect(() => {
-        if (data.books) {
-            tick().then(() => {
-                recalculateRows();
-            });
-        }
-    });
-
     // Handle prompt selection context toggles
     function handlePromptSelect(book: any) {
         if (selectedBookId === book.id) {
             selectedBookId = '';
         } else {
             selectedBookId = book.id;
+            selectedMode = book.isCard ? 'card' : 'book';
             tick().then(() => {
                 if (textareaEl) {
                     textareaEl.focus();
@@ -108,7 +66,7 @@
 
         isSubmitting = true;
         const encodedPrompt = encodeURIComponent(prompt.trim());
-        let targetUrl = `/workspace?prompt=${encodedPrompt}`;
+        let targetUrl = `/workspace?prompt=${encodedPrompt}&mode=${selectedMode}`;
         if (selectedBookId) {
             targetUrl += `&id=${selectedBookId}`;
         }
@@ -175,14 +133,6 @@
         }
     }
 
-    function normalizePath(url: string): string {
-        if (!url) return '';
-        const trimmed = url.trim();
-        if (trimmed.startsWith('books/') && !trimmed.startsWith('/')) {
-            return '/' + trimmed;
-        }
-        return trimmed;
-    }
 
     // Computed placeholder text based on book context selection
     let placeholderText = $derived(
@@ -193,13 +143,6 @@
 </script>
 
 <div class="landing-container" data-theme={uiTheme}>
-    <!-- Hidden Measure Container to detect shelf wrap points -->
-    <div class="measure-container">
-        {#each data.books as book, idx}
-            <div class="measure-book" bind:this={measureElements[idx]}></div>
-        {/each}
-    </div>
-
     <!-- Theme switch and login/logout buttons at top right -->
     <div class="theme-switch-container">
         {#if data.session?.user}
@@ -235,14 +178,26 @@
         <p class="subtitle">HyperCardBook is an AI for generating Markdown ebooks.</p>
 
         <form onsubmit={handleSubmit} class="prompt-form">
-            <textarea
-                bind:this={textareaEl}
-                bind:value={prompt}
-                placeholder={placeholderText}
-                required
-                rows="4"
-                disabled={isSubmitting}
-            ></textarea>
+            <div class="prompt-textarea-wrapper">
+                <textarea
+                    bind:this={textareaEl}
+                    bind:value={prompt}
+                    placeholder={placeholderText}
+                    required
+                    rows="4"
+                    disabled={isSubmitting}
+                ></textarea>
+                <div class="mode-toggle-container">
+                    <label class="mode-toggle-label">
+                        <input type="radio" name="mode" value="book" bind:group={selectedMode} disabled={isSubmitting} />
+                        <span>Book</span>
+                    </label>
+                    <label class="mode-toggle-label">
+                        <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={isSubmitting} />
+                        <span>Card</span>
+                    </label>
+                </div>
+            </div>
             
             <button type="submit" class="submit-btn" disabled={isSubmitting}>
                 {#if isSubmitting}
@@ -261,86 +216,17 @@
                 <p>本棚にはまだ本がありません。プロンプトを入力して生成してください。</p>
             </div>
         {:else}
-            <div class="shelf-container" id="shelfContainer">
-                {#each shelfRows as rowBooks}
-                    <div class="shelf-row">
-                        <div class="shelf-books-area">
-                            {#each rowBooks as book}
-                                <div class="book-item-wrapper">
-                                    <!-- Prompt, Edit, Delete, Download Buttons positioned above the book cover -->
-                                    <div class="book-action-bar">
-                                        <button 
-                                            class="action-btn prompt-btn" 
-                                            class:selected={selectedBookId === book.id}
-                                            onclick={() => handlePromptSelect(book)}
-                                        >
-                                            Prompt
-                                        </button>
-                                        {#if data.currentUserId && book.userId === data.currentUserId}
-                                            <button 
-                                                class="action-btn edit-btn icon-btn" 
-                                                onclick={() => handleEditBook(book)}
-                                                title="Edit"
-                                            >
-                                                ✍️
-                                            </button>
-                                            <button 
-                                                class="action-btn delete-btn icon-btn" 
-                                                onclick={() => handleDeleteBook(book)}
-                                                title="Delete"
-                                            >
-                                                🗑️
-                                            </button>
-                                        {/if}
-                                        <button 
-                                            class="action-btn download-btn icon-btn" 
-                                            onclick={() => handleDownloadBook(book)}
-                                            title="Download"
-                                        >
-                                            💾
-                                        </button>
-                                    </div>
-
-                                    <!-- Interactive 3D Book Cover -->
-                                    <div 
-                                        class="book-item" 
-                                        onclick={() => goto(`/hyperbook/${book.id}?from=home`)}
-                                        onkeydown={(e) => {
-                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                goto(`/hyperbook/${book.id}?from=home`);
-                                            }
-                                        }}
-                                        role="button"
-                                        tabindex="0"
-                                    >
-                                        <div class="book-cover" data-theme-color={book.themeColor || 'black'}>
-                                            {#if book.coverImage}
-                                                <img 
-                                                    src={normalizePath(book.coverImage)} 
-                                                    alt={book.title} 
-                                                    class="book-cover-img" 
-                                                    onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
-                                                />
-                                            {/if}
-                                            <div class="book-cover-title">{book.title}</div>
-                                            {#if book.author}
-                                                <div class="book-cover-author">Author: {book.author}</div>
-                                            {/if}
-                                        </div>
-                                        <div class="book-tooltip">
-                                            <h4>{book.title}</h4>
-                                            {#if book.author}
-                                                <p>Author: {book.author}</p>
-                                            {/if}
-                                        </div>
-                                    </div>
-                                </div>
-                            {/each}
-                        </div>
-                        <div class="shelf-board"></div>
-                    </div>
-                {/each}
-            </div>
+            <Bookshelf
+                books={data.books}
+                currentUserId={data.currentUserId}
+                showActions={true}
+                bind:selectedBookId={selectedBookId}
+                onPromptSelect={handlePromptSelect}
+                onEditBook={handleEditBook}
+                onDeleteBook={handleDeleteBook}
+                onDownloadBook={handleDownloadBook}
+                fromPage="home"
+            />
         {/if}
     </div>
 </div>
@@ -505,6 +391,57 @@
         border-color: #8b5cf6;
     }
 
+    .prompt-textarea-wrapper {
+        position: relative;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .mode-toggle-container {
+        position: absolute;
+        bottom: 12px;
+        right: 12px;
+        display: flex;
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 20px;
+        padding: 2px;
+        gap: 2px;
+        z-index: 10;
+    }
+
+    .landing-container[data-theme="light"] .mode-toggle-container {
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid rgba(0, 0, 0, 0.15);
+    }
+
+    .mode-toggle-label {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+    }
+
+    .mode-toggle-label input {
+        display: none;
+    }
+
+    .mode-toggle-label span {
+        padding: 4px 12px;
+        font-size: 11px;
+        font-weight: 600;
+        border-radius: 16px;
+        color: #9ca3af;
+        transition: all 0.2s;
+        font-family: 'Outfit', sans-serif;
+    }
+
+    .mode-toggle-label input:checked + span {
+        background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+        color: #ffffff;
+        box-shadow: 0 2px 6px rgba(139, 92, 246, 0.4);
+    }
+
     .submit-btn {
         display: flex;
         align-items: center;
@@ -540,306 +477,6 @@
         box-sizing: border-box;
     }
 
-    .shelf-container {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        gap: 60px;
-        perspective: 1000px;
-        box-sizing: border-box;
-    }
-
-    .shelf-row {
-        display: flex;
-        flex-direction: column;
-        position: relative;
-        width: 100%;
-    }
-
-    .shelf-books-area {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-        gap: 30px; padding: 10px 40px 0;
-        background-color: var(--shelf-back-color);
-        box-sizing: border-box; min-height: 250px;
-        align-items: end; justify-items: center;
-        border-radius: 8px 8px 0 0;
-        box-shadow: inset 0 -30px 40px rgba(0,0,0,0.4);
-        border-bottom: 2px solid var(--shelf-wood-dark);
-        transition: background-color 0.4s;
-    }
-
-    .shelf-board {
-        position: relative; height: 16px;
-        background: var(--shelf-wood-light);
-        border-bottom: 6px solid var(--shelf-wood-dark);
-        border-radius: 2px;
-        box-shadow: 0 10px 20px var(--shelf-shadow);
-        z-index: 10;
-        width: 100%;
-    }
-    
-    .shelf-board::before {
-        content: ""; position: absolute; top: -8px; left: 0; right: 0; height: 8px;
-        background: var(--shelf-wood-top);
-        transform: perspective(200px) rotateX(20deg);
-        transform-origin: bottom;
-    }
-
-    .book-item-wrapper {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        margin-bottom: 2px;
-    }
-
-    /* --- Action Panel Above Book --- */
-    .book-action-bar {
-        display: flex;
-        gap: 3px;
-        margin-bottom: 8px;
-        width: 110px;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        z-index: 30;
-    }
-
-    .action-btn {
-        height: 24px;
-        padding: 0 4px;
-        font-size: 9px;
-        border-radius: 4px;
-        cursor: pointer;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        background: rgba(255, 255, 255, 0.05);
-        color: #f5ebe0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.2s;
-        box-sizing: border-box;
-        font-family: system-ui, sans-serif;
-    }
-
-    .action-btn.prompt-btn {
-        padding: 0 6px;
-        font-weight: 500;
-        flex-shrink: 0;
-    }
-
-    .action-btn.icon-btn {
-        width: 22px;
-        height: 24px;
-        font-size: 11px;
-        flex-shrink: 0;
-        padding: 0;
-    }
-
-    .action-btn:hover {
-        background: rgba(255, 255, 255, 0.12);
-    }
-
-    .landing-container[data-theme="light"] .action-btn {
-        border-color: rgba(0, 0, 0, 0.15);
-        background: rgba(0, 0, 0, 0.05);
-        color: #3d2516;
-    }
-
-    .landing-container[data-theme="light"] .action-btn:hover {
-        background: rgba(0, 0, 0, 0.08);
-    }
-
-    .action-btn.prompt-btn.selected {
-        background: #8b5cf6 !important;
-        border-color: #8b5cf6 !important;
-        color: #ffffff !important;
-        font-weight: bold;
-    }
-
-    /* --- Book Item --- */
-    .book-item {
-        width: 110px; height: 160px;
-        position: relative; cursor: pointer;
-        transform-style: preserve-3d;
-        transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1), box-shadow 0.4s;
-        z-index: 5;
-        outline: none;
-    }
-
-    .book-item::before {
-        content: ""; position: absolute; top: 0; right: -6px; width: 6px; height: 100%;
-        background: var(--shelf-wood-dark);
-        transform: rotateY(90deg); transform-origin: left;
-        box-shadow: inset -1px 0 3px rgba(0,0,0,0.5);
-        border-radius: 0 2px 2px 0;
-    }
-
-    .book-cover {
-        width: 100%; height: 100%;
-        background-color: var(--book-cover-bg);
-        color: white;
-        border-radius: 2px 4px 4px 2px;
-        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0,0,0,0.4);
-        transition: 0.3s;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 8px;
-        box-sizing: border-box;
-        text-align: center;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .book-cover-img {
-        width: 85%;
-        max-height: 70px;
-        object-fit: contain;
-        margin-bottom: 8px;
-        transition: 0.3s;
-    }
-
-    .book-cover-title {
-        font-size: 0.65rem;
-        font-weight: bold;
-        margin: 2px 0;
-        color: white;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        line-height: 1.2;
-        font-family: "游明朝", "Yu Mincho", "Hiragino Mincho ProN", serif;
-    }
-
-    .book-cover-author {
-        font-size: 0.5rem;
-        opacity: 0.8;
-        color: white;
-        margin-top: 2px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        width: 90%;
-        font-family: "游明朝", "Yu Mincho", "Hiragino Mincho ProN", serif;
-    }
-
-    /* --- Cover Theme Styles --- */
-    .book-cover[data-theme-color="black"] {
-        background-color: var(--book-cover-bg);
-        color: #ffffff;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .book-cover[data-theme-color="black"] .book-cover-title {
-        color: #ffffff;
-    }
-    .book-cover[data-theme-color="black"] .book-cover-author {
-        color: rgba(255, 255, 255, 0.85);
-    }
-
-    .book-cover[data-theme-color="white"] {
-        background: linear-gradient(135deg, #ffffff 0%, #f7f7f7 50%, #e3e3e3 100%);
-        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0, 0, 0, 0.25), inset 0 2px 3px rgba(255, 255, 255, 1), inset 0 -2px 3px rgba(0, 0, 0, 0.1);
-        color: #1a1a1a;
-        border: 1px solid rgba(0, 0, 0, 0.15);
-    }
-    .book-cover[data-theme-color="white"] .book-cover-title {
-        color: #1a1a1a;
-    }
-    .book-cover[data-theme-color="white"] .book-cover-author {
-        color: #555555;
-    }
-
-    .book-cover[data-theme-color="blue"] {
-        background: linear-gradient(135deg, #0f2b5c 0%, #1e3c72 100%);
-        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0, 0, 0, 0.4), inset 0 2px 3px rgba(255, 255, 255, 0.15);
-        color: #ffffff;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .book-cover[data-theme-color="blue"] .book-cover-title {
-        color: #ffffff;
-    }
-    .book-cover[data-theme-color="blue"] .book-cover-author {
-        color: rgba(255, 255, 255, 0.85);
-    }
-
-    .book-cover[data-theme-color="pink"] {
-        background: linear-gradient(135deg, #ffdeed 0%, #ffb3d1 100%);
-        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 6px 8px 10px rgba(0, 0, 0, 0.25), inset 0 2px 3px rgba(255, 255, 255, 0.6);
-        color: #4a4a4a;
-        border: 1px solid rgba(255, 179, 209, 0.4);
-    }
-    .book-cover[data-theme-color="pink"] .book-cover-title {
-        color: #4a4a4a;
-    }
-    .book-cover[data-theme-color="pink"] .book-cover-author {
-        color: #6a6a6a;
-    }
-
-    .book-cover[data-theme-color="gold"] {
-        background: linear-gradient(135deg, #4e2f15 0%, #2e1605 100%);
-        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #2e1605, 6px 8px 10px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.4);
-        border-left: 2px solid rgba(255, 215, 0, 0.35);
-        color: #ffd700;
-        border: 1px solid rgba(78, 47, 21, 0.4);
-    }
-    .book-cover[data-theme-color="gold"] .book-cover-title {
-        color: #ffd700;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.8), 0 0 3px rgba(255, 215, 0, 0.3);
-    }
-    .book-cover[data-theme-color="gold"] .book-cover-author {
-        color: #e6c300;
-    }
-
-    /* Hover */
-    .book-item:hover {
-        transform: translateY(-12px) translateZ(10px) rotateY(-8deg);
-        z-index: 20;
-    }
-    
-    .book-item:hover .book-cover {
-        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 10px 14px 22px rgba(0,0,0,0.5);
-    }
-
-    /* Tooltip */
-    .book-tooltip {
-        position: absolute; bottom: 105%; left: 50%;
-        transform: translateX(-50%) translateY(10px);
-        background: rgba(26, 18, 11, 0.95);
-        color: #f5ebe0; padding: 6px 12px; border-radius: 6px;
-        font-size: 0.75rem; width: 140px; text-align: center;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-        pointer-events: none; opacity: 0;
-        transition: opacity 0.3s, transform 0.3s;
-        z-index: 100; box-sizing: border-box;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        font-family: system-ui, -apple-system, sans-serif;
-    }
-    .book-tooltip h4 { margin: 0 0 3px 0; font-size: 0.8rem; font-weight: bold; }
-    .book-tooltip p { margin: 0; opacity: 0.8; font-size: 0.7rem; }
-
-    .book-item:hover .book-tooltip {
-        opacity: 1; transform: translateX(-50%) translateY(0);
-    }
-    
-    .book-item:hover .book-cover[data-theme-color="white"] {
-        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 10px 14px 22px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 1), inset 0 -2px 3px rgba(0, 0, 0, 0.1);
-    }
-    
-    .book-item:hover .book-cover[data-theme-color="blue"] {
-        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 10px 14px 22px rgba(0, 0, 0, 0.5), inset 0 2px 3px rgba(255, 255, 255, 0.15);
-    }
-    
-    .book-item:hover .book-cover[data-theme-color="pink"] {
-        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #161616, 10px 14px 22px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.6);
-    }
-    
-    .book-item:hover .book-cover[data-theme-color="gold"] {
-        box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #2e1605, 10px 14px 22px rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(0, 0, 0, 0.4);
-    }
-
     .empty-shelf {
         font-size: 16px;
         opacity: 0.7;
@@ -857,29 +494,6 @@
         animation: spin 0.8s linear infinite;
     }
 
-    /* Hidden Measure Container */
-    .measure-container {
-        position: absolute;
-        visibility: hidden;
-        pointer-events: none;
-        left: 0;
-        right: 0;
-        width: 90%;
-        max-width: 960px;
-        margin: 0 auto;
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-        gap: 30px;
-        padding: 10px 40px 0;
-        box-sizing: border-box;
-        z-index: -100;
-    }
-
-    .measure-book {
-        width: 110px;
-        height: 160px;
-    }
-
     @keyframes spin {
         to { transform: rotate(360deg); }
     }
@@ -887,74 +501,5 @@
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* Mobile styles */
-    @media (max-width: 600px) {
-        .shelf-books-area {
-            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-            gap: 20px;
-            padding: 10px 20px 0;
-            min-height: 200px;
-        }
-        
-        .book-item {
-            width: 80px;
-            height: 120px;
-        }
-        
-        .book-tooltip {
-            width: 110px;
-        }
-
-        
-        .book-cover {
-            padding: 4px;
-        }
-        
-        .book-cover-img {
-            max-height: 50px;
-            margin-bottom: 4px;
-        }
-        
-        .book-cover-title {
-            font-size: 0.55rem;
-            line-height: 1.1;
-        }
-        
-        .book-cover-author {
-            font-size: 0.45rem;
-        }
-
-        .book-action-bar {
-            width: 80px;
-            gap: 2px;
-        }
-
-        .action-btn {
-            height: 18px;
-            font-size: 8px;
-            padding: 0 3px;
-        }
-
-        .action-btn.prompt-btn {
-            padding: 0 4px;
-        }
-
-        .action-btn.icon-btn {
-            width: 16px;
-            height: 18px;
-            font-size: 9px;
-        }
-
-        .measure-container {
-            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-            gap: 20px;
-            padding: 10px 20px 0;
-        }
-        .measure-book {
-            width: 80px;
-            height: 120px;
-        }
     }
 </style>
