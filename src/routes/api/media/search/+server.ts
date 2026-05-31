@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { PIXABAY_API_KEY } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 
 export const GET: RequestHandler = async ({ url }) => {
     const query = url.searchParams.get('q') || '';
@@ -8,13 +8,14 @@ export const GET: RequestHandler = async ({ url }) => {
         return json({ hits: [], totalHits: 0 });
     }
 
-    if (!PIXABAY_API_KEY) {
+    const pixabayApiKey = env.PIXABAY_API_KEY;
+    if (!pixabayApiKey) {
         return json({ error: 'PIXABAY_API_KEY is not configured on the server.' }, { status: 500 });
     }
 
     try {
         // Query Pixabay using 'image_type=all' and support pagination
-        const pixabayUrl = `https://pixabay.com/api/?key=${PIXABAY_API_KEY}&q=${encodeURIComponent(query)}&image_type=all&per_page=24&page=${page}`;
+        const pixabayUrl = `https://pixabay.com/api/?key=${pixabayApiKey}&q=${encodeURIComponent(query)}&image_type=all&per_page=24&page=${page}`;
         const res = await fetch(pixabayUrl);
         
         if (!res.ok) {
