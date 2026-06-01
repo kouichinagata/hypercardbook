@@ -104,7 +104,7 @@
                 if (parts.length >= 2) {
                     const k = parts[0].trim();
                     const v = parts.slice(1).join(':').trim();
-                    if (k === 'id') parsedIdLocal = v.replace(/[^a-zA-Z0-9-_]/g, '');
+                    if (k === 'id') parsedIdLocal = v.replace(/[^a-zA-Z0-9_\-]/g, '');
                     if (k === 'title') parsedTitle = v;
                     if (k === 'author') parsedAuthor = v;
                     if (k === 'cover_image') parsedCoverImage = normalizePath(v);
@@ -543,11 +543,6 @@
             <button class="theme-switch" onclick={toggleTheme}>
                 {uiTheme === 'dark' ? '☀️' : '🌙'}
             </button>
-            {#if bookId}
-                <a class="theme-switch" href="/hyperbook/{bookId}" target="_blank" title="New tab" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">
-                    🔗
-                </a>
-            {/if}
         </div>
         <div class="instruction-text">
             {currentIndex === -1 ? '表紙をクリックして読む' : ''}

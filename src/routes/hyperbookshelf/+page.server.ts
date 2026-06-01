@@ -57,7 +57,7 @@ export const load: PageServerLoad = async ({ url }) => {
                     if (parts.length >= 2) {
                         const k = parts[0].trim();
                         const v = parts.slice(1).join(':').trim();
-                        if (k === 'id') id = v.replace(/[^a-zA-Z0-9-_]/g, '');
+                        if (k === 'id') id = v.replace(/[^a-zA-Z0-9_\-]/g, '');
                         if (k === 'title') title = v;
                         if (k === 'author') author = v;
                         if (k === 'cover_image') coverImage = v;

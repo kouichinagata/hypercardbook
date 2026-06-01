@@ -74,12 +74,17 @@
     }
 
     function handleBookClick(bookId: string) {
+        const targetBook = books.find((b: any) => b.id === bookId || b.slug === bookId);
+        const isCard = targetBook ? targetBook.isCard : false;
+
         const params = new URLSearchParams();
         params.set('from', fromPage);
         if (booksParam) params.set('books', booksParam);
         if (titleParam) params.set('title', titleParam);
         if (logoParam) params.set('logo', logoParam);
-        goto(`/hyperbook/${bookId}?${params.toString()}`);
+        
+        const path = isCard ? `/hypercard/${bookId}` : `/hyperbook/${bookId}`;
+        goto(`${path}?${params.toString()}`);
     }
 </script>
 
@@ -87,7 +92,7 @@
     {#each shelfRows as rowBooks}
         <div class="shelf-row">
             <div class="shelf-books-area">
-                {#each rowBooks as book}
+                {#each rowBooks as book (book.id)}
                     <div class="book-item-wrapper">
                         {#if showActions}
                             <div class="book-action-bar">
@@ -193,18 +198,19 @@
             <div class="shelf-board"></div>
         </div>
     {/each}
-</div>
 
-<!-- Hidden Measure Container to detect shelf wrap points -->
-<div class="measure-container">
-    {#each books as book, idx}
-        <div class="measure-book" bind:this={measureElements[idx]}></div>
-    {/each}
+    <!-- Hidden Measure Container to detect shelf wrap points -->
+    <div class="measure-container">
+        {#each books as book, idx (book.id)}
+            <div class="measure-book" bind:this={measureElements[idx]}></div>
+        {/each}
+    </div>
 </div>
 
 <style>
     /* --- 本棚コンテナ --- */
     .shelf-container {
+        position: relative;
         width: 90%; max-width: 960px;
         margin-top: 40px; margin-bottom: 60px;
         display: flex; flex-direction: column; gap: 60px;
@@ -587,9 +593,6 @@
         pointer-events: none;
         left: 0;
         right: 0;
-        width: 90%;
-        max-width: 960px;
-        margin: 0 auto;
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
         gap: 30px;

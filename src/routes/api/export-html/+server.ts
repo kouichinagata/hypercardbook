@@ -27,7 +27,7 @@ export const POST: RequestHandler = async ({ request }) => {
                 if (parts.length >= 2) {
                     const k = parts[0].trim();
                     const v = parts.slice(1).join(':').trim();
-                    if (k === 'id') slug = v.replace(/[^a-zA-Z0-9-_]/g, '');
+                    if (k === 'id') slug = v.replace(/[^a-zA-Z0-9_\-]/g, '');
                     if (k === 'title') cardTitle = v;
                     if (k === 'sub_title') cardSubTitle = v;
                     if (k === 'cover_image') cardCoverImage = v;

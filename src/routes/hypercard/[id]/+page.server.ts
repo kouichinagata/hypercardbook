@@ -59,11 +59,11 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
         markdownContent = data.markdown_content;
     }
 
-    // Check if markdown is actually a "Card" instead of a "Book"
+    // Check if markdown is actually a "Book" instead of a "Card"
     const isCard = markdownContent.includes('play_mode: card') || !/Page\s+\d+:/i.test(markdownContent);
-    if (isCard) {
+    if (!isCard) {
         const redirectParams = new URLSearchParams(url.searchParams);
-        throw redirect(302, `/hypercard/${id}?${redirectParams.toString()}`);
+        throw redirect(302, `/hyperbook/${id}?${redirectParams.toString()}`);
     }
 
     // Compute back URL with query parameters

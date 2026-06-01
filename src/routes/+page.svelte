@@ -188,12 +188,12 @@
                 ></textarea>
                 <div class="mode-toggle-container">
                     <label class="mode-toggle-label">
-                        <input type="radio" name="mode" value="book" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
-                        <span>Book</span>
-                    </label>
-                    <label class="mode-toggle-label">
                         <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
                         <span>Card</span>
+                    </label>
+                    <label class="mode-toggle-label">
+                        <input type="radio" name="mode" value="book" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
+                        <span>Book</span>
                     </label>
                 </div>
             </div>
