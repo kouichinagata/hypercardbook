@@ -251,7 +251,7 @@
                 <h1 class="card-webview-title">{cardTitle}</h1>
                 {#if cardCoverImage}
                     <div class="card-webview-cover-wrapper">
-                        <img src={cardCoverImage} alt={cardTitle} />
+                        <img src={cardCoverImage} alt={cardTitle} class="clicked-img-cover" />
                     </div>
                 {/if}
                 {#if cardSubTitle}
