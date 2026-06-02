@@ -1096,7 +1096,7 @@
                     </div>
                 {:else}
                     {#if markdown}
-                        <div onclick={handleWebViewClick} role="presentation" style="width: 100%; height: 100%;">
+                        <div onclick={handleWebViewClick} role="presentation" class="preview-scroll-wrapper" style="width: 100%; height: 100%; overflow-y: auto;">
                             <Book {markdown} id={bookUuid} />
                         </div>
                     {:else}
@@ -1873,8 +1873,9 @@
         border-bottom: 1px solid rgba(61, 37, 22, 0.1);
     }
 
+    .workspace-layout[data-theme="light"] .panel-header h2,
     .workspace-layout[data-theme="light"] .panel-header h3 {
-        color: #3d2516;
+        color: #000000;
     }
 
     .workspace-layout[data-theme="light"] .back-home-btn {

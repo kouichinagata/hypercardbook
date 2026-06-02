@@ -28,6 +28,7 @@
     let selectedBookId = $state('');
     let selectedMode = $state('book'); // 'book' or 'card'
     let textareaEl = $state<HTMLTextAreaElement | null>(null);
+    let formEl = $state<HTMLFormElement | null>(null);
 
     // Attached files state
     interface AttachedFile {
@@ -516,7 +517,7 @@
         <h1 class="title">HyperCardBook</h1>
         <p class="subtitle">HyperCardBook is an AI for generating Markdown ebooks.</p>
 
-        <form onsubmit={handleSubmit} class="prompt-form">
+        <form bind:this={formEl} onsubmit={handleSubmit} class="prompt-form">
             <div class="prompt-textarea-wrapper">
                 <textarea
                     bind:this={textareaEl}
@@ -529,7 +530,7 @@
                         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                             e.preventDefault();
                             if (prompt.trim() || attachedFiles.length > 0) {
-                                handleSubmit(e);
+                                formEl?.requestSubmit();
                             }
                         }
                     }}
