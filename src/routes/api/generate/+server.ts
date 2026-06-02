@@ -52,6 +52,11 @@ CRITICAL RULES:
 6. RESPONSE FORMAT:
    - Provide the complete, raw Markdown book inside a single markdown code block (delimited by \` \`\`\`markdown \` and \` \`\`\` \`).
    - If the user is just chatting or asking a general question without editing the book, you can respond with a conversational text response, but if a book is being generated or edited, ALWAYS output the complete updated markdown code block in your response.
+
+7. ATTACHED IMAGES AND TEXTS:
+   - The user may attach images and text files to their prompt.
+   - Images will be provided as Markdown links in the prompt, e.g., \`![filename](URL)\`. You must use these exact image URLs in your generated Markdown book if you decide to include images.
+   - Text contents will be provided in a code block under "### 添付テキスト". Use the information inside these files to enrich the content, structure, or style of the generated book as requested.
 `;
 
 const cardSystemInstruction = `
@@ -82,11 +87,11 @@ CRITICAL RULES:
      # Volcanic Wonders of Japan
      Japan is home to over 100 active volcanoes...
 
-2. BODY CONTENT STYLE & INFORMATION DENSITY:
+ 2. BODY CONTENT STYLE & INFORMATION DENSITY:
    - Since cards are compiled into stacks to form large books or encyclopedias, avoid extremely short, poem-like sentences. Write a detailed, comprehensive, and high-quality long text.
    - To prevent text truncation (token cutoff), maximize information density: write deeply and thoroughly without wordy repetitions or redundant phrases.
    - Use regular Markdown formatting (headings, lists, bold text, links) to structure the explanations beautifully.
-   - For images, use standard Markdown image syntax: \`![alt](URL)\`.
+   - For images, use standard Markdown image syntax: \`![alt](URL)\`. If the user has attached image URLs (in the prompt under "### 添付画像"), you must prioritize using these exact attached image URLs for the card (e.g. as \`cover_image\` in the frontmatter, or inside the markdown body).
    - DO NOT invent or generate video URLs. Only use the \`video: <URL>\` syntax if a specific video URL is explicitly provided by the user in their prompt. If no video URL is provided, do not include any video placeholders or URLs.
 
 3. TEMPLATE INHERITANCE AND STYLE PRESERVATION:
@@ -100,6 +105,11 @@ CRITICAL RULES:
 5. RESPONSE FORMAT:
    - Provide the complete, raw Markdown card inside a single markdown code block (delimited by \` \`\`\`markdown \` and \` \`\`\` \`).
    - If the user is just chatting or asking a general question without editing the card, you can respond with a conversational text response, but if a book is being generated or edited, ALWAYS output the complete updated markdown code block in your response.
+
+6. ATTACHED IMAGES AND TEXTS:
+   - The user may attach images and text files to their prompt.
+   - Images will be provided as Markdown links in the prompt, e.g., \`![filename](URL)\`. You must use these exact image URLs in your generated Markdown card if you decide to include them.
+   - Text contents will be provided in a code block under "### 添付テキスト". Use the information inside these files to enrich the content, structure, or style of the generated card as requested.
 `;
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -137,7 +147,35 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             }
         ];
 
-        const activeSystemInstruction = mode === 'card' ? cardSystemInstruction : systemInstruction;
+        const userMetadata = session?.user?.user_metadata || {};
+        const hypercardbookMd = userMetadata.hypercardbook_md || '';
+        const custompromptMd = userMetadata.customprompt_md || '';
+        const authorBio = userMetadata.author_bio || '';
+
+        let activeSystemInstruction = mode === 'card' ? cardSystemInstruction : systemInstruction;
+
+        // Strict rule for author biography: Do not create biography pages if empty, and prohibit inventing dummy data.
+        if (mode === 'book') {
+            if (authorBio.trim()) {
+                activeSystemInstruction += `\n\nAUTHOR BIOGRAPHY INFO:\nUse this author biography if the book includes or requests an author biography section/page:\n"""\n${authorBio.trim()}\n"""`;
+            } else {
+                activeSystemInstruction += `\n\nCRITICAL RULE FOR AUTHOR BIOGRAPHY:\nNo author biography details are provided. Do NOT create any author biography pages, empty layout spreads, or placeholders for an author biography. AI must NEVER invent or populate dummy biography content.`;
+            }
+        } else if (mode === 'card') {
+            if (authorBio.trim()) {
+                activeSystemInstruction += `\n\nAUTHOR BIOGRAPHY INFO:\nUse this author biography details if relevant to the card content:\n"""\n${authorBio.trim()}\n"""`;
+            } else {
+                activeSystemInstruction += `\n\nCRITICAL RULE FOR AUTHOR BIOGRAPHY:\nNo author biography details are provided. Do NOT include author biography details or placeholders in the card body.`;
+            }
+        }
+
+        // Apply config files if defined
+        if (hypercardbookMd.trim()) {
+            activeSystemInstruction += `\n\nHYPERCARDBOOK SYSTEM CONFIGURATION:\nFollow these configuration guidelines for generating/formatting the book:\n"""\n${hypercardbookMd.trim()}\n"""`;
+        }
+        if (custompromptMd.trim()) {
+            activeSystemInstruction += `\n\nCUSTOM PROMPT GUIDELINES:\nFollow these custom prompt guidelines for style, formatting, and content creation:\n"""\n${custompromptMd.trim()}\n"""`;
+        }
 
         const response = await ai.models.generateContent({
             model: 'gemini-3.5-flash',

@@ -14,6 +14,7 @@
     let activeTab = $state('preview'); // 'preview' or 'source'
     let mode = $state('book'); // 'book' or 'card'
     let replaceTargetIsCover = $state(false);
+    let uiTheme = $state('dark');
 
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
@@ -47,6 +48,195 @@
     let currentInput = $state('');
     let isGenerating = $state(false);
     let errorMsg = $state('');
+
+    // Attached files state
+    interface AttachedFile {
+        id: string;
+        type: 'image' | 'text';
+        name: string;
+        url?: string;
+        content?: string;
+        status: 'uploading' | 'loading' | 'success' | 'error';
+        error?: string;
+    }
+    let attachedFiles = $state<AttachedFile[]>([]);
+    let fileInputEl = $state<HTMLInputElement | null>(null);
+
+    function compressImage(file: File): Promise<Blob> {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    reject(new Error('Canvas context not available'));
+                    return;
+                }
+                const maxDim = 1200;
+                let width = img.width;
+                let height = img.height;
+                if (width > maxDim || height > maxDim) {
+                    if (width > height) {
+                        height = Math.round((height * maxDim) / width);
+                        width = maxDim;
+                    } else {
+                        width = Math.round((width * maxDim) / height);
+                        height = maxDim;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                    } else {
+                        reject(new Error('Canvas toBlob failed'));
+                    }
+                }, 'image/webp', 0.82);
+            };
+            img.onerror = () => reject(new Error('Failed to load image for compression'));
+        });
+    }
+
+    async function processAndUploadImage(file: File): Promise<string> {
+        const compressedBlob = await compressImage(file);
+        const sessionUser = data.session?.user;
+        const userId = sessionUser?.id || 'guest';
+        
+        const cleanName = file.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const fileName = `${crypto.randomUUID()}_${cleanName}.webp`;
+        const filePath = `${userId}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('HyperCardBookBucket')
+            .upload(filePath, compressedBlob, {
+                contentType: 'image/webp',
+                cacheControl: '3600'
+            });
+
+        if (uploadError) {
+            throw uploadError;
+        }
+
+        const { data: publicUrlData } = supabase.storage
+            .from('HyperCardBookBucket')
+            .getPublicUrl(filePath);
+
+        return publicUrlData.publicUrl;
+    }
+
+    async function handleAttachedFilesChange(e: Event) {
+        const input = e.target as HTMLInputElement;
+        if (!input.files || input.files.length === 0) return;
+        
+        const files = Array.from(input.files);
+        
+        for (const file of files) {
+            const id = crypto.randomUUID();
+            const isImage = file.type.startsWith('image/');
+            const type = isImage ? 'image' : 'text';
+            
+            const newAttached: AttachedFile = {
+                id,
+                type,
+                name: file.name,
+                status: isImage ? 'uploading' : 'loading'
+            };
+            attachedFiles = [...attachedFiles, newAttached];
+            
+            if (isImage) {
+                try {
+                    const url = await processAndUploadImage(file);
+                    attachedFiles = attachedFiles.map(f => 
+                        f.id === id ? { ...f, status: 'success', url } : f
+                    );
+                } catch (err: any) {
+                    console.error('Attached image upload failed:', err);
+                    attachedFiles = attachedFiles.map(f => 
+                        f.id === id ? { ...f, status: 'error', error: err.message || 'Upload failed' } : f
+                    );
+                }
+            } else {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const content = event.target?.result as string;
+                    attachedFiles = attachedFiles.map(f => 
+                        f.id === id ? { ...f, status: 'success', content } : f
+                    );
+                };
+                reader.onerror = (err) => {
+                    console.error('File read error:', err);
+                    attachedFiles = attachedFiles.map(f => 
+                        f.id === id ? { ...f, status: 'error', error: 'Failed to read file' } : f
+                    );
+                };
+                reader.readAsText(file);
+            }
+        }
+        
+        input.value = '';
+    }
+
+    async function removeAttachedFile(id: string) {
+        const fileToRemove = attachedFiles.find(f => f.id === id);
+        if (!fileToRemove) return;
+        
+        attachedFiles = attachedFiles.filter(f => f.id !== id);
+        
+        if (fileToRemove.type === 'image' && fileToRemove.status === 'success' && fileToRemove.url) {
+            try {
+                const urlParts = fileToRemove.url.split('/HyperCardBookBucket/');
+                if (urlParts.length > 1) {
+                    const filePath = decodeURIComponent(urlParts[1]);
+                    await supabase.storage
+                        .from('HyperCardBookBucket')
+                        .remove([filePath]);
+                }
+            } catch (err) {
+                console.error('Failed to delete file from storage on removal:', err);
+            }
+        }
+    }
+
+    function parseUserMessage(text: string) {
+        const parts = text.split('<!-- ATTACHMENTS_START -->');
+        const body = parts[0].trim();
+        const attachmentsSection = parts[1] || '';
+        
+        const images: { name: string; url: string }[] = [];
+        const texts: { name: string; content: string }[] = [];
+        
+        if (attachmentsSection) {
+            const imgRegex = /!\[(.*?)\]\((.*?)\)/g;
+            let match;
+            while ((match = imgRegex.exec(attachmentsSection)) !== null) {
+                images.push({ name: match[1], url: match[2] });
+            }
+            
+            const textRegex = /📄\s*(.*?)\n```content\n([\s\S]*?)\n```/g;
+            while ((match = textRegex.exec(attachmentsSection)) !== null) {
+                texts.push({ name: match[1], content: match[2] });
+            }
+        }
+        
+        return { body, images, texts };
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+        if (e.key === 'Enter') {
+            if (e.metaKey || e.ctrlKey) {
+                e.preventDefault();
+                if (currentInput.trim() && !isGenerating && data.session?.user) {
+                    sendPrompt(currentInput);
+                }
+            } else {
+                // Prevent implicit submission on plain Enter in textarea
+                e.stopPropagation();
+            }
+        }
+    }
     // Derived properties for Card layout preview
     let cardSlug = $derived.by(() => {
         const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
@@ -117,9 +307,32 @@
     async function sendPrompt(promptText: string) {
         if (!promptText.trim() || isGenerating) return;
 
+        const hasPending = attachedFiles.some(f => f.status === 'uploading' || f.status === 'loading');
+        if (hasPending) {
+            alert('ファイルの処理が完了するまでお待ちください。');
+            return;
+        }
+
+        const successFiles = attachedFiles.filter(f => f.status === 'success');
+        const images = successFiles.filter(f => f.type === 'image');
+        const texts = successFiles.filter(f => f.type === 'text');
+
+        let finalPrompt = promptText;
+        if (successFiles.length > 0) {
+            finalPrompt += '\n\n<!-- ATTACHMENTS_START -->';
+            if (images.length > 0) {
+                finalPrompt += '\n### 添付画像\n' + images.map(img => `![${img.name}](${img.url})`).join('\n');
+            }
+            if (texts.length > 0) {
+                finalPrompt += '\n### 添付テキスト\n' + texts.map(txt => `📄 ${txt.name}\n\`\`\`content\n${txt.content}\n\`\`\``).join('\n\n');
+            }
+            finalPrompt += '\n<!-- ATTACHMENTS_END -->';
+        }
+
         // Add user message to history
-        chatHistory = [...chatHistory, { role: 'user', text: promptText }];
+        chatHistory = [...chatHistory, { role: 'user', text: finalPrompt }];
         currentInput = '';
+        attachedFiles = [];
         isGenerating = true;
         errorMsg = '';
         scrollToBottom();
@@ -129,7 +342,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt: promptText,
+                    prompt: finalPrompt,
                     history: chatHistory.slice(0, -1), // Send previous history
                     currentMarkdown: markdown,
                     bookId: bookUuid,
@@ -161,6 +374,11 @@
 
     onMount(() => {
         document.body.classList.add('scroll-locked');
+
+        const saved = localStorage.getItem('shelf-theme');
+        if (saved) {
+            uiTheme = saved;
+        }
 
         if (!data.session?.user) {
             saveStatus = 'Read Only';
@@ -549,7 +767,7 @@
 
 </script>
 
-<div class="workspace-layout">
+<div class="workspace-layout" data-theme={uiTheme}>
     {#if showMediaPanel}
         <!-- Left Panel: Media -->
         <div class="media-panel">
@@ -693,9 +911,52 @@
             <div class="chat-list" bind:this={chatListContainer}>
                 {#each chatHistory as message}
                     <div class="message-bubble" class:user={message.role === 'user'} class:ai={message.role === 'model'}>
-                        <div class="bubble-avatar">{message.role === 'user' ? '👤' : '🤖'}</div>
+                        <div class="bubble-avatar-container">
+                            <div class="bubble-avatar">
+                                {#if message.role === 'user'}
+                                    {#if data.session?.user?.user_metadata?.avatar_url}
+                                        <img src={data.session.user.user_metadata.avatar_url} alt="User" class="bubble-avatar-img" />
+                                    {:else}
+                                        👤
+                                    {/if}
+                                {:else}
+                                    🤖
+                                {/if}
+                            </div>
+                            {#if message.role === 'user'}
+                                <span class="message-nickname" title={data.session?.user?.user_metadata?.nickname || data.session?.user?.user_metadata?.full_name || 'User'}>
+                                    {data.session?.user?.user_metadata?.nickname || data.session?.user?.user_metadata?.full_name || 'User'}
+                                </span>
+                            {/if}
+                        </div>
                         <div class="bubble-content">
-                            {@html (marked.parse(message.text.replace(/```(?:markdown)?[\s\S]*?```/gi, mode === 'card' ? '[カードを生成・更新しました]' : '[本を生成・更新しました]').trim()))}
+                            {#if message.role === 'user'}
+                                {@const parsed = parseUserMessage(message.text)}
+                                {@html (marked.parse(parsed.body))}
+                                
+                                {#if parsed.images.length > 0}
+                                    <div class="bubble-attached-images-grid">
+                                        {#each parsed.images as img}
+                                            <a href={img.url} target="_blank" class="bubble-attached-img-wrapper" title={img.name}>
+                                                <img src={img.url} alt={img.name} class="bubble-attached-img" />
+                                            </a>
+                                        {/each}
+                                    </div>
+                                {/if}
+                                
+                                {#if parsed.texts.length > 0}
+                                    <div class="bubble-attached-texts-list">
+                                        {#each parsed.texts as txt}
+                                            <details class="bubble-attached-text-details">
+                                                <summary>📄 {txt.name}</summary>
+                                                <pre class="bubble-attached-text-content">{txt.content}</pre>
+                                            </details>
+                                        {/each}
+                                    </div>
+                                {/if}
+                            {:else}
+                                {@html (marked.parse(message.text.replace(/```(?:markdown)?[\s\S]*?```/gi, mode === 'card' ? '[カードを生成・更新しました]' : '[本を生成・更新しました]').trim()))}
+                            {/if}
                         </div>
                     </div>
                 {/each}
@@ -718,17 +979,73 @@
                 {/if}
             </div>
 
-            <form onsubmit={handleChatSubmit} class="chat-form">
-                <input
-                    type="text"
-                    bind:value={currentInput}
-                    placeholder="Please enter a prompt to correct the book."
-                    disabled={!data.session?.user || isGenerating}
-                />
-                <button type="submit" disabled={!data.session?.user || isGenerating || !currentInput.trim()}>
-                    Run
-                </button>
-            </form>
+            <!-- Hidden file input for attachments -->
+            <input
+                type="file"
+                accept="image/*,text/plain,text/markdown,.md,.txt"
+                multiple
+                bind:this={fileInputEl}
+                onchange={handleAttachedFilesChange}
+                class="hidden-file-input"
+            />
+
+            <div class="chat-form-container">
+                <!-- Attached files preview container -->
+                {#if attachedFiles.length > 0}
+                    <div class="attached-files-preview-bar">
+                        {#each attachedFiles as file}
+                            <div class="attached-file-badge" class:error={file.status === 'error'}>
+                                {#if file.status === 'uploading' || file.status === 'loading'}
+                                    <div class="badge-spinner"></div>
+                                {:else if file.type === 'image' && file.url}
+                                    <img src={file.url} alt={file.name} class="badge-thumb" />
+                                {:else}
+                                    <span class="badge-icon">📄</span>
+                                {/if}
+                                <span class="badge-name" title={file.name}>{file.name}</span>
+                                <button
+                                    type="button"
+                                    class="badge-remove-btn"
+                                    onclick={() => removeAttachedFile(file.id)}
+                                    title="Remove attachment"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+
+                <form onsubmit={handleChatSubmit} class="chat-form">
+                    <div class="unified-chat-input-box">
+                        <textarea
+                            bind:value={currentInput}
+                            placeholder="Please enter a prompt to correct the book."
+                            disabled={!data.session?.user || isGenerating}
+                            onkeydown={handleKeyDown}
+                            rows="2"
+                        ></textarea>
+                        <div class="chat-actions-row">
+                            <button
+                                type="button"
+                                class="inner-attach-btn"
+                                onclick={() => fileInputEl?.click()}
+                                disabled={!data.session?.user || isGenerating}
+                                title="Attach files"
+                            >
+                                ＋
+                            </button>
+                            <button 
+                                type="submit" 
+                                class="inner-run-btn"
+                                disabled={!data.session?.user || isGenerating || (!currentInput.trim() && attachedFiles.length === 0)}
+                            >
+                                Run ⌘↵
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
     {/if}
 
@@ -976,50 +1293,7 @@
         color: #ffffff;
     }
 
-    .chat-form {
-        display: flex;
-        gap: 8px;
-        padding: 16px 20px;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-        background-color: #12131c;
-    }
 
-    .chat-form input {
-        flex: 1;
-        background: rgba(0, 0, 0, 0.2);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 8px;
-        padding: 12px 16px;
-        color: #ffffff;
-        font-size: 14px;
-        outline: none;
-        transition: border-color 0.2s;
-    }
-
-    .chat-form input:focus {
-        border-color: #8b5cf6;
-    }
-
-    .chat-form button {
-        background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
-        border: none;
-        color: #ffffff;
-        border-radius: 8px;
-        padding: 0 16px;
-        font-family: 'Outfit', sans-serif;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.1s, filter 0.2s;
-    }
-
-    .chat-form button:hover:not(:disabled) {
-        filter: brightness(1.1);
-    }
-
-    .chat-form button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
 
     .error-banner {
         background: rgba(239, 68, 68, 0.1);
@@ -1558,5 +1832,486 @@
         transform: none;
     }
 
+    .bubble-avatar-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+    }
 
+    .bubble-avatar-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 50%;
+    }
+
+    .message-nickname {
+        font-size: 10px;
+        opacity: 0.65;
+        max-width: 64px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: system-ui, sans-serif;
+        color: #e2e8f0;
+    }
+    
+    .workspace-layout[data-theme="light"] .message-nickname {
+        color: #3d2516;
+    }
+
+    /* Left Panel Light Theme override */
+    .workspace-layout[data-theme="light"] .chat-panel {
+        background-color: #ebdcd0;
+        border-right: 1px solid rgba(61, 37, 22, 0.1);
+        color: #3d2516;
+    }
+
+    .workspace-layout[data-theme="light"] .panel-header {
+        border-bottom: 1px solid rgba(61, 37, 22, 0.1);
+    }
+
+    .workspace-layout[data-theme="light"] .panel-header h3 {
+        color: #3d2516;
+    }
+
+    .workspace-layout[data-theme="light"] .back-home-btn {
+        background: rgba(61, 37, 22, 0.05);
+        border: 1px solid rgba(61, 37, 22, 0.1);
+        color: #3d2516;
+    }
+
+    .workspace-layout[data-theme="light"] .back-home-btn:hover {
+        background: rgba(61, 37, 22, 0.12);
+    }
+
+    .workspace-layout[data-theme="light"] .save-status {
+        color: rgba(61, 37, 22, 0.6);
+    }
+
+    /* AIバブルの文字をライトモード時にハッキリ黒く見せるための追加修正 */
+    .workspace-layout[data-theme="light"] .message-bubble:not(.user) .bubble-content {
+        background: #ffffff;
+        color: #3d2516;
+    }
+
+    /* Right Panel upper Tabs - Light Theme */
+    .workspace-layout[data-theme="light"] .panel-tabs {
+        background-color: #ebdcd0;
+        border-bottom: 1px solid rgba(61, 37, 22, 0.1);
+    }
+
+    .workspace-layout[data-theme="light"] .tab-btn {
+        color: rgba(61, 37, 22, 0.6);
+    }
+
+    .workspace-layout[data-theme="light"] .tab-btn:hover {
+        color: #3d2516;
+    }
+
+    .workspace-layout[data-theme="light"] .tab-btn.active {
+        color: #8b5cf6;
+        border-bottom-color: #8b5cf6;
+    }
+
+    .workspace-layout[data-theme="light"] .insert-media-btn {
+        background: rgba(139, 92, 246, 0.1);
+        border: 1px solid rgba(139, 92, 246, 0.25);
+        color: #6d28d9;
+    }
+
+    .workspace-layout[data-theme="light"] .insert-media-btn:hover:not(:disabled) {
+        background: rgba(139, 92, 246, 0.2);
+        color: #5b21b6;
+    }
+
+    .workspace-layout[data-theme="light"] .card-action-btn {
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(61, 37, 22, 0.15);
+        color: #3d2516;
+        box-shadow: 0 2px 8px rgba(61, 37, 22, 0.08);
+    }
+
+    .workspace-layout[data-theme="light"] .card-action-btn:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 1);
+        border-color: rgba(61, 37, 22, 0.3);
+    }
+
+    /* Media Panel - Light Theme */
+    .workspace-layout[data-theme="light"] .media-panel {
+        background-color: #ebdcd0;
+        border-right: 1px solid rgba(61, 37, 22, 0.1);
+    }
+
+    .workspace-layout[data-theme="light"] .media-panel-header {
+        border-bottom: 1px solid rgba(61, 37, 22, 0.1);
+    }
+
+    .workspace-layout[data-theme="light"] .media-panel-header h3 {
+        color: #3d2516;
+    }
+
+    .workspace-layout[data-theme="light"] .close-media-btn {
+        color: rgba(61, 37, 22, 0.6);
+    }
+
+    .workspace-layout[data-theme="light"] .close-media-btn:hover {
+        color: #3d2516;
+    }
+
+    .workspace-layout[data-theme="light"] .media-panel-body h4 {
+        color: rgba(61, 37, 22, 0.6);
+    }
+
+    .workspace-layout[data-theme="light"] .media-upload-dropzone {
+        border: 2px dashed rgba(61, 37, 22, 0.15);
+        background: rgba(255, 255, 255, 0.4);
+    }
+
+    .workspace-layout[data-theme="light"] .media-upload-dropzone:hover {
+        border-color: #8b5cf6;
+        background: rgba(139, 92, 246, 0.05);
+    }
+
+    .workspace-layout[data-theme="light"] .upload-prompt {
+        color: #3d2516;
+    }
+
+    .workspace-layout[data-theme="light"] .upload-limit {
+        color: rgba(61, 37, 22, 0.6);
+    }
+
+    .workspace-layout[data-theme="light"] .media-search-form input {
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(61, 37, 22, 0.15);
+        color: #3d2516;
+    }
+
+    .workspace-layout[data-theme="light"] .media-search-form input:focus {
+        border-color: #8b5cf6;
+    }
+
+    .workspace-layout[data-theme="light"] .media-grid-item {
+        background: rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(61, 37, 22, 0.1);
+    }
+
+    .workspace-layout[data-theme="light"] .media-grid-item:hover {
+        border-color: #8b5cf6;
+    }
+
+    .workspace-layout[data-theme="light"] .uploaded-thumbnails-container {
+        border: 1px solid rgba(61, 37, 22, 0.1);
+        background: rgba(255, 255, 255, 0.4);
+    }
+
+    .workspace-layout[data-theme="light"] .thumbnail-wrapper {
+        border: 1px solid rgba(61, 37, 22, 0.1);
+    }
+
+    .workspace-layout[data-theme="light"] .thumbnail-wrapper:hover {
+        border-color: #8b5cf6;
+    }
+
+    /* Chat Form Wrapper and Actions Row */
+    .chat-form-container {
+        display: flex;
+        flex-direction: column;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        background-color: #12131c;
+        padding: 12px 20px 16px;
+    }
+
+    .workspace-layout[data-theme="light"] .chat-form-container {
+        background-color: #ebdcd0;
+        border-top-color: rgba(61, 37, 22, 0.1);
+    }
+
+    .chat-form {
+        display: flex;
+        flex-direction: column;
+        padding: 0;
+        border-top: none;
+        background-color: transparent;
+    }
+
+    .unified-chat-input-box {
+        display: flex;
+        flex-direction: column;
+        background: rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 12px 14px;
+        gap: 8px;
+        transition: border-color 0.2s;
+    }
+
+    .workspace-layout[data-theme="light"] .unified-chat-input-box {
+        background: #ffffff;
+        border-color: rgba(61, 37, 22, 0.15);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .unified-chat-input-box:focus-within {
+        border-color: #8b5cf6;
+    }
+
+    .unified-chat-input-box textarea {
+        width: 100%;
+        border: none;
+        background: transparent;
+        color: #ffffff;
+        font-size: 14px;
+        line-height: 1.5;
+        outline: none;
+        resize: none;
+        box-sizing: border-box;
+        font-family: system-ui, sans-serif;
+    }
+
+    .workspace-layout[data-theme="light"] .unified-chat-input-box textarea {
+        color: #3d2516;
+    }
+
+    .chat-actions-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        margin-top: 4px;
+    }
+
+    .inner-attach-btn {
+        background: transparent;
+        border: none;
+        color: #9ca3af;
+        font-size: 20px;
+        font-weight: 300;
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.2s, transform 0.1s;
+    }
+
+    .workspace-layout[data-theme="light"] .inner-attach-btn {
+        color: #888888;
+    }
+
+    .inner-attach-btn:hover:not(:disabled) {
+        color: #ffffff;
+        transform: scale(1.05);
+    }
+
+    .workspace-layout[data-theme="light"] .inner-attach-btn:hover:not(:disabled) {
+        color: #3d2516;
+    }
+
+    .inner-run-btn {
+        background: #8b5cf6;
+        border: none;
+        color: #ffffff;
+        border-radius: 20px;
+        padding: 6px 16px;
+        font-family: 'Outfit', sans-serif;
+        font-weight: 600;
+        font-size: 12px;
+        cursor: pointer;
+        transition: background 0.2s, transform 0.1s;
+    }
+
+    .inner-run-btn:hover:not(:disabled) {
+        background: #7c3aed;
+        transform: scale(1.03);
+    }
+
+    .inner-run-btn:disabled, .inner-attach-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    /* Attached files preview bar */
+    .attached-files-preview-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+        max-height: 120px;
+        overflow-y: auto;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .attached-file-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(139, 92, 246, 0.15);
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        color: #cbd5e1;
+        max-width: 180px;
+        box-sizing: border-box;
+    }
+
+    .workspace-layout[data-theme="light"] .attached-file-badge {
+        background: rgba(139, 92, 246, 0.08);
+        border-color: rgba(139, 92, 246, 0.25);
+        color: #3d2516;
+    }
+
+    .attached-file-badge.error {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: #fca5a5;
+    }
+
+    .badge-thumb {
+        width: 20px;
+        height: 20px;
+        object-fit: cover;
+        border-radius: 3px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .badge-icon {
+        font-size: 14px;
+    }
+
+    .badge-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+    }
+
+    .badge-remove-btn {
+        background: none;
+        border: none;
+        color: #9ca3af;
+        cursor: pointer;
+        padding: 0 2px;
+        font-size: 11px;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.2s;
+    }
+
+    .badge-remove-btn:hover {
+        color: #ef4444;
+    }
+
+    .badge-spinner {
+        width: 12px;
+        height: 12px;
+        border: 2px solid rgba(139, 92, 246, 0.1);
+        border-top-color: #8b5cf6;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    /* Bubble Attached Items */
+    .bubble-attached-images-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+        gap: 6px;
+        margin-top: 8px;
+    }
+
+    .bubble-attached-img-wrapper {
+        aspect-ratio: 1;
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        cursor: pointer;
+        transition: transform 0.2s, border-color 0.2s;
+        display: block;
+    }
+
+    .workspace-layout[data-theme="light"] .bubble-attached-img-wrapper {
+        border-color: rgba(61, 37, 22, 0.15);
+    }
+
+    .bubble-attached-img-wrapper:hover {
+        transform: scale(1.05);
+        border-color: #8b5cf6;
+    }
+
+    .bubble-attached-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .bubble-attached-texts-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 4px;
+    }
+
+    .bubble-attached-text-details {
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .workspace-layout[data-theme="light"] .bubble-attached-text-details {
+        background: rgba(255, 255, 255, 0.4);
+        border-color: rgba(61, 37, 22, 0.1);
+    }
+
+    .bubble-attached-text-details summary {
+        padding: 6px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        user-select: none;
+        outline: none;
+        color: #cbd5e1;
+        font-weight: 500;
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .workspace-layout[data-theme="light"] .bubble-attached-text-details summary {
+        color: #3d2516;
+        background: rgba(61, 37, 22, 0.02);
+    }
+
+    .bubble-attached-text-details summary:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .workspace-layout[data-theme="light"] .bubble-attached-text-details summary:hover {
+        background: rgba(61, 37, 22, 0.05);
+    }
+
+    .bubble-attached-text-content {
+        margin: 0;
+        padding: 10px;
+        font-size: 11px;
+        font-family: monospace;
+        line-height: 1.4;
+        background: rgba(0, 0, 0, 0.3);
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        max-height: 150px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        color: #a7f3d0;
+    }
+
+    .workspace-layout[data-theme="light"] .bubble-attached-text-content {
+        background: rgba(255, 255, 255, 0.8);
+        border-top-color: rgba(61, 37, 22, 0.05);
+        color: #065f46;
+    }
 </style>
