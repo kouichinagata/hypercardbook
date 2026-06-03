@@ -46,6 +46,69 @@
         return t;
     });
 
+    function extractLargestHeading(md: string): string | null {
+        if (!md) return null;
+        const lines = md.split('\n');
+        let h1: string | null = null;
+        let h2: string | null = null;
+        let h3: string | null = null;
+        
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (/^#\s+(.+)/.test(trimmed)) {
+                const match = trimmed.match(/^#\s+(.+)/);
+                if (match && !h1) h1 = match[1].trim();
+            } else if (/^##\s+(.+)/.test(trimmed)) {
+                const match = trimmed.match(/^##\s+(.+)/);
+                if (match && !h2) h2 = match[1].trim();
+            } else if (/^###\s+(.+)/.test(trimmed)) {
+                const match = trimmed.match(/^###\s+(.+)/);
+                if (match && !h3) h3 = match[1].trim();
+            }
+        }
+        
+        const rawTitle = h1 || h2 || h3;
+        if (!rawTitle) return null;
+        
+        return rawTitle.replace(/[\*_`]/g, '').trim();
+    }
+
+    let tocItems = $derived.by(() => {
+        const items: Array<{ title: string; pageStr: string; jumpIndex: number }> = [];
+        
+        spreads.forEach((spread, i) => {
+            // Left page
+            const leftHeading = extractLargestHeading(spread.leftMarkdown);
+            if (leftHeading) {
+                items.push({
+                    title: leftHeading,
+                    pageStr: (i * 2 + 1).toString(),
+                    jumpIndex: hasToc ? i + 1 : i
+                });
+            }
+            
+            // Right page
+            const rightHeading = extractLargestHeading(spread.rightMarkdown);
+            if (rightHeading) {
+                items.push({
+                    title: rightHeading,
+                    pageStr: (i * 2 + 2).toString(),
+                    jumpIndex: hasToc ? i + 1 : i
+                });
+            }
+        });
+        
+        if (hasBio) {
+            items.push({
+                title: "著者紹介",
+                pageStr: (spreads.length * 2 + 1).toString(),
+                jumpIndex: total
+            });
+        }
+        
+        return items;
+    });
+
     // Watch open state based on index
     $effect(() => {
         if (currentIndex === -1) {
@@ -308,8 +371,7 @@
         currentSubPage = 0;
     }
 
-    function handleInsertTocChange(e: Event) {
-        const isChecked = (e.target as HTMLInputElement).checked;
+    function handleInsertTocChange(isChecked: boolean) {
         const oldTotal = total;
         
         insertToc = isChecked;
@@ -610,24 +672,15 @@
                             <div class="book-toc-container">
                                 <h2>目次</h2>
                                 <ul class="book-toc-list">
-                                    {#each spreads as spread, i}
+                                    {#each tocItems as item}
                                         <li>
-                                            <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); jumpToPage(i + 1); }}>
-                                                <span class="toc-title">{spread.title || `見開き ${i + 1}`}</span>
+                                            <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); jumpToPage(item.jumpIndex); }}>
+                                                <span class="toc-title">{item.title}</span>
                                                 <span class="toc-dots"></span>
-                                                <span class="toc-page">{getPageNumberStr(i)}</span>
+                                                <span class="toc-page">{item.pageStr}</span>
                                             </a>
                                         </li>
                                     {/each}
-                                    {#if authorBio}
-                                        <li>
-                                            <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); jumpToPage(total); }}>
-                                                <span class="toc-title">著者紹介</span>
-                                                <span class="toc-dots"></span>
-                                                <span class="toc-page">{getPageNumberStr(spreads.length)}</span>
-                                            </a>
-                                        </li>
-                                    {/if}
                                 </ul>
                             </div>
                         </div>
@@ -668,36 +721,42 @@
     </div>
 
     <!-- ページダイレクトナビゲーション (目次) -->
-    <div class="footer-box" style:display={hasToc ? 'none' : 'block'}>
-        <div class="book-toc-container" style="max-width: 494px; margin: 0 auto; text-align: left; position: relative;">
-            <div class="toc-header-wrapper" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid var(--text-color); padding-bottom: 6px;">
-                <h2 style="margin: 0; font-size: 1.3rem;">目次</h2>
-                <label class="toc-checkbox-label" style="font-size: 0.9rem; opacity: 0.8; margin-left: auto;">
-                    <input type="checkbox" checked={insertToc} onchange={handleInsertTocChange} id="insertTocCheckbox" /> 目次を本に含める
-                </label>
+    {#if hasToc}
+        <div class="footer-box">
+            <div style="max-width: 494px; margin: 0 auto; text-align: center;">
+                <button 
+                    id="restoreTocBtn"
+                    class="theme-switch" 
+                    style="padding: 8px 16px; font-size: 0.95rem; border-radius: 20px; cursor: pointer;"
+                    onclick={() => handleInsertTocChange(false)}
+                >
+                    目次を戻す
+                </button>
             </div>
-            <ul class="book-toc-list" style:display="block">
-                {#each spreads as spread, i}
-                    <li>
-                        <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); jumpToPage(hasToc ? i + 1 : i); }}>
-                            <span class="toc-title">{spread.title || `見開き ${i + 1}`}</span>
-                            <span class="toc-dots"></span>
-                            <span class="toc-page">{getPageNumberStr(i)}</span>
-                        </a>
-                    </li>
-                {/each}
-                {#if authorBio}
-                    <li>
-                        <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); jumpToPage(total); }}>
-                            <span class="toc-title">著者紹介</span>
-                            <span class="toc-dots"></span>
-                            <span class="toc-page">{getPageNumberStr(spreads.length)}</span>
-                        </a>
-                    </li>
-                {/if}
-            </ul>
         </div>
-    </div>
+    {:else}
+        <div class="footer-box">
+            <div class="book-toc-container" style="max-width: 494px; margin: 0 auto; text-align: left; position: relative;">
+                <div class="toc-header-wrapper" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid var(--text-color); padding-bottom: 6px;">
+                    <h2 style="margin: 0; font-size: 1.3rem;">目次</h2>
+                    <label class="toc-checkbox-label" style="font-size: 0.9rem; opacity: 0.8; margin-left: auto;">
+                        <input type="checkbox" checked={insertToc} onchange={(e) => handleInsertTocChange((e.target as HTMLInputElement).checked)} id="insertTocCheckbox" /> 目次を本に含める
+                    </label>
+                </div>
+                <ul class="book-toc-list" style:display="block">
+                    {#each tocItems as item}
+                        <li>
+                            <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); jumpToPage(item.jumpIndex); }}>
+                                <span class="toc-title">{item.title}</span>
+                                <span class="toc-dots"></span>
+                                <span class="toc-page">{item.pageStr}</span>
+                            </a>
+                        </li>
+                    {/each}
+                </ul>
+            </div>
+        </div>
+    {/if}
 </div>
 
 <style>

@@ -49,6 +49,96 @@
     let isGenerating = $state(false);
     let errorMsg = $state('');
 
+    // Monaco Editor states
+    let useMonaco = $state(false);
+    let monacoContainerEl = $state<HTMLDivElement | null>(null);
+    let monacoEditor: any = null;
+
+    function initMonaco() {
+        if (!monacoContainerEl) return;
+        
+        if ((window as any).monaco) {
+            createMonacoInstance();
+        } else if ((window as any).require) {
+            (window as any).require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+            (window as any).require(['vs/editor/editor.main'], function() {
+                createMonacoInstance();
+            });
+        }
+    }
+
+    function createMonacoInstance() {
+        if (!monacoContainerEl || !(window as any).monaco) return;
+        
+        if (monacoEditor) {
+            monacoEditor.dispose();
+        }
+
+        monacoEditor = (window as any).monaco.editor.create(monacoContainerEl, {
+            value: markdown,
+            language: 'markdown',
+            theme: 'vs-dark',
+            lineNumbers: 'on',
+            automaticLayout: true,
+            readOnly: !data.session?.user,
+            minimap: { enabled: false }
+        });
+
+        monacoEditor.onDidChangeModelContent(() => {
+            markdown = monacoEditor.getValue();
+        });
+    }
+
+    function toggleMonaco() {
+        useMonaco = !useMonaco;
+        if (useMonaco) {
+            tick().then(() => {
+                initMonaco();
+            });
+        } else {
+            if (monacoEditor) {
+                monacoEditor.dispose();
+                monacoEditor = null;
+            }
+        }
+    }
+
+    // Effect to sync markdown state to Monaco Editor
+    $effect(() => {
+        if (monacoEditor && useMonaco) {
+            const currentVal = monacoEditor.getValue();
+            if (currentVal !== markdown) {
+                monacoEditor.setValue(markdown);
+            }
+        }
+    });
+
+    // Effect to adjust layout when switching back to source tab
+    $effect(() => {
+        if (activeTab === 'source' && monacoEditor && useMonaco) {
+            tick().then(() => {
+                monacoEditor.layout();
+            });
+        }
+    });
+
+    // Effect to toggle read-only status based on user session
+    $effect(() => {
+        if (monacoEditor && useMonaco) {
+            monacoEditor.updateOptions({ readOnly: !data.session?.user });
+        }
+    });
+
+    // Clean up Monaco on unmount
+    $effect(() => {
+        return () => {
+            if (monacoEditor) {
+                monacoEditor.dispose();
+                monacoEditor = null;
+            }
+        };
+    });
+
     // Attached files state
     interface AttachedFile {
         id: string;
@@ -767,6 +857,10 @@
 
 </script>
 
+<svelte:head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+</svelte:head>
+
 <div class="workspace-layout" data-theme={uiTheme}>
     {#if showMediaPanel}
         <!-- Left Panel: Media -->
@@ -1070,6 +1164,15 @@
             </div>
             <div class="tabs-right" style="display: flex; gap: 10px; align-items: center; padding-right: 12px;">
                 {#if activeTab === 'source'}
+                    <button 
+                        class="toggle-monaco-btn" 
+                        onclick={toggleMonaco} 
+                        disabled={!data.session?.user}
+                        style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: #ffffff; padding: 5px 12px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; height: 32px; font-family: system-ui, sans-serif;"
+                        title={useMonaco ? "通常のテキストボックスに戻る" : "Monacoエディタに切り替える"}
+                    >
+                        {useMonaco ? '🔠' : '🆎'}
+                    </button>
                     <button class="insert-media-btn" onclick={openInsertMedia} disabled={!data.session?.user}>
                         🖼️ Insert Image
                     </button>
@@ -1113,9 +1216,18 @@
                 bind:value={markdown}
                 placeholder="YAML frontmatter and Markdown format..."
                 class="source-editor"
-                class:hidden={activeTab !== 'source'}
+                class:hidden={activeTab !== 'source' || useMonaco}
                 readonly={!data.session?.user}
             ></textarea>
+
+            {#if useMonaco}
+                <div 
+                    bind:this={monacoContainerEl} 
+                    class="monaco-container" 
+                    class:hidden={activeTab !== 'source'}
+                    style="width: 100%; height: 100%; text-align: left;"
+                ></div>
+            {/if}
         </div>
     </div>
 </div>
@@ -1640,16 +1752,21 @@
     .source-editor {
         width: 100%;
         height: 100%;
-        background: #0d0e15;
+        background: #ffffff;
         border: none;
         box-sizing: border-box;
         padding: 24px;
-        color: #cbd5e1;
+        color: #1a1a1a;
         font-family: monospace;
         font-size: 14px;
         line-height: 1.6;
         resize: none;
         outline: none;
+    }
+
+    .toggle-monaco-btn:hover {
+        background: rgba(255, 255, 255, 0.12) !important;
+        border-color: rgba(255, 255, 255, 0.2) !important;
     }
 
     .empty-preview {

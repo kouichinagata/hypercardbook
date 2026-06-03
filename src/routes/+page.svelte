@@ -278,7 +278,6 @@
     let settingsActiveTab = $state('profile'); // 'profile', 'hypercardbook', 'customprompt'
     
     // User profile states
-    let profileFullName = $state('');
     let profileNickname = $state('');
     let profileAvatarUrl = $state('');
     let profileAuthorBio = $state('');
@@ -297,6 +296,14 @@
     let deleteConfirmPassword = $state('');
     let deleteErrorMsg = $state('');
 
+    // Password change states
+    let showPasswordModal = $state(false);
+    let passwordChangeStep = $state('none'); // 'none', 'edit', 'loading'
+    let newPassword = $state('');
+    let confirmNewPassword = $state('');
+    let passwordChangeError = $state('');
+    let passwordChangeSuccess = $state('');
+
     // Default configuration constants
     const DEFAULT_HYPERCARDBOOK_MD = `# HyperCardBook設定
 ## 全般
@@ -311,7 +318,6 @@
         if (!data.session?.user) return;
         const metadata = data.session.user.user_metadata || {};
         
-        profileFullName = metadata.full_name || metadata.name || '';
         profileNickname = metadata.nickname || '';
         profileAvatarUrl = metadata.avatar_url || '';
         profileAuthorBio = metadata.author_bio || '';
@@ -324,7 +330,48 @@
         deleteConfirmEmail = '';
         deleteConfirmPassword = '';
         deleteErrorMsg = '';
+        cancelPasswordChange();
         showSettingsModal = true;
+    }
+
+    function cancelPasswordChange() {
+        showPasswordModal = false;
+        passwordChangeStep = 'none';
+        newPassword = '';
+        confirmNewPassword = '';
+        passwordChangeError = '';
+        passwordChangeSuccess = '';
+    }
+
+    async function executePasswordChange() {
+        if (!newPassword || !confirmNewPassword) return;
+        if (newPassword !== confirmNewPassword) {
+            passwordChangeError = 'パスワードが一致しません。';
+            return;
+        }
+        if (newPassword.length < 6) {
+            passwordChangeError = 'パスワードは6文字以上で入力してください。';
+            return;
+        }
+
+        passwordChangeStep = 'loading';
+        passwordChangeError = '';
+        passwordChangeSuccess = '';
+
+        try {
+            const { error } = await supabase.auth.updateUser({ password: newPassword });
+            if (error) throw error;
+            passwordChangeSuccess = 'パスワードを正常に更新しました。';
+            newPassword = '';
+            confirmNewPassword = '';
+            setTimeout(() => {
+                cancelPasswordChange();
+            }, 2000);
+        } catch (err: any) {
+            console.error('Password change failed:', err);
+            passwordChangeError = err.message || 'パスワードの変更に失敗しました。';
+            passwordChangeStep = 'edit';
+        }
     }
 
     let isSavingSettings = $state(false);
@@ -335,7 +382,6 @@
         try {
             const { error: updateError } = await supabase.auth.updateUser({
                 data: {
-                    full_name: profileFullName,
                     nickname: profileNickname,
                     avatar_url: profileAvatarUrl,
                     author_bio: profileAuthorBio,
@@ -686,18 +732,20 @@
                             </div>
                             
                             <div class="form-group">
-                                <label for="setting-name">名前 (Full Name)</label>
-                                <input type="text" id="setting-name" bind:value={profileFullName} placeholder="ユーザー名" />
+                                <label for="setting-nickname">ペンネーム (Pen Name)</label>
+                                <input type="text" id="setting-nickname" bind:value={profileNickname} placeholder="ペンネームを入力" />
                             </div>
                             
                             <div class="form-group">
-                                <label for="setting-nickname">ニックネーム (Nickname) *チャットで利用</label>
-                                <input type="text" id="setting-nickname" bind:value={profileNickname} placeholder="ニックネームを入力" />
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="setting-bio">著者紹介 (Biography) *Bookで使用</label>
+                                <label for="setting-bio">著者紹介 (Biography)</label>
                                 <textarea id="setting-bio" bind:value={profileAuthorBio} rows="4" placeholder="著者紹介を入力してください。空欄の場合、著者紹介ページは自動生成されません。"></textarea>
+                            </div>
+                            
+                            <div class="password-change-zone">
+                                <h3>パスワード変更 (Change Password)</h3>
+                                <button type="button" class="theme-switch" onclick={() => showPasswordModal = true}>
+                                    パスワードを変更する
+                                </button>
                             </div>
                             
                             <div class="danger-zone">
@@ -780,6 +828,61 @@
                     <button type="button" class="cancel-btn" onclick={() => showSettingsModal = false}>キャンセル</button>
                     <button type="button" class="save-btn" onclick={saveSettings} disabled={isSavingSettings}>
                         {isSavingSettings ? '保存中...' : '設定を保存'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    {#if showPasswordModal}
+        <div class="modal-overlay" onclick={cancelPasswordChange} onkeydown={(e) => e.key === 'Escape' && cancelPasswordChange()} role="presentation">
+            <div class="settings-modal-card" style="max-width: 400px;" onclick={(e) => e.stopPropagation()} role="presentation">
+                <div class="modal-header">
+                    <h2>パスワード変更 (Change Password)</h2>
+                    <button class="close-btn" onclick={cancelPasswordChange}>✕</button>
+                </div>
+                
+                <div class="modal-body" style="padding-top: 20px;">
+                    <div class="password-change-form">
+                        <div style="margin-bottom: 12px; font-size: 13px; border-bottom: 1px solid var(--card-border); padding-bottom: 10px;">
+                            <span style="opacity: 0.7; color: var(--text-color);">ユーザーID (Email): </span>
+                            <strong style="color: var(--text-color); font-family: monospace; font-size: 13px;">{data.session?.user?.email || ''}</strong>
+                        </div>
+                        <p style="font-size: 13px; opacity: 0.8; margin: 0 0 12px 0;">新しいパスワードを入力してください。</p>
+                        {#if passwordChangeError}
+                            <p class="error-msg">{passwordChangeError}</p>
+                        {/if}
+                        {#if passwordChangeSuccess}
+                            <p class="success-msg">{passwordChangeSuccess}</p>
+                        {/if}
+                        <div class="form-group-compact">
+                            <input 
+                                type="password" 
+                                bind:value={newPassword} 
+                                placeholder="新しいパスワード" 
+                                disabled={passwordChangeStep === 'loading'}
+                            />
+                        </div>
+                        <div class="form-group-compact" style="margin-top: 12px;">
+                            <input 
+                                type="password" 
+                                bind:value={confirmNewPassword} 
+                                placeholder="新しいパスワード（確認用）" 
+                                disabled={passwordChangeStep === 'loading'}
+                            />
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer" style="margin-top: 20px;">
+                    <button type="button" class="cancel-btn" onclick={cancelPasswordChange} disabled={passwordChangeStep === 'loading'}>キャンセル</button>
+                    <button 
+                        type="button" 
+                        class="save-btn" 
+                        onclick={executePasswordChange} 
+                        disabled={passwordChangeStep === 'loading' || !newPassword || !confirmNewPassword}
+                    >
+                        {passwordChangeStep === 'loading' ? '更新中...' : 'パスワードを更新'}
                     </button>
                 </div>
             </div>
@@ -1575,5 +1678,89 @@
         border-top-color: #8b5cf6;
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
+    }
+
+    /* Password change zone styles */
+    .password-change-zone {
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        margin-top: 24px;
+        padding-top: 16px;
+        box-sizing: border-box;
+        text-align: left;
+    }
+    .landing-container[data-theme="light"] .password-change-zone {
+        border-top-color: rgba(61, 37, 22, 0.1);
+    }
+    .password-change-zone h3 {
+        color: var(--text-color);
+        font-size: 14px;
+        margin: 0 0 10px 0;
+        font-weight: 700;
+        opacity: 0.9;
+    }
+    .password-change-form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-width: 320px;
+    }
+    .form-group-compact input {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: #ffffff;
+        font-size: 13px;
+        box-sizing: border-box;
+        outline: none;
+    }
+    .landing-container[data-theme="light"] .form-group-compact input {
+        background: #ffffff;
+        border-color: rgba(0, 0, 0, 0.15);
+        color: #3d2516;
+    }
+    .form-group-compact input:focus {
+        border-color: #8b5cf6;
+    }
+    .password-actions {
+        display: flex;
+        gap: 8px;
+    }
+    .save-btn-compact {
+        background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
+        padding: 6px 14px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .save-btn-compact:hover:not(:disabled) {
+        filter: brightness(1.1);
+    }
+    .save-btn-compact:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .error-msg {
+        color: #fca5a5;
+        font-size: 12px;
+        margin: 0;
+        text-align: left;
+    }
+    .landing-container[data-theme="light"] .error-msg {
+        color: #ef4444;
+    }
+    .success-msg {
+        color: #a7f3d0;
+        font-size: 12px;
+        margin: 0;
+        text-align: left;
+    }
+    .landing-container[data-theme="light"] .success-msg {
+        color: #059669;
     }
 </style>
