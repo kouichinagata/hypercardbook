@@ -862,135 +862,7 @@
 </svelte:head>
 
 <div class="workspace-layout" data-theme={uiTheme}>
-    {#if showMediaPanel}
-        <!-- Left Panel: Media -->
-        <div class="media-panel">
-            <div class="media-panel-header">
-                <h3>{replaceTargetUrl ? 'Replace Image' : 'Insert Image'}</h3>
-                <button class="close-media-btn" onclick={() => showMediaPanel = false}>✕</button>
-            </div>
-            
-            <div class="media-panel-body">
-                <!-- Upload section -->
-                <div class="media-upload-section">
-                    {#if uploadedImages.length > 0}
-                        <div class="uploaded-thumbnails-container">
-                            <div class="uploaded-thumbnails-grid">
-                                {#each uploadedImages as img}
-                                    <div 
-                                        class="thumbnail-wrapper" 
-                                        onclick={() => selectMedia(img.url, img.name.split('_').slice(1).join('_').split('.')[0] || 'image')}
-                                        onkeydown={(e) => {
-                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                selectMedia(img.url, img.name.split('_').slice(1).join('_').split('.')[0] || 'image');
-                                            }
-                                        }}
-                                        role="button"
-                                        tabindex="0"
-                                    >
-                                        <img src={img.url} alt={img.name} class="thumbnail-img" />
-                                        <div class="thumbnail-actions">
-                                            <button 
-                                                class="thumbnail-action-btn delete-btn" 
-                                                onclick={(e) => handleDeleteUploadedImage(e, img.name)}
-                                                title="Delete"
-                                            >
-                                                🗑️
-                                            </button>
-                                            <button 
-                                                class="thumbnail-action-btn download-btn" 
-                                                onclick={(e) => handleDownloadUploadedImage(e, img.url, img.name)}
-                                                title="Download"
-                                            >
-                                                💾
-                                            </button>
-                                        </div>
-                                    </div>
-                                {/each}
-                            </div>
-                        </div>
-                    {/if}
-                    <h4>UPLOAD IMAGE</h4>
-                    <label class="media-upload-dropzone">
-                        <input 
-                            type="file" 
-                            accept="image/*" 
-                            bind:this={uploadFileInput}
-                            onchange={handleFileUpload} 
-                            disabled={isUploadingMedia}
-                            class="hidden-file-input"
-                        />
-                        {#if isUploadingMedia}
-                            <div class="upload-loader">
-                                <div class="spinner-small"></div>
-                                <span>Uploading...</span>
-                            </div>
-                        {:else}
-                            <div class="upload-prompt">
-                                📤 <span>Choose file to upload</span>
-                                <span class="upload-limit">Max 5MB (auto-compressed)</span>
-                            </div>
-                        {/if}
-                    </label>
-                </div>
-
-                <!-- Search section -->
-                <div class="media-search-section">
-                    <h4>Search Pixabay Images</h4>
-                    <form onsubmit={(e) => { e.preventDefault(); searchMedia(); }} class="media-search-form">
-                        <input 
-                            type="text" 
-                            bind:value={mediaSearchQuery} 
-                            placeholder="Search terms (e.g. cat, space)" 
-                            disabled={isSearchingMedia}
-                        />
-                        <button type="submit" disabled={isSearchingMedia || !mediaSearchQuery.trim()}>
-                            Search
-                        </button>
-                    </form>
-                    
-                    <div class="media-results-container">
-                        {#if isSearchingMedia}
-                            <div class="media-loader">
-                                <div class="spinner-small"></div>
-                                <p>Searching...</p>
-                            </div>
-                        {:else if mediaSearchResults.length > 0}
-                            <div class="media-grid">
-                                {#each mediaSearchResults as hit}
-                                    <button 
-                                        class="media-grid-item" 
-                                        onclick={() => selectMedia(hit.webformatUrl, hit.tags)}
-                                        title={hit.tags}
-                                    >
-                                        <img src={hit.previewUrl} alt={hit.tags} loading="lazy" />
-                                    </button>
-                                {/each}
-                            </div>
-                            {#if mediaSearchResults.length < totalMediaHits}
-                                <div class="media-more-container">
-                                    <button 
-                                        class="media-more-btn" 
-                                        onclick={loadMoreMedia} 
-                                        disabled={isLoadingMoreMedia}
-                                    >
-                                        {#if isLoadingMoreMedia}
-                                            Loading...
-                                        {:else}
-                                            more...
-                                        {/if}
-                                    </button>
-                                </div>
-                            {/if}
-                        {:else if mediaSearchQuery}
-                            <p class="media-no-results">No results found for "{mediaSearchQuery}"</p>
-                        {/if}
-                    </div>
-                </div>
-            </div>
-        </div>
-    {:else}
-        <!-- Left Panel: Chat -->
+    <!-- Left Panel: Chat -->
         <div class="chat-panel">
             <div class="panel-header">
                 <div class="header-left">
@@ -1141,7 +1013,6 @@
                 </form>
             </div>
         </div>
-    {/if}
 
     <!-- Right Panel: Editor / Preview -->
     <div class="preview-panel">
@@ -1230,6 +1101,136 @@
             {/if}
         </div>
     </div>
+
+    {#if showMediaPanel}
+        <div class="modal-overlay" onclick={() => showMediaPanel = false} onkeydown={(e) => e.key === 'Escape' && (showMediaPanel = false)} role="presentation">
+            <div class="media-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
+                <div class="modal-header">
+                    <h2>{replaceTargetUrl ? 'Replace Image' : 'Insert Image'}</h2>
+                    <button class="close-btn" onclick={() => showMediaPanel = false}>✕</button>
+                </div>
+                
+                <div class="media-panel-body">
+                    <!-- Upload section -->
+                    <div class="media-upload-section">
+                        {#if uploadedImages.length > 0}
+                            <div class="uploaded-thumbnails-container">
+                                <div class="uploaded-thumbnails-grid">
+                                    {#each uploadedImages as img}
+                                        <div 
+                                            class="thumbnail-wrapper" 
+                                            onclick={() => selectMedia(img.url, img.name.split('_').slice(1).join('_').split('.')[0] || 'image')}
+                                            onkeydown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    selectMedia(img.url, img.name.split('_').slice(1).join('_').split('.')[0] || 'image');
+                                                }
+                                            }}
+                                            role="button"
+                                            tabindex="0"
+                                        >
+                                            <img src={img.url} alt={img.name} class="thumbnail-img" />
+                                            <div class="thumbnail-actions">
+                                                <button 
+                                                    class="thumbnail-action-btn delete-btn" 
+                                                    onclick={(e) => handleDeleteUploadedImage(e, img.name)}
+                                                    title="Delete"
+                                                >
+                                                    🗑️
+                                                </button>
+                                                <button 
+                                                    class="thumbnail-action-btn download-btn" 
+                                                    onclick={(e) => handleDownloadUploadedImage(e, img.url, img.name)}
+                                                    title="Download"
+                                                >
+                                                    💾
+                                                </button>
+                                            </div>
+                                        </div>
+                                    {/each}
+                                </div>
+                            </div>
+                        {/if}
+                        <h4>UPLOAD IMAGE</h4>
+                        <label class="media-upload-dropzone">
+                            <input 
+                                type="file" 
+                                accept="image/*" 
+                                bind:this={uploadFileInput}
+                                onchange={handleFileUpload} 
+                                disabled={isUploadingMedia}
+                                class="hidden-file-input"
+                            />
+                            {#if isUploadingMedia}
+                                <div class="upload-loader">
+                                    <div class="spinner-small"></div>
+                                    <span>Uploading...</span>
+                                </div>
+                            {:else}
+                                <div class="upload-prompt">
+                                    📤 <span>Choose file to upload</span>
+                                    <span class="upload-limit">Max 5MB (auto-compressed)</span>
+                                </div>
+                            {/if}
+                        </label>
+                    </div>
+
+                    <!-- Search section -->
+                    <div class="media-search-section">
+                        <h4>Search Pixabay Images</h4>
+                        <form onsubmit={(e) => { e.preventDefault(); searchMedia(); }} class="media-search-form">
+                            <input 
+                                type="text" 
+                                bind:value={mediaSearchQuery} 
+                                placeholder="Search terms (e.g. cat, space)" 
+                                disabled={isSearchingMedia}
+                            />
+                            <button type="submit" disabled={isSearchingMedia || !mediaSearchQuery.trim()}>
+                                Search
+                            </button>
+                        </form>
+                        
+                        <div class="media-results-container">
+                            {#if isSearchingMedia}
+                                <div class="media-loader">
+                                    <div class="spinner-small"></div>
+                                    <p>Searching...</p>
+                                </div>
+                            {:else if mediaSearchResults.length > 0}
+                                <div class="media-grid">
+                                    {#each mediaSearchResults as hit}
+                                        <button 
+                                            class="media-grid-item" 
+                                            onclick={() => selectMedia(hit.webformatUrl, hit.tags)}
+                                            title={hit.tags}
+                                        >
+                                            <img src={hit.previewUrl} alt={hit.tags} loading="lazy" />
+                                        </button>
+                                    {/each}
+                                </div>
+                                {#if mediaSearchResults.length < totalMediaHits}
+                                    <div class="media-more-container">
+                                        <button 
+                                            class="media-more-btn" 
+                                            onclick={loadMoreMedia} 
+                                            disabled={isLoadingMoreMedia}
+                                        >
+                                            {#if isLoadingMoreMedia}
+                                                Loading...
+                                            {:else}
+                                                more...
+                                            {/if}
+                                        </button>
+                                    </div>
+                                {/if}
+                            {:else if mediaSearchQuery}
+                                <p class="media-no-results">No results found for "{mediaSearchQuery}"</p>
+                            {/if}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {/if}
 </div>
 
 <style>
@@ -2057,25 +2058,27 @@
         border-color: rgba(61, 37, 22, 0.3);
     }
 
-    /* Media Panel - Light Theme */
-    .workspace-layout[data-theme="light"] .media-panel {
+    /* Media Modal - Light Theme */
+    .workspace-layout[data-theme="light"] .media-modal-card {
         background-color: #ebdcd0;
-        border-right: 1px solid rgba(61, 37, 22, 0.1);
+        border: 1px solid rgba(61, 37, 22, 0.15);
+        color: #3d2516;
+        box-shadow: 0 10px 30px rgba(61, 37, 22, 0.15);
     }
 
-    .workspace-layout[data-theme="light"] .media-panel-header {
+    .workspace-layout[data-theme="light"] .modal-header {
         border-bottom: 1px solid rgba(61, 37, 22, 0.1);
     }
 
-    .workspace-layout[data-theme="light"] .media-panel-header h3 {
+    .workspace-layout[data-theme="light"] .modal-header h2 {
         color: #3d2516;
     }
 
-    .workspace-layout[data-theme="light"] .close-media-btn {
+    .workspace-layout[data-theme="light"] .close-btn {
         color: rgba(61, 37, 22, 0.6);
     }
 
-    .workspace-layout[data-theme="light"] .close-media-btn:hover {
+    .workspace-layout[data-theme="light"] .close-btn:hover {
         color: #3d2516;
     }
 
@@ -2431,5 +2434,65 @@
         background: rgba(255, 255, 255, 0.8);
         border-top-color: rgba(61, 37, 22, 0.05);
         color: #065f46;
+    }
+
+    /* Modal Overlay and Card styles for Media Selection */
+    .modal-overlay {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        backdrop-filter: blur(4px);
+        box-sizing: border-box;
+    }
+    
+    .media-modal-card {
+        background: #12131c;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        width: 90%;
+        max-width: 500px;
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        max-height: 80vh;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        color: #cbd5e1;
+        overflow: hidden;
+        box-sizing: border-box;
+        text-align: left;
+    }
+    
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 24px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    
+    .modal-header h2 {
+        font-family: 'Outfit', sans-serif;
+        font-size: 16px;
+        font-weight: 700;
+        margin: 0;
+        color: #ffffff;
+    }
+    
+    .close-btn {
+        background: none;
+        border: none;
+        color: #9ca3af;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 4px;
+        transition: color 0.2s;
+    }
+    
+    .close-btn:hover {
+        color: #ffffff;
     }
 </style>
