@@ -177,7 +177,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             activeSystemInstruction += `\n\nCUSTOM PROMPT GUIDELINES:\nFollow these custom prompt guidelines for style, formatting, and content creation:\n"""\n${custompromptMd.trim()}\n"""`;
         }
 
-        const response = await ai.models.generateContent({
+        const responseStream = await ai.models.generateContentStream({
             model: 'gemini-3.5-flash',
             contents: contents,
             config: {
@@ -187,49 +187,57 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             }
         });
 
-        const replyText = response.text || '';
-        
-        let extractedMarkdown = '';
-        const mdBlockMatch = replyText.match(/```markdown([\s\S]*?)```/i);
-        if (mdBlockMatch) {
-            extractedMarkdown = mdBlockMatch[1].trim();
-        } else {
-            const genericBlockMatch = replyText.match(/```(?:[\w-]*\n)?([\s\S]*?)```/);
-            if (genericBlockMatch) {
-                extractedMarkdown = genericBlockMatch[1].trim();
-            } else if (replyText.includes('---')) {
-                const startIndex = replyText.indexOf('---');
-                extractedMarkdown = replyText.substring(startIndex).trim();
+        const encoder = new TextEncoder();
+        let completeText = '';
+
+        const stream = new ReadableStream({
+            async start(controller) {
+                try {
+                    for await (const chunk of responseStream) {
+                        const text = chunk.text || '';
+                        completeText += text;
+                        controller.enqueue(encoder.encode(text));
+                    }
+
+                    // Persist chat history if bookId is available
+                    if (bookId && completeText) {
+                        const { data: bookCheck } = await supabase
+                            .from('books')
+                            .select('id')
+                            .eq('id', bookId)
+                            .eq('user_id', session.user.id)
+                            .single();
+
+                        if (bookCheck) {
+                            await supabase.from('chat_messages').insert({
+                                book_id: bookId,
+                                role: 'user',
+                                text: prompt
+                            });
+
+                            await supabase.from('chat_messages').insert({
+                                book_id: bookId,
+                                role: 'model',
+                                text: completeText
+                            });
+                        }
+                    }
+
+                    controller.close();
+                } catch (err: any) {
+                    console.error('Stream processing error:', err);
+                    controller.error(err);
+                }
             }
-        }
+        });
 
-        // Persist chat history if bookId is available
-        if (bookId) {
-            const { data: bookCheck } = await supabase
-                .from('books')
-                .select('id')
-                .eq('id', bookId)
-                .eq('user_id', session.user.id)
-                .single();
-
-            if (bookCheck) {
-                await supabase.from('chat_messages').insert({
-                    book_id: bookId,
-                    role: 'user',
-                    text: prompt
-                });
-
-                await supabase.from('chat_messages').insert({
-                    book_id: bookId,
-                    role: 'model',
-                    text: replyText
-                });
+        return new Response(stream, {
+            headers: {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Transfer-Encoding': 'chunked',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive'
             }
-        }
-
-        return json({
-            text: replyText,
-            markdown: extractedMarkdown || currentMarkdown
         });
     } catch (err: any) {
         console.error('Gemini API Error:', err);

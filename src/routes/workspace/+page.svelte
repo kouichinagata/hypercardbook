@@ -440,18 +440,52 @@
                 })
             });
 
-            const dataRes = await response.json();
-
             if (!response.ok) {
+                const dataRes = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
                 throw new Error(dataRes.error || `HTTP error ${response.status}`);
             }
 
-            // Update state
-            chatHistory = [...chatHistory, { role: 'model', text: dataRes.text }];
-            if (dataRes.markdown) {
-                markdown = dataRes.markdown;
-                const parsedIsCard = dataRes.markdown.includes('play_mode: card');
-                mode = parsedIsCard ? 'card' : 'book';
+            const reader = response.body?.getReader();
+            if (!reader) {
+                throw new Error('Response body has no reader.');
+            }
+
+            const decoder = new TextDecoder();
+            let accumulatedText = '';
+            
+            // Append temporary empty AI response
+            chatHistory = [...chatHistory, { role: 'model', text: '' }];
+            const lastIndex = chatHistory.length - 1;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                accumulatedText += chunk;
+
+                // Update typing effect in chat
+                chatHistory[lastIndex].text = accumulatedText;
+                
+                // Real-time markdown parsing
+                const mdBlockMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
+                if (mdBlockMatch && mdBlockMatch[1].trim()) {
+                    const parsedMarkdown = mdBlockMatch[1].trim();
+                    markdown = parsedMarkdown;
+                    const parsedIsCard = parsedMarkdown.includes('play_mode: card');
+                    mode = parsedIsCard ? 'card' : 'book';
+                }
+                
+                scrollToBottom();
+            }
+
+            // Final fallback parsing
+            const finalMdMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
+            if (finalMdMatch) {
+                markdown = finalMdMatch[1].trim();
+            } else if (accumulatedText.includes('---')) {
+                const startIndex = accumulatedText.indexOf('---');
+                markdown = accumulatedText.substring(startIndex).trim();
             }
         } catch (err: any) {
             console.error('Generation failed:', err);
