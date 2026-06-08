@@ -108,11 +108,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: uploadError.message }, { status: 500 });
         }
 
-        const { data: publicUrlData } = supabase.storage
-            .from('HyperCardBookBucket')
-            .getPublicUrl(storagePath);
-
-        return json({ url: publicUrlData.publicUrl });
+        // Return SvelteKit proxy URL instead of raw Supabase Storage URL
+        const previewUrl = `/published/${userId}/${slug}`;
+        return json({ url: previewUrl });
     } catch (err: any) {
         console.error('Export HTML Error:', err);
         return json({ error: err.message || 'Failed to export HTML.' }, { status: 500 });
