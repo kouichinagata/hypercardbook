@@ -18,6 +18,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         let cardSubTitle = '';
         let cardCoverImage = '';
         let cardThemeColor = 'white';
+        let playMode = 'card';
 
         const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
         if (fmMatch) {
@@ -32,48 +33,75 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                     if (k === 'sub_title') cardSubTitle = v;
                     if (k === 'cover_image') cardCoverImage = v;
                     if (k === 'theme_color') cardThemeColor = v;
+                    if (k === 'play_mode') playMode = v;
                 }
             });
         }
 
-        // Extract style blocks
-        const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
-        let styleMatch;
-        let userStyles = '';
-        while ((styleMatch = styleRegex.exec(markdown)) !== null) {
-            userStyles += styleMatch[1] + '\n';
-        }
+        const origin = new URL(request.url).origin;
+        let standaloneHtml = '';
 
-        // Extract script blocks
-        const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
-        let scriptMatch;
-        let userScripts = '';
-        while ((scriptMatch = scriptRegex.exec(markdown)) !== null) {
-            userScripts += scriptMatch[1] + '\n';
-        }
-
-        // Strip style/script tags from markdown body to avoid parsing them as code blocks
-        let cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
-        cleanMd = cleanMd.replace(/<style>[\s\S]*?<\/style>/gi, '');
-        cleanMd = cleanMd.replace(/<script>[\s\S]*?<\/script>/gi, '');
-
-        // Normalize paths & process videos/images
-        const lines = cleanMd.split('\n');
-        const processedLines = lines.map((line: string) => {
-            const trimmed = line.trim();
-            const videoMatch = trimmed.match(/^video:\s*(.*)/);
-            if (videoMatch) {
-                const videoUrl = videoMatch[1].trim();
-                return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
+        if (playMode === 'book') {
+            // Generate HyperBook HTML template using shared CDN assets
+            standaloneHtml = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${cardTitle}</title>
+    <link rel="stylesheet" href="${origin}/css/book-viewer.css">
+</head>
+<body>
+    <div id="hyperbook-viewer"></div>
+    <script type="text/markdown" id="book-markdown">
+${markdown}
+    </script>
+    
+    <!-- Marked and Mermaid load -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="${origin}/js/book-viewer.js"></script>
+</body>
+</html>`;
+        } else {
+            // Extract style blocks
+            const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
+            let styleMatch;
+            let userStyles = '';
+            while ((styleMatch = styleRegex.exec(markdown)) !== null) {
+                userStyles += styleMatch[1] + '\n';
             }
-            return line;
-        });
 
-        let bodyHtml = marked.parse(processedLines.join('\n')) as string;
-        bodyHtml = bodyHtml.replace(/src="books\//g, 'src="/books/');
+            // Extract script blocks
+            const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
+            let scriptMatch;
+            let userScripts = '';
+            while ((scriptMatch = scriptRegex.exec(markdown)) !== null) {
+                userScripts += scriptMatch[1] + '\n';
+            }
 
-        // Assemble standalone HTML template
-        const standaloneHtml = `<!DOCTYPE html>
+            // Strip style/script tags from markdown body to avoid parsing them as code blocks
+            let cleanMd = markdown.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+            cleanMd = cleanMd.replace(/<style>[\s\S]*?<\/style>/gi, '');
+            cleanMd = cleanMd.replace(/<script>[\s\S]*?<\/script>/gi, '');
+
+            // Normalize paths & process videos/images
+            const lines = cleanMd.split('\n');
+            const processedLines = lines.map((line: string) => {
+                const trimmed = line.trim();
+                const videoMatch = trimmed.match(/^video:\s*(.*)/);
+                if (videoMatch) {
+                    const videoUrl = videoMatch[1].trim();
+                    return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
+                }
+                return line;
+            });
+
+            let bodyHtml = marked.parse(processedLines.join('\n')) as string;
+            bodyHtml = bodyHtml.replace(/src="books\//g, 'src="/books/');
+
+            // Assemble standalone HTML template
+            standaloneHtml = `<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
@@ -91,6 +119,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     </script>
 </body>
 </html>`;
+        }
 
         // Upload HTML to Supabase Storage
         const userId = session?.user?.id || 'guest';

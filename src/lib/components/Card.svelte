@@ -237,6 +237,7 @@
     {/if}
 
     <div class="card-webview-frame-wrapper" class:embed-mode={isEmbed}>
+        {#if !isEmbed}
         <div class="card-action-container" class:embed-mode={isEmbed}>
             <button class="card-action-btn" onclick={handleDownloadHtml} title="Download HTML">
                 💾
@@ -245,6 +246,7 @@
                 🌐
             </button>
         </div>
+        {/if}
 
         <div class="card-webview-frame" data-theme-color={cardThemeColor} class:embed-mode={isEmbed}>
             <div class="card-webview-header">

@@ -342,6 +342,197 @@
         return '';
     });
 
+    let isExportingHtml = $state(false);
+
+    let currentTitle = $derived.by(() => {
+        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+        if (fmMatch) {
+            const fmLines = fmMatch[1].split('\n');
+            for (let line of fmLines) {
+                const parts = line.split(':');
+                if (parts.length >= 2 && parts[0].trim() === 'title') {
+                    return parts.slice(1).join(':').trim();
+                }
+            }
+        }
+        return mode === 'card' ? 'Untitled Card' : 'Untitled Book';
+    });
+
+    let currentSlug = $derived.by(() => {
+        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+        if (fmMatch) {
+            const fmLines = fmMatch[1].split('\n');
+            for (let line of fmLines) {
+                const parts = line.split(':');
+                if (parts.length >= 2 && parts[0].trim() === 'id') {
+                    return parts.slice(1).join(':').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+                }
+            }
+        }
+        return '';
+    });
+
+    function getEmbedUrl(url: string): string {
+        if (!url) return '';
+        if (url.includes('tiktok.com')) {
+            const parts = url.split('/');
+            const videoId = parts[parts.length - 1].split('?')[0];
+            return `https://www.tiktok.com/embed/v2/${videoId}`;
+        }
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            let videoId = '';
+            if (url.includes('/shorts/')) {
+                videoId = url.split('/shorts/')[1].split('?')[0];
+            } else if (url.includes('v=')) {
+                videoId = url.split('v=')[1].split('&')[0];
+            } else if (url.includes('youtu.be/')) {
+                videoId = url.split('youtu.be/')[1].split('?')[0];
+            }
+            return `https://www.youtube.com/embed/${videoId}`;
+        }
+        if (url.includes('instagram.com/reel/') || url.includes('instagram.com/p/')) {
+            const keyword = url.includes('/reel/') ? '/reel/' : '/p/';
+            const parts = url.split(keyword);
+            const postId = parts[1].split('/')[0].split('?')[0];
+            return `https://www.instagram.com/${keyword === '/reel/' ? 'reel' : 'p'}/${postId}/embed`;
+        }
+        return url;
+    }
+
+    function handleDownloadHtml() {
+        const titleText = currentTitle;
+        const slug = currentSlug || bookUuid || `export-${Date.now()}`;
+        
+        let standaloneHtml = '';
+
+        if (mode === 'book') {
+            const localOrigin = window.location.origin;
+            standaloneHtml = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${titleText}</title>
+    <link rel="stylesheet" href="${localOrigin}/css/book-viewer.css">
+</head>
+<body>
+    <div id="hyperbook-viewer"></div>
+    <${'script'} type="text/markdown" id="book-markdown">
+${markdown}
+    </${'script'}>
+    
+    <!-- Marked and Mermaid load -->
+    <${'script'} src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></${'script'}>
+    <${'script'} src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></${'script'}>
+    <${'script'} src="${localOrigin}/js/book-viewer.js"></${'script'}>
+</body>
+</html>`;
+        } else {
+            const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
+            let styleMatch;
+            let userStyles = '';
+            while ((styleMatch = styleRegex.exec(markdown)) !== null) {
+                userStyles += styleMatch[1] + '\n';
+            }
+
+            const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
+            let scriptMatch;
+            let userScripts = '';
+            while ((scriptMatch = scriptRegex.exec(markdown)) !== null) {
+                userScripts += scriptMatch[1] + '\n';
+            }
+
+            let cardBodyHtml = '';
+            if (markdown) {
+                const cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
+                const lines = cleanMd.split('\n');
+                const processedLines = lines.map(line => {
+                    const trimmed = line.trim();
+                    const videoMatch = trimmed.match(/^video:\s*(.*)/);
+                    if (videoMatch) {
+                        const videoUrl = videoMatch[1].trim();
+                        return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
+                    }
+                    return line;
+                });
+                cardBodyHtml = marked.parse(processedLines.join('\n')) as string;
+                cardBodyHtml = cardBodyHtml.replace(/src="books\//g, 'src="/books/');
+            }
+
+            standaloneHtml = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${titleText}</title>
+    <style>
+        ${userStyles}
+    </style>
+</head>
+<body>
+    ${cardBodyHtml}
+    
+    <${'script'}>
+        ${userScripts}
+    </${'script'}>
+</body>
+</html>`;
+        }
+
+        const blob = new Blob([standaloneHtml], { type: 'text/html;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${slug}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    async function handleExportHtmlLink() {
+        if (isExportingHtml) return;
+
+        const newTab = window.open('', '_blank');
+        if (!newTab) {
+            alert('Popup blocker is active. Please allow popups for this site.');
+            return;
+        }
+
+        newTab.document.write('<html><head><title>Exporting HTML...</title><style>body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f4eae1; color: #333; } .loader { text-align: center; }</style></head><body><div class="loader"><h2>Generating standalone HTML...</h2><p>Please wait a moment.</p></div></body></html>');
+
+        isExportingHtml = true;
+        
+        try {
+            const response = await fetch('/api/export-html', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    markdown,
+                    id: bookUuid || currentSlug
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || `HTTP error ${response.status}`);
+            }
+
+            const dataRes = await response.json();
+            if (dataRes.url) {
+                newTab.location.href = dataRes.url;
+            } else {
+                throw new Error('No URL returned from export API');
+            }
+        } catch (err: any) {
+            console.error('Export HTML failed:', err);
+            newTab.close();
+            alert(`Failed to export HTML: ${err.message || err}`);
+        } finally {
+            isExportingHtml = false;
+        }
+    }
+
     // Auto-save logic
     let saveTimeout: NodeJS.Timeout | null = null;
     let saveStatus = $state('Synced'); // 'Synced', 'Saving...', 'Error', 'Read Only'
@@ -1083,6 +1274,21 @@
                     </button>
                 {/if}
                 {#if (mode === 'card' && cardSlug) || (mode === 'book' && bookUuid)}
+                    <button 
+                        class="card-action-btn tabs-action-btn" 
+                        onclick={handleDownloadHtml} 
+                        title="HTMLダウンロード (💾)"
+                    >
+                        💾
+                    </button>
+                    <button 
+                        class="card-action-btn tabs-action-btn" 
+                        onclick={handleExportHtmlLink} 
+                        disabled={isExportingHtml}
+                        title="HTMLとして公開 (🌐)"
+                    >
+                        🌐
+                    </button>
                     <a 
                         class="card-action-btn tabs-action-btn" 
                         href={mode === 'card' ? `/hypercard/${cardSlug}?embed=true` : `/hyperbook/${bookUuid}`} 
