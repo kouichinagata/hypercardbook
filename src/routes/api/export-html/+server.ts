@@ -109,7 +109,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         }
 
         // Return SvelteKit proxy URL instead of raw Supabase Storage URL
-        const previewUrl = `/published/${userId}/${slug}`;
+        const previewUrl = `/published/${userId}/${slug}.html`;
         return json({ url: previewUrl });
     } catch (err: any) {
         console.error('Export HTML Error:', err);
