@@ -856,11 +856,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 
     <!-- 3D wooden bookshelf displayed directly on the landing page -->
     <div class="bookshelf-section">
-        {#if data.currentUserId}
-            <button class="top-shelf-stack-btn" onclick={toggleStackSelectionMode}>
-                {isStackSelectionMode ? 'Cancel' : '🗒️ Stack'}
-            </button>
-        {/if}
         {#if !displayedBooks || displayedBooks.length === 0}
             <div class="empty-shelf">
                 {#if activeStack}
@@ -880,7 +875,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 onDeleteBook={handleDeleteBook}
                 onDownloadBook={handleDownloadBook}
                 fromPage="home"
-                showStackBtn={false}
+                showStackBtn={true}
                 isStackSelection={isStackSelectionMode}
                 selectedStackBookIds={selectedStackBookIds}
                 onToggleSelection={handleToggleSelection}
@@ -1437,35 +1432,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 
     /* --- Bookshelf Section --- */
     .bookshelf-section {
-        position: relative;
-        margin-top: 50px;
         width: 90%;
         max-width: 960px;
         display: flex;
         flex-direction: column;
         align-items: center;
         box-sizing: border-box;
-    }
-
-    .top-shelf-stack-btn {
-        position: absolute;
-        top: -45px;
-        right: 0;
-        z-index: 100;
-        padding: 8px 16px;
-        border-radius: 20px;
-        border: 1px solid var(--text-color);
-        background: var(--card-bg);
-        color: var(--text-color);
-        cursor: pointer;
-        font-size: 12px;
-        transition: 0.3s;
-        backdrop-filter: blur(10px);
-        font-family: system-ui, sans-serif;
-    }
-    .top-shelf-stack-btn:hover {
-        opacity: 0.8;
-        transform: scale(1.05);
     }
 
     .empty-shelf {

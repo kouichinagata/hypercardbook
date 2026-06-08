@@ -110,17 +110,18 @@
 </script>
 
 <div class="shelf-container" id="shelfContainer">
+    {#if currentUserId && showStackBtn}
+        <button 
+            type="button" 
+            class="top-shelf-stack-btn" 
+            onclick={() => onToggleStackSelectionMode?.()}
+        >
+            {isStackSelection ? 'Cancel' : '🗒️ Stack'}
+        </button>
+    {/if}
+
     {#each shelfRows as rowBooks, rowIndex}
         <div class="shelf-row">
-            {#if rowIndex === 0 && showStackBtn}
-                <button 
-                    type="button" 
-                    class="shelf-stack-mode-btn" 
-                    onclick={() => onToggleStackSelectionMode?.()}
-                >
-                    🗒️ Stack
-                </button>
-            {/if}
             <div class="shelf-books-area">
                 {#each rowBooks as book (book.id)}
                     <div class="book-item-wrapper">
@@ -734,17 +735,17 @@
     }
 
     /* --- Stack Specific Styles --- */
-    .shelf-stack-mode-btn {
+    .top-shelf-stack-btn {
         position: absolute;
-        top: 12px;
-        right: 40px;
-        z-index: 40;
+        top: -45px;
+        right: 0;
+        z-index: 100;
         background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        color: #f5ebe0;
-        padding: 6px 12px;
+        border: 1px solid var(--text-color, #f5ebe0);
+        color: var(--text-color, #f5ebe0);
+        padding: 8px 16px;
         border-radius: 20px;
-        font-size: 0.8rem;
+        font-size: 12px;
         font-weight: 600;
         cursor: pointer;
         display: inline-flex;
@@ -752,23 +753,23 @@
         gap: 6px;
         transition: all 0.2s ease-in-out;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(10px);
+        font-family: system-ui, sans-serif;
     }
 
-    .shelf-stack-mode-btn:hover {
+    .top-shelf-stack-btn:hover {
         background: rgba(255, 255, 255, 0.18);
-        border-color: rgba(255, 255, 255, 0.3);
-        transform: translateY(-1px);
+        transform: scale(1.05);
     }
 
-    :global([data-theme="light"]) .shelf-stack-mode-btn {
+    :global([data-theme="light"]) .top-shelf-stack-btn {
         background: rgba(61, 37, 22, 0.06);
-        border: 1px solid rgba(61, 37, 22, 0.2);
-        color: #3d2516;
+        border-color: var(--text-color, #3d2516);
+        color: var(--text-color, #3d2516);
     }
 
-    :global([data-theme="light"]) .shelf-stack-mode-btn:hover {
+    :global([data-theme="light"]) .top-shelf-stack-btn:hover {
         background: rgba(61, 37, 22, 0.12);
-        border-color: rgba(61, 37, 22, 0.3);
     }
 
     /* Stack Book Cover (White, double thickness) */

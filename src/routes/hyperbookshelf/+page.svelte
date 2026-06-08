@@ -27,20 +27,19 @@
         </button>
     </div>
 
-    {#if data.logo || data.title || data.booksParam}
+    {#if data.booksParam}
+        <div class="back-btn-container">
+            <button class="back-btn" onclick={() => goto('/')}>back</button>
+        </div>
+    {/if}
+
+    {#if data.logo || data.title}
         <div class="bookshelf-header">
-            {#if data.booksParam}
-                <div class="stack-view-header-content">
-                    <button class="back-btn" onclick={() => goto('/')}>back</button>
-                    <h1 class="bookshelf-title">{data.title || 'Stack'}</h1>
-                </div>
-            {:else}
-                {#if data.logo}
-                    <img src={data.logo} alt="Logo" class="bookshelf-logo" />
-                {/if}
-                {#if data.title}
-                    <h1 class="bookshelf-title">{data.title}</h1>
-                {/if}
+            {#if data.logo}
+                <img src={data.logo} alt="Logo" class="bookshelf-logo" />
+            {/if}
+            {#if data.title}
+                <h1 class="bookshelf-title">{data.title}</h1>
             {/if}
         </div>
     {/if}
@@ -145,21 +144,21 @@
     }
 
     /* --- Back Button --- */
-    .stack-view-header-content {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 20px;
+    .back-btn-container {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        z-index: 1000;
     }
 
     .back-btn {
-        padding: 6px 16px;
+        padding: 8px 16px;
         border-radius: 20px;
         border: 1px solid var(--text-color);
         background: var(--card-bg);
         color: var(--text-color);
         cursor: pointer;
-        font-size: 14px;
+        font-size: 12px;
         transition: 0.3s;
         backdrop-filter: blur(10px);
         font-family: system-ui, sans-serif;
