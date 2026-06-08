@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import fs from 'fs';
-import path from 'path';
 import { marked } from 'marked';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
     try {
         const { markdown, id } = await request.json();
+        const supabase = locals.supabase;
+        const session = locals.session;
         
         if (!markdown) {
             return json({ error: 'No markdown content provided.' }, { status: 400 });
@@ -92,16 +92,27 @@ export const POST: RequestHandler = async ({ request }) => {
 </body>
 </html>`;
 
-        // Write HTML to static/html/[slug].html
-        const dirPath = path.resolve('static/html');
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
-        }
-        
-        const filename = `${slug}.html`;
-        fs.writeFileSync(path.join(dirPath, filename), standaloneHtml, 'utf-8');
+        // Upload HTML to Supabase Storage
+        const userId = session?.user?.id || 'guest';
+        const storagePath = `${userId}/published/${slug}.html`;
 
-        return json({ url: `/html/${filename}` });
+        const { error: uploadError } = await supabase.storage
+            .from('HyperCardBookBucket')
+            .upload(storagePath, Buffer.from(standaloneHtml, 'utf-8'), {
+                contentType: 'text/html',
+                upsert: true
+            });
+
+        if (uploadError) {
+            console.error('Storage upload error:', uploadError);
+            return json({ error: uploadError.message }, { status: 500 });
+        }
+
+        const { data: publicUrlData } = supabase.storage
+            .from('HyperCardBookBucket')
+            .getPublicUrl(storagePath);
+
+        return json({ url: publicUrlData.publicUrl });
     } catch (err: any) {
         console.error('Export HTML Error:', err);
         return json({ error: err.message || 'Failed to export HTML.' }, { status: 500 });
