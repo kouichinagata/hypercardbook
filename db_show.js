@@ -13,11 +13,15 @@ envContent.split('\n').forEach(line => {
 const supabase = createClient(env.PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
 async function run() {
-    const { data: books, error } = await supabase.from('books').select('id, slug, title');
+    const { data: books, error } = await supabase.from('books').select('*').limit(1);
     if (error) {
         console.error(error);
         return;
     }
-    console.log(JSON.stringify(books, null, 2));
+    if (books && books.length > 0) {
+        console.log("Columns:", Object.keys(books[0]));
+    } else {
+        console.log("No books found");
+    }
 }
 run();

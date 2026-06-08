@@ -250,6 +250,49 @@
         return `HyperStack${padded}`;
     }
 
+    let showStackPublishModal = $state(false);
+    let stackConfirmLegal = $state(false);
+    let isStackPublic = $state(false);
+    let stackPublishedAt = $state<string | null>(null);
+
+    let showPublicSection = $state(false);
+    let publicBooksList = $state<any[]>([]);
+    let hasMorePublic = $state(false);
+    let isLoadingMorePublic = $state(false);
+
+    $effect(() => {
+        if (data.publicBooks) {
+            publicBooksList = [...data.publicBooks];
+        }
+        if (data.hasMorePublic !== undefined) {
+            hasMorePublic = data.hasMorePublic;
+        }
+    });
+
+    async function handleLoadPublicBooks() {
+        showPublicSection = true;
+    }
+
+    async function loadMorePublicBooks() {
+        if (isLoadingMorePublic) return;
+        isLoadingMorePublic = true;
+        try {
+            const offset = publicBooksList.length;
+            const res = await fetch(`/api/public-books?offset=${offset}&limit=50`);
+            if (res.ok) {
+                const result = await res.json();
+                publicBooksList = [...publicBooksList, ...result.books];
+                hasMorePublic = result.hasMore;
+            } else {
+                console.error('Failed to load public books:', await res.text());
+            }
+        } catch (err) {
+            console.error('Error fetching public books:', err);
+        } finally {
+            isLoadingMorePublic = false;
+        }
+    }
+
     // Stack helper functions
     function toggleStackSelectionMode() {
         isStackSelectionMode = !isStackSelectionMode;
@@ -257,6 +300,8 @@
             selectedStackBooks = [];
             stackTitle = getNextStackDefaultTitle();
             editingStackId = '';
+            isStackPublic = false;
+            stackPublishedAt = null;
             showStackModal = true;
         } else {
             showStackModal = false;
@@ -268,6 +313,8 @@
         showStackModal = false;
         selectedStackBooks = [];
         editingStackId = '';
+        isStackPublic = false;
+        stackPublishedAt = null;
     }
 
     function handleToggleSelection(book: any) {
@@ -323,6 +370,8 @@ author: Stack
 theme_color: white
 play_mode: stack
 id: ${stackId}
+is_public: ${isStackPublic}
+${stackPublishedAt ? `published_at: ${stackPublishedAt}` : ''}
 ---
 
 ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.id})`).join('\n')}
@@ -332,7 +381,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             const response = await fetch('/api/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ markdown, id: editingStackId ? stackId : undefined })
+                body: JSON.stringify({ 
+                    markdown, 
+                    id: editingStackId ? stackId : undefined,
+                    is_public: isStackPublic,
+                    published_at: stackPublishedAt
+                })
             });
 
             if (response.ok) {
@@ -380,6 +434,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     function openStackEditMode(book: any) {
         editingStackId = book.id;
         stackTitle = book.title;
+        isStackPublic = book.is_public || false;
+        stackPublishedAt = book.published_at || null;
         
         const subItems = parseStackMarkdown(book.markdownContent || '');
         selectedStackBooks = subItems.map(item => ({
@@ -390,6 +446,20 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         
         isStackSelectionMode = true;
         showStackModal = true;
+    }
+
+    function openStackPublishModal() {
+        stackConfirmLegal = false;
+        showStackPublishModal = true;
+    }
+
+    function executeStackPublish() {
+        if (!stackConfirmLegal) return;
+        isStackPublic = true;
+        if (!stackPublishedAt) {
+            stackPublishedAt = new Date().toISOString();
+        }
+        showStackPublishModal = false;
     }
 
     function handleStackClick(book: any) {
@@ -882,6 +952,34 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 onStackClick={handleStackClick}
                 onDuplicateStack={handleDuplicateStack}
                 onToggleStackSelectionMode={toggleStackSelectionMode}
+                showMoreBtn={!activeStack && data.publicBooks && data.publicBooks.length > 0 && !showPublicSection}
+                onMoreClick={handleLoadPublicBooks}
+            />
+        {/if}
+
+        {#if !activeStack && showPublicSection && publicBooksList && publicBooksList.length > 0}
+            <div class="public-books-separator">
+                <div class="golden-plate">Public Books</div>
+            </div>
+            <Bookshelf
+                books={publicBooksList}
+                currentUserId={data.currentUserId}
+                showActions={true}
+                bind:selectedBookId={selectedBookId}
+                onPromptSelect={handlePromptSelect}
+                onEditBook={handleEditBook}
+                onDeleteBook={handleDeleteBook}
+                onDownloadBook={handleDownloadBook}
+                fromPage="home"
+                showStackBtn={false}
+                isStackSelection={isStackSelectionMode}
+                selectedStackBookIds={selectedStackBookIds}
+                onToggleSelection={handleToggleSelection}
+                onStackClick={handleStackClick}
+                onDuplicateStack={handleDuplicateStack}
+                onToggleStackSelectionMode={toggleStackSelectionMode}
+                showMoreBtn={hasMorePublic}
+                onMoreClick={loadMorePublicBooks}
             />
         {/if}
     </div>
@@ -891,7 +989,18 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         <div class="stack-popup-panel">
             <div class="stack-popup-header">
                 <h3>HyperStack</h3>
-                <button class="close-popup-btn" onclick={cancelStackSelection}>✕</button>
+                <div class="stack-header-actions" style="display: flex; gap: 8px; align-items: center;">
+                    <button 
+                        class="stack-publish-btn" 
+                        class:is-public={isStackPublic}
+                        onclick={openStackPublishModal} 
+                        title="Publish"
+                        style="background: none; border: none; color: #a0aec0; font-size: 1.1rem; cursor: pointer; padding: 4px;"
+                    >
+                        👥
+                    </button>
+                    <button class="close-popup-btn" onclick={cancelStackSelection}>✕</button>
+                </div>
             </div>
             <div class="stack-popup-body">
                 <p class="select-hint">Select HyperBook or HyperCard.</p>
@@ -958,6 +1067,30 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 <button class="btn-popup btn-popup-primary" onclick={saveStack} disabled={selectedStackBooks.length === 0}>
                     Save
                 </button>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Stack Publish confirmation modal -->
+    {#if showStackPublishModal}
+        <div class="modal-overlay" onclick={() => showStackPublishModal = false} role="presentation">
+            <div class="publish-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
+                <div class="publish-modal-body">
+                    <p>Published content is visible to everyone.</p>
+                    <p>It may be searchable on Google.</p>
+                    <p>Other users can reuse and build upon your work.</p>
+                    
+                    <label class="publish-confirm-label">
+                        <input type="checkbox" bind:checked={stackConfirmLegal} />
+                        <span>I confirm that my data is legal and follows the rules.</span>
+                    </label>
+                </div>
+                <div class="publish-modal-footer">
+                    <button class="btn-cancel" onclick={() => showStackPublishModal = false}>Cancel</button>
+                    <button class="btn-publish" onclick={executeStackPublish} disabled={!stackConfirmLegal}>
+                        Publish
+                    </button>
+                </div>
             </div>
         </div>
     {/if}
@@ -2374,5 +2507,157 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             width: calc(100% - 24px);
             max-width: 360px;
         }
+    }
+
+    /* Publish Modal Styles */
+    .publish-modal-card {
+        background: #12131c;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        width: 90%;
+        max-width: 480px;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        color: #cbd5e1;
+        overflow: hidden;
+        box-sizing: border-box;
+        text-align: left;
+        padding: 24px;
+        gap: 16px;
+        font-family: system-ui, -apple-system, sans-serif;
+    }
+    
+    .landing-container[data-theme="light"] .publish-modal-card {
+        background: #f4eae1;
+        border-color: rgba(61, 37, 22, 0.15);
+        color: #3d2516;
+        box-shadow: 0 10px 30px rgba(61, 37, 22, 0.15);
+    }
+    
+    .publish-modal-body {
+        font-size: 14px;
+        line-height: 1.6;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .publish-modal-body p {
+        margin: 0;
+    }
+    
+    .publish-confirm-label {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-top: 14px;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .publish-confirm-label input {
+        margin-top: 3px;
+        cursor: pointer;
+    }
+
+    .publish-confirm-label span {
+        font-size: 13px;
+        font-weight: 500;
+        opacity: 0.9;
+    }
+    
+    .publish-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 8px;
+    }
+    
+    .publish-modal-footer button {
+        padding: 8px 20px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: none;
+    }
+    
+    .publish-modal-footer .btn-cancel {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: inherit;
+    }
+    
+    .publish-modal-footer .btn-cancel:hover {
+        background: rgba(255, 255, 255, 0.12);
+    }
+    
+    .landing-container[data-theme="light"] .publish-modal-footer .btn-cancel {
+        background: rgba(0, 0, 0, 0.03);
+        border-color: rgba(0, 0, 0, 0.1);
+    }
+    
+    .publish-modal-footer .btn-publish {
+        background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+        color: #ffffff;
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+    }
+    
+    .publish-modal-footer .btn-publish:hover:not(:disabled) {
+        filter: brightness(1.1);
+    }
+    
+    .publish-modal-footer .btn-publish:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+
+    .stack-publish-btn.is-public {
+        color: #8b5cf6 !important;
+    }
+
+    /* Public Books separator and golden plate styles */
+    .public-books-separator {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        margin-top: 50px;
+        margin-bottom: 20px;
+        box-sizing: border-box;
+    }
+
+    .golden-plate {
+        background: linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%);
+        border: 2px solid #5d4010;
+        border-radius: 4px;
+        color: #3d2508;
+        font-family: "Georgia", serif;
+        font-size: 16px;
+        font-weight: bold;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        padding: 8px 32px;
+        box-shadow: 
+            inset 0 1px 0 rgba(255,255,255,0.4),
+            inset 0 -1px 0 rgba(0,0,0,0.4),
+            0 4px 8px rgba(0,0,0,0.3);
+        text-shadow: 1px 1px 0px rgba(255,255,255,0.5);
+        position: relative;
+        text-align: center;
+        user-select: none;
+    }
+
+    .golden-plate::before {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        right: 2px;
+        bottom: 2px;
+        border: 1px solid rgba(93, 64, 16, 0.4);
+        pointer-events: none;
     }
 </style>

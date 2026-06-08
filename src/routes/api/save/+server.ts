@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
-        const { markdown, id } = await request.json();
+        const { markdown, id, is_public, published_at } = await request.json();
         const session = locals.session;
         const supabase = locals.supabase;
 
@@ -21,6 +21,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         let coverImage = '';
         let themeColor = '';
         let playMode = 'book';
+        let fmIsPublic: boolean | undefined = undefined;
+        let fmPublishedAt: string | undefined = undefined;
 
         const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
         if (fmMatch) {
@@ -36,6 +38,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                     if (k === 'cover_image') coverImage = v;
                     if (k === 'theme_color') themeColor = v;
                     if (k === 'play_mode') playMode = v;
+                    if (k === 'is_public') fmIsPublic = v === 'true';
+                    if (k === 'published_at') fmPublishedAt = v;
                 }
             });
         }
@@ -51,24 +55,33 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             markdown_content: markdown
         };
 
+        const resolvedIsPublic = is_public !== undefined ? is_public : (fmIsPublic !== undefined ? fmIsPublic : undefined);
+        const resolvedPublishedAt = published_at !== undefined ? published_at : (fmPublishedAt !== undefined ? fmPublishedAt : undefined);
+
         const isUuid = id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) : false;
 
         if (id && isUuid) {
             bookData.id = id;
-            // Fetch existing slug to prevent overwriting with timestamp
+            // Fetch existing fields to prevent overwriting with defaults
             const { data: existingBook } = await supabase
                 .from('books')
-                .select('slug')
+                .select('slug, is_public, published_at')
                 .eq('id', id)
                 .single();
 
             if (existingBook) {
                 bookData.slug = slug || existingBook.slug;
+                bookData.is_public = resolvedIsPublic !== undefined ? resolvedIsPublic : existingBook.is_public;
+                bookData.published_at = resolvedPublishedAt !== undefined ? resolvedPublishedAt : existingBook.published_at;
             } else {
                 bookData.slug = slug || `book-${Date.now()}`;
+                bookData.is_public = resolvedIsPublic !== undefined ? resolvedIsPublic : false;
+                bookData.published_at = resolvedPublishedAt !== undefined ? resolvedPublishedAt : null;
             }
         } else {
             bookData.slug = slug || `book-${Date.now()}`;
+            bookData.is_public = resolvedIsPublic !== undefined ? resolvedIsPublic : false;
+            bookData.published_at = resolvedPublishedAt !== undefined ? resolvedPublishedAt : null;
         }
 
         const { data, error: dbError } = await supabase

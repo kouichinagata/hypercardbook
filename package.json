@@ -26,6 +26,7 @@
 		"@google/genai": "^2.6.0",
 		"@supabase/ssr": "^0.10.3",
 		"@supabase/supabase-js": "^2.106.2",
-		"marked": "^18.0.4"
+		"marked": "^18.0.4",
+		"pg": "^8.21.0"
 	}
 }

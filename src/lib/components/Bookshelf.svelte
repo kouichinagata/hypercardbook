@@ -21,20 +21,24 @@
         onStackClick = null,
         onToggleSelection = null,
         onDuplicateStack = null,
-        onToggleStackSelectionMode = null
+        onToggleStackSelectionMode = null,
+        showMoreBtn = false,
+        onMoreClick = null
     } = $props();
+
+    let displayBooks = $derived(showMoreBtn ? [...books, { id: 'more-btn-virtual', isMoreBtn: true, title: 'more…' }] : books);
 
     let measureElements = $state<HTMLDivElement[]>([]);
     let shelfRows = $state<any[][]>([]);
 
     function recalculateRows() {
-        if (!books || books.length === 0) {
+        if (!displayBooks || displayBooks.length === 0) {
             shelfRows = [];
             return;
         }
 
         if (measureElements.length === 0) {
-            shelfRows = [books];
+            shelfRows = [displayBooks];
             return;
         }
 
@@ -45,7 +49,7 @@
             if (!rowsMap.has(offset)) {
                 rowsMap.set(offset, []);
             }
-            rowsMap.get(offset)!.push(books[index]);
+            rowsMap.get(offset)!.push(displayBooks[index]);
         });
 
         const sortedOffsets = Array.from(rowsMap.keys()).sort((a, b) => a - b);
@@ -64,7 +68,7 @@
     });
 
     $effect(() => {
-        if (books) {
+        if (displayBooks) {
             tick().then(() => {
                 recalculateRows();
             });
@@ -125,133 +129,152 @@
             <div class="shelf-books-area">
                 {#each rowBooks as book (book.id)}
                     <div class="book-item-wrapper">
-                        {#if showActions && !isStackSelection}
-                            <div class="book-action-bar">
-                                {#if book.isSample || (currentUserId && book.userId === currentUserId) || book.isStack}
-                                    <button 
-                                        class="action-btn prompt-btn" 
-                                        class:selected={selectedBookId === book.id}
-                                        onclick={() => {
-                                            if (book.isStack) {
-                                                onDuplicateStack?.(book);
-                                            } else {
-                                                onPromptSelect?.(book);
-                                            }
-                                        }}
-                                        disabled={!currentUserId && !book.isStack}
-                                    >
-                                        {book.isStack ? 'Duplicate' : 'Prompt'}
-                                    </button>
-                                {/if}
-                                {#if !book.isSample && currentUserId && book.userId === currentUserId}
-                                    <button 
-                                        class="action-btn edit-btn icon-btn" 
-                                        onclick={() => onEditBook?.(book)}
-                                        title={book.isStack ? 'Edit Stack' : 'Edit'}
-                                    >
-                                        ✍️
-                                    </button>
-                                    <button 
-                                        class="action-btn delete-btn icon-btn" 
-                                        onclick={() => onDeleteBook?.(book)}
-                                        title="Delete"
-                                    >
-                                        🗑️
-                                    </button>
-                                {/if}
-                                {#if !book.isSample && currentUserId && book.userId === currentUserId}
-                                    <button 
-                                        class="action-btn download-btn icon-btn" 
-                                        onclick={() => onDownloadBook?.(book)}
-                                        title="Download"
-                                    >
-                                        💾
-                                    </button>
-                                {/if}
+                        {#if book.isMoreBtn}
+                            <div 
+                                class="book-item is-more-btn" 
+                                onclick={() => onMoreClick?.()}
+                                onkeydown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        onMoreClick?.();
+                                    }
+                                }}
+                                role="button"
+                                tabindex="0"
+                            >
+                                <div class="book-cover more-cover">
+                                    <div class="more-icon">📖</div>
+                                    <div class="more-text">more…</div>
+                                </div>
                             </div>
-                        {/if}
-
-                        <div 
-                            class="book-item" 
-                            class:is-card={book.isCard}
-                            class:is-stack={book.isStack}
-                            class:selected-in-selection={isStackSelection && selectedStackBookIds.includes(book.id)}
-                            class:unselectable-in-selection={isStackSelection && book.isStack}
-                            onclick={() => handleItemClick(book)}
-                            onkeydown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                    handleItemClick(book);
-                                }
-                            }}
-                            role="button"
-                            tabindex="0"
-                        >
-                            {#if book.isCard}
-                                <div class="book-cover card-cover" data-theme-color={book.themeColor || 'white'}>
-                                    <div class="card-cover-title">{book.title}</div>
-                                    {#if book.coverImage}
-                                        <img 
-                                            src={normalizePath(book.coverImage)} 
-                                            alt={book.title} 
-                                            class="card-cover-img" 
-                                            onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
-                                        />
-                                    {:else}
-                                        <div class="card-cover-placeholder"></div>
+                        {:else}
+                            {#if showActions && !isStackSelection}
+                                <div class="book-action-bar">
+                                    {#if book.isSample || (currentUserId && book.userId === currentUserId) || book.isStack}
+                                        <button 
+                                            class="action-btn prompt-btn" 
+                                            class:selected={selectedBookId === book.id}
+                                            onclick={() => {
+                                                if (book.isStack) {
+                                                    onDuplicateStack?.(book);
+                                                } else {
+                                                    onPromptSelect?.(book);
+                                                }
+                                            }}
+                                            disabled={!currentUserId && !book.isStack}
+                                        >
+                                            {book.isStack ? 'Duplicate' : 'Prompt'}
+                                        </button>
                                     {/if}
-                                    {#if book.subTitle}
-                                        <div class="card-cover-subtitle">{book.subTitle}</div>
+                                    {#if !book.isSample && currentUserId && book.userId === currentUserId}
+                                        <button 
+                                            class="action-btn edit-btn icon-btn" 
+                                            onclick={() => onEditBook?.(book)}
+                                            title={book.isStack ? 'Edit Stack' : 'Edit'}
+                                        >
+                                            ✍️
+                                        </button>
+                                        <button 
+                                            class="action-btn delete-btn icon-btn" 
+                                            onclick={() => onDeleteBook?.(book)}
+                                            title="Delete"
+                                        >
+                                            🗑️
+                                        </button>
                                     {/if}
-                                    {#if isStackSelection && selectedStackBookIds.includes(book.id)}
-                                        <div class="stack-select-check-overlay">
-                                            <div class="check-circle">✓</div>
-                                        </div>
-                                    {/if}
-                                </div>
-                            {:else if book.isStack}
-                                <div class="book-cover" data-theme-color="white">
-                                    <div class="book-cover-title">{book.title}</div>
-                                    <div class="stack-indicator">🗒️ Stack</div>
-                                    {#if isStackSelection && selectedStackBookIds.includes(book.id)}
-                                        <div class="stack-select-check-overlay">
-                                            <div class="check-circle">✓</div>
-                                        </div>
-                                    {/if}
-                                </div>
-                            {:else}
-                                <div class="book-cover" data-theme-color={book.themeColor || 'black'}>
-                                    {#if book.coverImage}
-                                        <img 
-                                            src={normalizePath(book.coverImage)} 
-                                            alt={book.title} 
-                                            class="book-cover-img" 
-                                            onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
-                                        />
-                                    {/if}
-                                    <div class="book-cover-title">{book.title}</div>
-                                    {#if book.author}
-                                        <div class="book-cover-author">
-                                            {book.author}
-                                        </div>
-                                    {/if}
-                                    {#if isStackSelection && selectedStackBookIds.includes(book.id)}
-                                        <div class="stack-select-check-overlay">
-                                            <div class="check-circle">✓</div>
-                                        </div>
+                                    {#if !book.isSample && currentUserId && book.userId === currentUserId}
+                                        <button 
+                                            class="action-btn download-btn icon-btn" 
+                                            onclick={() => onDownloadBook?.(book)}
+                                            title="Download"
+                                        >
+                                            💾
+                                        </button>
                                     {/if}
                                 </div>
                             {/if}
-                            <div class="book-tooltip">
-                                <h4>{book.title}</h4>
-                                {#if book.isCard && book.subTitle}
-                                    <p>{book.subTitle}</p>
-                                  {:else if book.author}
-                                    <p>
-                                        {book.author}
-                                    </p>
+
+                            <div 
+                                class="book-item" 
+                                class:is-card={book.isCard}
+                                class:is-stack={book.isStack}
+                                class:selected-in-selection={isStackSelection && selectedStackBookIds.includes(book.id)}
+                                class:unselectable-in-selection={isStackSelection && book.isStack}
+                                onclick={() => handleItemClick(book)}
+                                onkeydown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        handleItemClick(book);
+                                    }
+                                }}
+                                role="button"
+                                tabindex="0"
+                            >
+                                {#if book.isCard}
+                                    <div class="book-cover card-cover" data-theme-color={book.themeColor || 'white'}>
+                                        <div class="card-cover-title">{book.title}</div>
+                                        {#if book.coverImage}
+                                            <img 
+                                                src={normalizePath(book.coverImage)} 
+                                                alt={book.title} 
+                                                class="card-cover-img" 
+                                                onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+                                            />
+                                        {:else}
+                                            <div class="card-cover-placeholder"></div>
+                                        {/if}
+                                        {#if book.subTitle}
+                                            <div class="card-cover-subtitle">{book.subTitle}</div>
+                                        {/if}
+                                        {#if isStackSelection && selectedStackBookIds.includes(book.id)}
+                                            <div class="stack-select-check-overlay">
+                                                <div class="check-circle">✓</div>
+                                            </div>
+                                        {/if}
+                                    </div>
+                                {:else if book.isStack}
+                                    <div class="book-cover" data-theme-color="white">
+                                        <div class="book-cover-title">{book.title}</div>
+                                        <div class="stack-indicator">🗒️ Stack</div>
+                                        {#if isStackSelection && selectedStackBookIds.includes(book.id)}
+                                            <div class="stack-select-check-overlay">
+                                                <div class="check-circle">✓</div>
+                                            </div>
+                                        {/if}
+                                    </div>
+                                {:else}
+                                    <div class="book-cover" data-theme-color={book.themeColor || 'black'}>
+                                        {#if book.coverImage}
+                                            <img 
+                                                src={normalizePath(book.coverImage)} 
+                                                alt={book.title} 
+                                                class="book-cover-img" 
+                                                onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+                                            />
+                                        {/if}
+                                        <div class="book-cover-title">{book.title}</div>
+                                        {#if book.author}
+                                            <div class="book-cover-author">
+                                                {book.author}
+                                            </div>
+                                        {/if}
+                                        {#if isStackSelection && selectedStackBookIds.includes(book.id)}
+                                            <div class="stack-select-check-overlay">
+                                                <div class="check-circle">✓</div>
+                                            </div>
+                                        {/if}
+                                    </div>
                                 {/if}
+                                <div class="book-tooltip">
+                                    <h4>{book.title}</h4>
+                                    {#if book.isCard && book.subTitle}
+                                        <p>{book.subTitle}</p>
+                                    {:else if book.author}
+                                        <p>
+                                            {book.author}
+                                        </p>
+                                    {/if}
+                                </div>
                             </div>
-                        </div>
+                        {/if}
                     </div>
                 {/each}
             </div>
@@ -261,7 +284,7 @@
 
     <!-- Hidden Measure Container to detect shelf wrap points -->
     <div class="measure-container">
-        {#each books as book, idx (book.id)}
+        {#each displayBooks as book, idx (book.id)}
             <div class="measure-book" bind:this={measureElements[idx]}></div>
         {/each}
     </div>
@@ -871,6 +894,58 @@
             top: 10px;
             right: 20px;
             padding: 4px 8px;
+            font-size: 0.7rem;
+        }
+    }
+
+    /* Styles for virtual more button */
+    .book-item.is-more-btn {
+        transform-style: flat !important;
+    }
+    .book-item.is-more-btn::before {
+        display: none !important;
+    }
+    .book-item.is-more-btn .book-cover.more-cover {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+        border: 2px dashed rgba(255, 255, 255, 0.25);
+        border-radius: 8px;
+        backdrop-filter: blur(10px);
+        color: #cbd5e1;
+        box-shadow: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all 0.3s ease;
+    }
+    :global([data-theme="light"]) .book-item.is-more-btn .book-cover.more-cover {
+        background: linear-gradient(135deg, rgba(61, 37, 22, 0.05) 0%, rgba(61, 37, 22, 0.02) 100%);
+        border-color: rgba(61, 37, 22, 0.25);
+        color: #3d2516;
+    }
+    .book-item.is-more-btn:hover {
+        transform: translateY(-8px) !important;
+    }
+    .book-item.is-more-btn:hover .book-cover.more-cover {
+        border-color: #8b5cf6;
+        color: #8b5cf6;
+        background: rgba(139, 92, 246, 0.08);
+        box-shadow: 0 0 15px rgba(139, 92, 246, 0.2);
+    }
+    .more-icon {
+        font-size: 2rem;
+    }
+    .more-text {
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+    @media (max-width: 600px) {
+        .more-icon {
+            font-size: 1.5rem;
+        }
+        .more-text {
             font-size: 0.7rem;
         }
     }

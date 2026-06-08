@@ -533,6 +533,70 @@ ${markdown}
         }
     }
 
+    // Publishing logic
+    let showPublishModal = $state(false);
+    let confirmLegal = $state(false);
+    let isPublishing = $state(false);
+
+    function openPublishModal() {
+        confirmLegal = false;
+        showPublishModal = true;
+    }
+
+    async function executePublish() {
+        if (!confirmLegal || isPublishing) return;
+        isPublishing = true;
+        
+        try {
+            let updatedMarkdown = markdown;
+            const nowIso = new Date().toISOString();
+            
+            const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+            if (fmMatch) {
+                let fm = fmMatch[1];
+                
+                if (fm.includes('is_public:')) {
+                    fm = fm.replace(/is_public:\s*(true|false)/g, 'is_public: true');
+                } else {
+                    fm += '\nis_public: true';
+                }
+                
+                if (!fm.includes('published_at:')) {
+                    fm += `\npublished_at: ${nowIso}`;
+                }
+                
+                updatedMarkdown = updatedMarkdown.replace(/^---\s*[\s\S]*?\s*---/, `---\n${fm.trim()}\n---`);
+            } else {
+                updatedMarkdown = `---\nis_public: true\npublished_at: ${nowIso}\n---\n${markdown}`;
+            }
+
+            const response = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    markdown: updatedMarkdown,
+                    id: bookUuid,
+                    is_public: true,
+                    published_at: nowIso
+                })
+            });
+
+            if (response.ok) {
+                markdown = updatedMarkdown;
+                showPublishModal = false;
+                alert('Published successfully!');
+            } else {
+                const errData = await response.json();
+                alert(`Publish failed: ${errData.error}`);
+            }
+        } catch (err: any) {
+            console.error('Publish error:', err);
+            alert(`Error occurred: ${err.message || err}`);
+        } finally {
+            isPublishing = false;
+        }
+    }
+
     // Auto-save logic
     let saveTimeout: NodeJS.Timeout | null = null;
     let saveStatus = $state('Synced'); // 'Synced', 'Saving...', 'Error', 'Read Only'
@@ -1276,6 +1340,13 @@ ${markdown}
                 {#if (mode === 'card' && cardSlug) || (mode === 'book' && bookUuid)}
                     <button 
                         class="card-action-btn tabs-action-btn" 
+                        onclick={openPublishModal} 
+                        title="Publish"
+                    >
+                        👥
+                    </button>
+                    <button 
+                        class="card-action-btn tabs-action-btn" 
                         onclick={handleDownloadHtml} 
                         title="HTMLダウンロード (💾)"
                     >
@@ -1467,6 +1538,30 @@ ${markdown}
                             {/if}
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Publish confirmation modal -->
+    {#if showPublishModal}
+        <div class="modal-overlay" onclick={() => showPublishModal = false} role="presentation">
+            <div class="publish-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
+                <div class="publish-modal-body">
+                    <p>Published content is visible to everyone.</p>
+                    <p>It may be searchable on Google.</p>
+                    <p>Other users can reuse and build upon your work.</p>
+                    
+                    <label class="publish-confirm-label">
+                        <input type="checkbox" bind:checked={confirmLegal} />
+                        <span>I confirm that my data is legal and follows the rules.</span>
+                    </label>
+                </div>
+                <div class="publish-modal-footer">
+                    <button class="btn-cancel" onclick={() => showPublishModal = false}>Cancel</button>
+                    <button class="btn-publish" onclick={executePublish} disabled={!confirmLegal || isPublishing}>
+                        {isPublishing ? 'Publishing...' : 'Publish'}
+                    </button>
                 </div>
             </div>
         </div>
@@ -2734,5 +2829,111 @@ ${markdown}
     
     .close-btn:hover {
         color: #ffffff;
+    }
+
+    /* Publish Modal Styles */
+    .publish-modal-card {
+        background: #12131c;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        width: 90%;
+        max-width: 480px;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        color: #cbd5e1;
+        overflow: hidden;
+        box-sizing: border-box;
+        text-align: left;
+        padding: 24px;
+        gap: 16px;
+    }
+    
+    .workspace-layout[data-theme="light"] .publish-modal-card {
+        background: #f4eae1;
+        border-color: rgba(61, 37, 22, 0.15);
+        color: #3d2516;
+        box-shadow: 0 10px 30px rgba(61, 37, 22, 0.15);
+    }
+    
+    .publish-modal-body {
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .publish-modal-body p {
+        margin: 0;
+    }
+    
+    .publish-confirm-label {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-top: 14px;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .publish-confirm-label input {
+        margin-top: 3px;
+        cursor: pointer;
+    }
+
+    .publish-confirm-label span {
+        font-size: 13px;
+        font-weight: 500;
+        opacity: 0.9;
+    }
+    
+    .publish-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 8px;
+    }
+    
+    .publish-modal-footer button {
+        padding: 8px 20px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: none;
+    }
+    
+    .publish-modal-footer .btn-cancel {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: inherit;
+    }
+    
+    .publish-modal-footer .btn-cancel:hover {
+        background: rgba(255, 255, 255, 0.12);
+    }
+    
+    .workspace-layout[data-theme="light"] .publish-modal-footer .btn-cancel {
+        background: rgba(0, 0, 0, 0.03);
+        border-color: rgba(0, 0, 0, 0.1);
+    }
+    
+    .publish-modal-footer .btn-publish {
+        background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+        color: #ffffff;
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+    }
+    
+    .publish-modal-footer .btn-publish:hover:not(:disabled) {
+        filter: brightness(1.1);
+    }
+    
+    .publish-modal-footer .btn-publish:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        box-shadow: none;
     }
 </style>
