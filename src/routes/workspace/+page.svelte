@@ -533,14 +533,39 @@ ${markdown}
         }
     }
 
-    // Publishing logic
-    let showPublishModal = $state(false);
+    // Publishing & Unpublishing logic
     let confirmLegal = $state(false);
     let isPublishing = $state(false);
+    let showPublishModal = $state(false);
+    let showUnpublishModal = $state(false);
 
-    function openPublishModal() {
-        confirmLegal = false;
-        showPublishModal = true;
+    let isPublic = $derived.by(() => {
+        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+        if (fmMatch) {
+            const fmLines = fmMatch[1].split('\n');
+            let found = false;
+            fmLines.forEach((line: string) => {
+                const parts = line.split(':');
+                if (parts.length >= 2) {
+                    const k = parts[0].trim();
+                    const v = parts.slice(1).join(':').trim();
+                    if (k === 'is_public' && v === 'true') {
+                        found = true;
+                    }
+                }
+            });
+            return found;
+        }
+        return false;
+    });
+
+    function handlePublishBtnClick() {
+        if (isPublic) {
+            showUnpublishModal = true;
+        } else {
+            confirmLegal = false;
+            showPublishModal = true;
+        }
     }
 
     async function executePublish() {
@@ -584,13 +609,59 @@ ${markdown}
             if (response.ok) {
                 markdown = updatedMarkdown;
                 showPublishModal = false;
-                alert('Published successfully!');
             } else {
                 const errData = await response.json();
                 alert(`Publish failed: ${errData.error}`);
             }
         } catch (err: any) {
             console.error('Publish error:', err);
+            alert(`Error occurred: ${err.message || err}`);
+        } finally {
+            isPublishing = false;
+        }
+    }
+
+    async function executeUnpublish() {
+        if (isPublishing) return;
+        isPublishing = true;
+        
+        try {
+            let updatedMarkdown = markdown;
+            
+            const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+            if (fmMatch) {
+                let fm = fmMatch[1];
+                
+                if (fm.includes('is_public:')) {
+                    fm = fm.replace(/is_public:\s*(true|false)/g, 'is_public: false');
+                } else {
+                    fm += '\nis_public: false';
+                }
+                
+                updatedMarkdown = updatedMarkdown.replace(/^---\s*[\s\S]*?\s*---/, `---\n${fm.trim()}\n---`);
+            } else {
+                updatedMarkdown = `---\nis_public: false\n---\n${markdown}`;
+            }
+
+            const response = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    markdown: updatedMarkdown,
+                    id: bookUuid,
+                    is_public: false
+                })
+            });
+
+            if (response.ok) {
+                markdown = updatedMarkdown;
+                showUnpublishModal = false;
+            } else {
+                const errData = await response.json();
+                alert(`Operation failed: ${errData.error}`);
+            }
+        } catch (err: any) {
+            console.error('Unpublish error:', err);
             alert(`Error occurred: ${err.message || err}`);
         } finally {
             isPublishing = false;
@@ -1340,10 +1411,10 @@ ${markdown}
                 {#if (mode === 'card' && cardSlug) || (mode === 'book' && bookUuid)}
                     <button 
                         class="card-action-btn tabs-action-btn" 
-                        onclick={openPublishModal} 
+                        onclick={handlePublishBtnClick} 
                         title="Publish"
                     >
-                        👥
+                        {isPublic ? '👤' : '👥'}
                     </button>
                     <button 
                         class="card-action-btn tabs-action-btn" 
@@ -1561,6 +1632,23 @@ ${markdown}
                     <button class="btn-cancel" onclick={() => showPublishModal = false}>Cancel</button>
                     <button class="btn-publish" onclick={executePublish} disabled={!confirmLegal || isPublishing}>
                         {isPublishing ? 'Publishing...' : 'Publish'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Unpublish confirmation modal -->
+    {#if showUnpublishModal}
+        <div class="modal-overlay" onclick={() => showUnpublishModal = false} role="presentation">
+            <div class="publish-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
+                <div class="publish-modal-body">
+                    <p>Make this private?</p>
+                </div>
+                <div class="publish-modal-footer">
+                    <button class="btn-cancel" onclick={() => showUnpublishModal = false}>Cancel</button>
+                    <button class="btn-publish" onclick={executeUnpublish} disabled={isPublishing}>
+                        {isPublishing ? 'Updating...' : 'Make Private'}
                     </button>
                 </div>
             </div>

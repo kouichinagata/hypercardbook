@@ -260,6 +260,9 @@
     let hasMorePublic = $state(false);
     let isLoadingMorePublic = $state(false);
 
+    let myBooksList = $derived(data.books.filter((b: any) => !b.isSample));
+    let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample));
+
     $effect(() => {
         if (data.publicBooks) {
             publicBooksList = [...data.publicBooks];
@@ -448,9 +451,15 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         showStackModal = true;
     }
 
-    function openStackPublishModal() {
-        stackConfirmLegal = false;
-        showStackPublishModal = true;
+    let showStackUnpublishModal = $state(false);
+
+    function handleStackPublishBtnClick() {
+        if (isStackPublic) {
+            showStackUnpublishModal = true;
+        } else {
+            stackConfirmLegal = false;
+            showStackPublishModal = true;
+        }
     }
 
     function executeStackPublish() {
@@ -460,6 +469,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             stackPublishedAt = new Date().toISOString();
         }
         showStackPublishModal = false;
+    }
+
+    function executeStackUnpublish() {
+        isStackPublic = false;
+        showStackUnpublishModal = false;
     }
 
     function handleStackClick(book: any) {
@@ -926,61 +940,116 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 
     <!-- 3D wooden bookshelf displayed directly on the landing page -->
     <div class="bookshelf-section">
-        {#if !displayedBooks || displayedBooks.length === 0}
-            <div class="empty-shelf">
-                {#if activeStack}
+        {#if activeStack}
+            {#if !displayedBooks || displayedBooks.length === 0}
+                <div class="empty-shelf">
                     <p>このスタックには本やカードがありません。</p>
-                {:else}
-                    <p>本棚にはまだ本がありません。プロンプトを入力して生成してください。</p>
-                {/if}
-            </div>
+                </div>
+            {:else}
+                <Bookshelf
+                    books={displayedBooks}
+                    currentUserId={data.currentUserId}
+                    showActions={true}
+                    bind:selectedBookId={selectedBookId}
+                    onPromptSelect={handlePromptSelect}
+                    onEditBook={handleEditBook}
+                    onDeleteBook={handleDeleteBook}
+                    onDownloadBook={handleDownloadBook}
+                    fromPage="home"
+                    showStackBtn={true}
+                    isStackSelection={isStackSelectionMode}
+                    selectedStackBookIds={selectedStackBookIds}
+                    onToggleSelection={handleToggleSelection}
+                    onStackClick={handleStackClick}
+                    onDuplicateStack={handleDuplicateStack}
+                    onToggleStackSelectionMode={toggleStackSelectionMode}
+                />
+            {/if}
         {:else}
-            <Bookshelf
-                books={displayedBooks}
-                currentUserId={data.currentUserId}
-                showActions={true}
-                bind:selectedBookId={selectedBookId}
-                onPromptSelect={handlePromptSelect}
-                onEditBook={handleEditBook}
-                onDeleteBook={handleDeleteBook}
-                onDownloadBook={handleDownloadBook}
-                fromPage="home"
-                showStackBtn={true}
-                isStackSelection={isStackSelectionMode}
-                selectedStackBookIds={selectedStackBookIds}
-                onToggleSelection={handleToggleSelection}
-                onStackClick={handleStackClick}
-                onDuplicateStack={handleDuplicateStack}
-                onToggleStackSelectionMode={toggleStackSelectionMode}
-                showMoreBtn={!activeStack && data.publicBooks && data.publicBooks.length > 0 && !showPublicSection}
-                onMoreClick={handleLoadPublicBooks}
-            />
-        {/if}
+            <!-- Render My Books if user has any books -->
+            {#if myBooksList && myBooksList.length > 0}
+                <Bookshelf
+                    books={myBooksList}
+                    currentUserId={data.currentUserId}
+                    showActions={true}
+                    bind:selectedBookId={selectedBookId}
+                    onPromptSelect={handlePromptSelect}
+                    onEditBook={handleEditBook}
+                    onDeleteBook={handleDeleteBook}
+                    onDownloadBook={handleDownloadBook}
+                    fromPage="home"
+                    showStackBtn={true}
+                    isStackSelection={isStackSelectionMode}
+                    selectedStackBookIds={selectedStackBookIds}
+                    onToggleSelection={handleToggleSelection}
+                    onStackClick={handleStackClick}
+                    onDuplicateStack={handleDuplicateStack}
+                    onToggleStackSelectionMode={toggleStackSelectionMode}
+                />
+            {/if}
 
-        {#if !activeStack && showPublicSection && publicBooksList && publicBooksList.length > 0}
-            <div class="public-books-separator">
-                <div class="golden-plate">Public Books</div>
-            </div>
-            <Bookshelf
-                books={publicBooksList}
-                currentUserId={data.currentUserId}
-                showActions={true}
-                bind:selectedBookId={selectedBookId}
-                onPromptSelect={handlePromptSelect}
-                onEditBook={handleEditBook}
-                onDeleteBook={handleDeleteBook}
-                onDownloadBook={handleDownloadBook}
-                fromPage="home"
-                showStackBtn={false}
-                isStackSelection={isStackSelectionMode}
-                selectedStackBookIds={selectedStackBookIds}
-                onToggleSelection={handleToggleSelection}
-                onStackClick={handleStackClick}
-                onDuplicateStack={handleDuplicateStack}
-                onToggleStackSelectionMode={toggleStackSelectionMode}
-                showMoreBtn={hasMorePublic}
-                onMoreClick={loadMorePublicBooks}
-            />
+            <!-- Always render Sample Books (preceded by Sample Books golden plate) -->
+            {#if sampleBooksList && sampleBooksList.length > 0}
+                <div class="public-books-separator">
+                    <div class="golden-plate no-pointer">Sample Books</div>
+                </div>
+                <Bookshelf
+                    books={sampleBooksList}
+                    currentUserId={data.currentUserId}
+                    showActions={true}
+                    bind:selectedBookId={selectedBookId}
+                    onPromptSelect={handlePromptSelect}
+                    onEditBook={handleEditBook}
+                    onDeleteBook={handleDeleteBook}
+                    onDownloadBook={handleDownloadBook}
+                    fromPage="home"
+                    showStackBtn={myBooksList.length === 0}
+                    isStackSelection={isStackSelectionMode}
+                    selectedStackBookIds={selectedStackBookIds}
+                    onToggleSelection={handleToggleSelection}
+                    onStackClick={handleStackClick}
+                    onDuplicateStack={handleDuplicateStack}
+                    onToggleStackSelectionMode={toggleStackSelectionMode}
+                    showMoreBtn={data.publicBooks && data.publicBooks.length > 0 && !showPublicSection}
+                    onMoreClick={handleLoadPublicBooks}
+                />
+            {/if}
+
+            <!-- Render Public Books if showPublicSection is true -->
+            {#if showPublicSection && publicBooksList && publicBooksList.length > 0}
+                <div class="public-books-separator">
+                    <div 
+                        class="golden-plate clickable-plate" 
+                        onclick={() => showPublicSection = false}
+                        onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (showPublicSection = false)}
+                        role="button"
+                        tabindex="0"
+                        title="Hide Public Books"
+                    >
+                        Public Books
+                    </div>
+                </div>
+                <Bookshelf
+                    books={publicBooksList}
+                    currentUserId={data.currentUserId}
+                    showActions={true}
+                    bind:selectedBookId={selectedBookId}
+                    onPromptSelect={handlePromptSelect}
+                    onEditBook={handleEditBook}
+                    onDeleteBook={handleDeleteBook}
+                    onDownloadBook={handleDownloadBook}
+                    fromPage="home"
+                    showStackBtn={false}
+                    isStackSelection={isStackSelectionMode}
+                    selectedStackBookIds={selectedStackBookIds}
+                    onToggleSelection={handleToggleSelection}
+                    onStackClick={handleStackClick}
+                    onDuplicateStack={handleDuplicateStack}
+                    onToggleStackSelectionMode={toggleStackSelectionMode}
+                    showMoreBtn={hasMorePublic}
+                    onMoreClick={loadMorePublicBooks}
+                />
+            {/if}
         {/if}
     </div>
 
@@ -993,11 +1062,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     <button 
                         class="stack-publish-btn" 
                         class:is-public={isStackPublic}
-                        onclick={openStackPublishModal} 
+                        onclick={handleStackPublishBtnClick} 
                         title="Publish"
                         style="background: none; border: none; color: #a0aec0; font-size: 1.1rem; cursor: pointer; padding: 4px;"
                     >
-                        👥
+                        {isStackPublic ? '👤' : '👥'}
                     </button>
                     <button class="close-popup-btn" onclick={cancelStackSelection}>✕</button>
                 </div>
@@ -1089,6 +1158,23 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     <button class="btn-cancel" onclick={() => showStackPublishModal = false}>Cancel</button>
                     <button class="btn-publish" onclick={executeStackPublish} disabled={!stackConfirmLegal}>
                         Publish
+                    </button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Stack Unpublish confirmation modal -->
+    {#if showStackUnpublishModal}
+        <div class="modal-overlay" onclick={() => showStackUnpublishModal = false} role="presentation">
+            <div class="publish-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
+                <div class="publish-modal-body">
+                    <p>Make this private?</p>
+                </div>
+                <div class="publish-modal-footer">
+                    <button class="btn-cancel" onclick={() => showStackUnpublishModal = false}>Cancel</button>
+                    <button class="btn-publish" onclick={executeStackUnpublish}>
+                        Make Private
                     </button>
                 </div>
             </div>
@@ -2659,5 +2745,31 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         bottom: 2px;
         border: 1px solid rgba(93, 64, 16, 0.4);
         pointer-events: none;
+    }
+
+    .golden-plate.clickable-plate {
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .golden-plate.clickable-plate:hover {
+        filter: brightness(1.15);
+        transform: translateY(-2px);
+        box-shadow: 
+            inset 0 1px 0 rgba(255,255,255,0.4),
+            inset 0 -1px 0 rgba(0,0,0,0.4),
+            0 6px 14px rgba(0,0,0,0.4);
+    }
+
+    .golden-plate.clickable-plate:active {
+        transform: translateY(0);
+        box-shadow: 
+            inset 0 1px 0 rgba(255,255,255,0.4),
+            inset 0 -1px 0 rgba(0,0,0,0.4),
+            0 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .golden-plate.no-pointer {
+        cursor: default;
     }
 </style>
