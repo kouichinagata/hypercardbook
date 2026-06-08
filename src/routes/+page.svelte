@@ -1063,7 +1063,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                         class="stack-publish-btn" 
                         class:is-public={isStackPublic}
                         onclick={handleStackPublishBtnClick} 
-                        title="Publish"
+                        title={isStackPublic ? 'Unpublish' : 'Publish'}
                         style="background: none; border: none; color: #a0aec0; font-size: 1.1rem; cursor: pointer; padding: 4px;"
                     >
                         {isStackPublic ? '👤' : '👥'}

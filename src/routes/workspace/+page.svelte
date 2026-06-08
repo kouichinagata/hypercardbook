@@ -1412,7 +1412,7 @@ ${markdown}
                     <button 
                         class="card-action-btn tabs-action-btn" 
                         onclick={handlePublishBtnClick} 
-                        title="Publish"
+                        title={isPublic ? 'Unpublish' : 'Publish'}
                     >
                         {isPublic ? '👤' : '👥'}
                     </button>
