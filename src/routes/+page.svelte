@@ -1033,6 +1033,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     books={publicBooksList}
                     currentUserId={data.currentUserId}
                     showActions={true}
+                    isPublicShelf={true}
                     bind:selectedBookId={selectedBookId}
                     onPromptSelect={handlePromptSelect}
                     onEditBook={handleEditBook}

@@ -23,7 +23,8 @@
         onDuplicateStack = null,
         onToggleStackSelectionMode = null,
         showMoreBtn = false,
-        onMoreClick = null
+        onMoreClick = null,
+        isPublicShelf = false
     } = $props();
 
     let displayBooks = $derived(showMoreBtn ? [...books, { id: 'more-btn-virtual', isMoreBtn: true, title: 'more…' }] : books);
@@ -165,7 +166,7 @@
                                             {book.isStack ? 'Duplicate' : 'Prompt'}
                                         </button>
                                     {/if}
-                                    {#if !book.isSample && currentUserId && book.userId === currentUserId}
+                                    {#if !book.isSample && currentUserId && book.userId === currentUserId && !isPublicShelf}
                                         <button 
                                             class="action-btn edit-btn icon-btn" 
                                             onclick={() => onEditBook?.(book)}
@@ -181,7 +182,7 @@
                                             🗑️
                                         </button>
                                     {/if}
-                                    {#if !book.isSample && currentUserId && book.userId === currentUserId}
+                                    {#if !book.isSample && currentUserId && book.userId === currentUserId && !isPublicShelf}
                                         <button 
                                             class="action-btn download-btn icon-btn" 
                                             onclick={() => onDownloadBook?.(book)}
