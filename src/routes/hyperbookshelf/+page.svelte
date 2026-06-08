@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
+    import { goto } from '$app/navigation';
     import Bookshelf from '$lib/components/Bookshelf.svelte';
 
     let { data } = $props();
@@ -26,13 +27,20 @@
         </button>
     </div>
 
-    {#if data.logo || data.title}
+    {#if data.logo || data.title || data.booksParam}
         <div class="bookshelf-header">
-            {#if data.logo}
-                <img src={data.logo} alt="Logo" class="bookshelf-logo" />
-            {/if}
-            {#if data.title}
-                <h1 class="bookshelf-title">{data.title}</h1>
+            {#if data.booksParam}
+                <div class="stack-view-header-content">
+                    <button class="back-btn" onclick={() => goto('/')}>back</button>
+                    <h1 class="bookshelf-title">{data.title || 'Stack'}</h1>
+                </div>
+            {:else}
+                {#if data.logo}
+                    <img src={data.logo} alt="Logo" class="bookshelf-logo" />
+                {/if}
+                {#if data.title}
+                    <h1 class="bookshelf-title">{data.title}</h1>
+                {/if}
             {/if}
         </div>
     {/if}
@@ -134,6 +142,31 @@
         font-family: system-ui, -apple-system, sans-serif;
         color: var(--text-color);
         font-weight: bold;
+    }
+
+    /* --- Back Button --- */
+    .stack-view-header-content {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+    }
+
+    .back-btn {
+        padding: 6px 16px;
+        border-radius: 20px;
+        border: 1px solid var(--text-color);
+        background: var(--card-bg);
+        color: var(--text-color);
+        cursor: pointer;
+        font-size: 14px;
+        transition: 0.3s;
+        backdrop-filter: blur(10px);
+        font-family: system-ui, sans-serif;
+    }
+    .back-btn:hover {
+        opacity: 0.8;
+        transform: scale(1.05);
     }
 
     /* --- エラー表示 --- */

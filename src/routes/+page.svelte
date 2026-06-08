@@ -226,16 +226,36 @@
     let activeStack = $state<any | null>(null);
     let isStackSelectionMode = $state(false);
     let showStackModal = $state(false);
-    let stackTitle = $state('無題のスタック');
+    let stackTitle = $state('HyperStack001');
     let selectedStackBooks = $state<any[]>([]); // Array of { id, title, isCard }
     let editingStackId = $state(''); // Empty if creating a new stack
+
+    function getNextStackDefaultTitle() {
+        let maxNum = 0;
+        if (data.books) {
+            data.books.forEach((b: any) => {
+                if (b.isStack && b.title) {
+                    const match = b.title.match(/^HyperStack(\d+)$/);
+                    if (match) {
+                        const num = parseInt(match[1], 10);
+                        if (num > maxNum) {
+                            maxNum = num;
+                        }
+                    }
+                }
+            });
+        }
+        const nextNum = maxNum + 1;
+        const padded = String(nextNum).padStart(3, '0');
+        return `HyperStack${padded}`;
+    }
 
     // Stack helper functions
     function toggleStackSelectionMode() {
         isStackSelectionMode = !isStackSelectionMode;
         if (isStackSelectionMode) {
             selectedStackBooks = [];
-            stackTitle = '無題のスタック';
+            stackTitle = getNextStackDefaultTitle();
             editingStackId = '';
             showStackModal = true;
         } else {
@@ -294,7 +314,7 @@
     async function saveStack() {
         if (selectedStackBooks.length === 0) return;
         
-        const titleText = stackTitle.trim() || '無題のスタック';
+        const titleText = stackTitle.trim() || getNextStackDefaultTitle();
         const stackId = editingStackId || `stack-${Date.now()}`;
         
         const markdown = `---
@@ -373,7 +393,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     }
 
     function handleStackClick(book: any) {
-        activeStack = book;
+        const subItems = parseStackMarkdown(book.markdownContent || '');
+        const itemIds = subItems.map(item => item.id);
+        goto(`/hyperbookshelf?books=${itemIds.join(',')}&title=${encodeURIComponent(book.title)}`);
     }
 
     // Derived books to display on the shelf
@@ -701,6 +723,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 <div class="landing-container" data-theme={uiTheme}>
     <!-- Theme switch and login/logout buttons at top right -->
     <div class="theme-switch-container">
+        {#if data.currentUserId}
+            <button class="theme-switch" onclick={toggleStackSelectionMode}>
+                {isStackSelectionMode ? 'Cancel' : '🗒️ Stack'}
+            </button>
+        {/if}
         {#if data.session?.user}
             <div 
                 class="user-profile clickable-profile" 
@@ -830,15 +857,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         </form>
     </div>
 
-    <!-- Stack view header if inside a stack -->
-    {#if activeStack}
-        <div class="stack-view-header">
-            <button class="back-to-home-btn" onclick={() => activeStack = null}>
-                ◀ 本棚に戻る
-            </button>
-            <h2 class="stack-view-title">{activeStack.title}</h2>
-        </div>
-    {/if}
+
 
     <!-- 3D wooden bookshelf displayed directly on the landing page -->
     <div class="bookshelf-section">
@@ -861,7 +880,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 onDeleteBook={handleDeleteBook}
                 onDownloadBook={handleDownloadBook}
                 fromPage="home"
-                showStackBtn={!activeStack && !!data.currentUserId}
+                showStackBtn={false}
                 isStackSelection={isStackSelectionMode}
                 selectedStackBookIds={selectedStackBookIds}
                 onToggleSelection={handleToggleSelection}
@@ -876,28 +895,28 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     {#if showStackModal}
         <div class="stack-popup-panel">
             <div class="stack-popup-header">
-                <h3>{editingStackId ? 'Stackを編集' : '新規Stack作成'}</h3>
+                <h3>HyperStack</h3>
                 <button class="close-popup-btn" onclick={cancelStackSelection}>✕</button>
             </div>
             <div class="stack-popup-body">
                 <p class="select-hint">Select HyperBook or HyperCard.</p>
                 
                 <div class="form-group-stack">
-                    <label for="stack-title">Stackの名前</label>
+                    <label for="stack-title">Stack Name</label>
                     <input 
                         id="stack-title"
                         type="text" 
                         bind:value={stackTitle} 
-                        placeholder="スタック名を入力してください..." 
+                        placeholder="HyperStack001" 
                         class="stack-title-input-field"
                     />
                 </div>
 
                 <div class="stack-listbox-container">
-                    <label class="listbox-label">選択されたカード・本一覧</label>
+                    <label class="listbox-label">HyperCard or HyperBook</label>
                     <div class="stack-listbox">
                         {#if selectedStackBooks.length === 0}
-                            <div class="empty-listbox">本棚の本またはカードをクリックして追加してください。</div>
+                            <div class="empty-listbox">No items selected</div>
                         {:else}
                             <div class="listbox-items">
                                 {#each selectedStackBooks as item, idx}
@@ -940,9 +959,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 </div>
             </div>
             <div class="stack-popup-footer">
-                <button class="btn-popup btn-popup-secondary" onclick={cancelStackSelection}>キャンセル</button>
+                <button class="btn-popup btn-popup-secondary" onclick={cancelStackSelection}>Cancel</button>
                 <button class="btn-popup btn-popup-primary" onclick={saveStack} disabled={selectedStackBooks.length === 0}>
-                    {editingStackId ? '保存する' : 'Stackを作成'}
+                    Save
                 </button>
             </div>
         </div>

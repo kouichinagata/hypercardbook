@@ -2,7 +2,10 @@ import type { PageServerLoad } from './$types';
 import fs from 'fs';
 import path from 'path';
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+    const supabase = locals.supabase;
+    const session = locals.session;
+
     const booksParam = url.searchParams.get('books');
     const titleParam = url.searchParams.get('title');
     const logoParam = url.searchParams.get('logo');
@@ -11,7 +14,7 @@ export const load: PageServerLoad = async ({ url }) => {
     
     // Choose index path based on booksParam
     let indexPath = path.join(booksDir, 'index.json');
-    if (booksParam) {
+    if (booksParam && !booksParam.includes('-') && !booksParam.includes(',')) {
         indexPath = path.join(booksDir, booksParam);
     }
     
@@ -25,7 +28,7 @@ export const load: PageServerLoad = async ({ url }) => {
         }
     }
 
-    if (bookFiles.length === 0 && !booksParam && fs.existsSync(booksDir)) {
+    if (bookFiles.length === 0 && (!booksParam || booksParam.includes(',')) && fs.existsSync(booksDir)) {
         try {
             const files = fs.readdirSync(booksDir);
             bookFiles = files.filter(f => f.endsWith('.md') && f !== 'index.json');
@@ -34,7 +37,7 @@ export const load: PageServerLoad = async ({ url }) => {
         }
     }
 
-    const books = bookFiles.map(filename => {
+    const staticBooks = bookFiles.map(filename => {
         const filePath = path.join(booksDir, filename);
         if (!fs.existsSync(filePath)) return null;
 
@@ -69,6 +72,7 @@ export const load: PageServerLoad = async ({ url }) => {
             }
 
             const isCard = playMode === 'card';
+            const isStack = playMode === 'stack';
 
             return {
                 id,
@@ -78,18 +82,80 @@ export const load: PageServerLoad = async ({ url }) => {
                 coverImage,
                 themeColor: themeColor || (isCard ? 'white' : 'black'),
                 isCard,
-                subTitle
+                isStack,
+                subTitle,
+                markdownContent: content
             };
         } catch (err) {
             console.error(`Failed to parse book file ${filename}:`, err);
             return null;
         }
-    }).filter(b => b !== null);
+    }).filter(b => b !== null) as any[];
+
+    // Load database books from Supabase if user is logged in
+    let formattedBooks: any[] = [];
+    if (session?.user?.id && supabase) {
+        const { data: dbBooks, error } = await supabase
+            .from('books')
+            .select('id, slug, title, author, cover_image, theme_color, user_id, markdown_content, updated_at')
+            .eq('user_id', session.user.id)
+            .order('updated_at', { ascending: false });
+
+        if (error) {
+            console.error('Failed to fetch books from Supabase:', error);
+        } else if (dbBooks) {
+            formattedBooks = dbBooks.map(b => {
+                const markdown = b.markdown_content || '';
+                let playMode = 'book';
+                let subTitle = '';
+
+                const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+                if (fmMatch) {
+                    const fmLines = fmMatch[1].split('\n');
+                    fmLines.forEach((line: string) => {
+                        const parts = line.split(':');
+                        if (parts.length >= 2) {
+                            const k = parts[0].trim();
+                            const v = parts.slice(1).join(':').trim();
+                            if (k === 'play_mode') playMode = v;
+                            if (k === 'sub_title') subTitle = v;
+                        }
+                    });
+                }
+
+                const isCard = playMode === 'card';
+                const isStack = playMode === 'stack';
+
+                return {
+                    id: b.id,
+                    slug: b.slug,
+                    title: b.title,
+                    author: b.author,
+                    coverImage: b.cover_image,
+                    themeColor: b.theme_color || (isCard ? 'white' : 'black'),
+                    userId: b.user_id,
+                    isCard,
+                    isStack,
+                    subTitle,
+                    markdownContent: markdown
+                };
+            });
+        }
+    }
+
+    let allBooks = [...formattedBooks, ...staticBooks];
+
+    // Filter books by booksParam if provided
+    if (booksParam) {
+        const allowedIds = booksParam.split(',').map(id => id.trim());
+        allBooks = allBooks.filter(b => allowedIds.includes(b.id) || allowedIds.includes(b.slug));
+    }
 
     return {
-        books,
+        books: allBooks,
         title: titleParam,
         logo: logoParam,
-        booksParam
+        booksParam,
+        currentUserId: session?.user?.id || null
     };
 };
