@@ -37,6 +37,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 }
 
                 const isCard = playMode === 'card';
+                const isStack = playMode === 'stack';
 
                 return {
                     id: b.id,
@@ -47,7 +48,9 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                     themeColor: b.theme_color || (isCard ? 'white' : 'black'),
                     userId: b.user_id,
                     isCard,
-                    subTitle
+                    isStack,
+                    subTitle,
+                    markdownContent: markdown
                 };
             });
         }
@@ -91,6 +94,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
             }
 
             const isCard = playMode === 'card';
+            const isStack = playMode === 'stack';
 
             sampleBooks.push({
                 id,
@@ -101,8 +105,10 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 themeColor: themeColor || (isCard ? 'white' : 'black'),
                 userId: null,
                 isCard,
+                isStack,
                 subTitle,
-                isSample: true
+                isSample: true,
+                markdownContent: content
             });
         } catch (err) {
             console.error(`Failed to fetch sample book ${filename}:`, err);

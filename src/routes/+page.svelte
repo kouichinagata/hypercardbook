@@ -215,8 +215,185 @@
 
     // Edit handler
     function handleEditBook(book: any) {
-        goto(`/workspace?id=${book.id}`);
+        if (book.isStack) {
+            openStackEditMode(book);
+        } else {
+            goto(`/workspace?id=${book.id}`);
+        }
     }
+
+    // Stack states
+    let activeStack = $state<any | null>(null);
+    let isStackSelectionMode = $state(false);
+    let showStackModal = $state(false);
+    let stackTitle = $state('無題のスタック');
+    let selectedStackBooks = $state<any[]>([]); // Array of { id, title, isCard }
+    let editingStackId = $state(''); // Empty if creating a new stack
+
+    // Stack helper functions
+    function toggleStackSelectionMode() {
+        isStackSelectionMode = !isStackSelectionMode;
+        if (isStackSelectionMode) {
+            selectedStackBooks = [];
+            stackTitle = '無題のスタック';
+            editingStackId = '';
+            showStackModal = true;
+        } else {
+            showStackModal = false;
+        }
+    }
+
+    function cancelStackSelection() {
+        isStackSelectionMode = false;
+        showStackModal = false;
+        selectedStackBooks = [];
+        editingStackId = '';
+    }
+
+    function handleToggleSelection(book: any) {
+        const index = selectedStackBooks.findIndex(b => b.id === book.id);
+        if (index > -1) {
+            selectedStackBooks = selectedStackBooks.filter(b => b.id !== book.id);
+        } else {
+            selectedStackBooks = [...selectedStackBooks, { id: book.id, title: book.title, isCard: book.isCard }];
+        }
+    }
+
+    function moveStackItem(index: number, direction: number) {
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= selectedStackBooks.length) return;
+        
+        const updated = [...selectedStackBooks];
+        const [moved] = updated.splice(index, 1);
+        updated.splice(targetIndex, 0, moved);
+        selectedStackBooks = updated;
+    }
+
+    function removeStackItem(index: number) {
+        selectedStackBooks = selectedStackBooks.filter((_, i) => i !== index);
+    }
+
+    // Parse stack markdown links
+    function parseStackMarkdown(markdown: string): Array<{ type: 'book' | 'card', id: string, title: string }> {
+        const items: Array<{ type: 'book' | 'card', id: string, title: string }> = [];
+        if (!markdown) return items;
+        const lines = markdown.split('\n');
+        lines.forEach(line => {
+            const trimmed = line.trim();
+            const match = trimmed.match(/^-\s*\[(.*?)\]\((book|card):(.*)\)/);
+            if (match) {
+                const title = match[1];
+                const type = match[2] as 'book' | 'card';
+                const id = match[3].trim();
+                items.push({ type, id, title });
+            }
+        });
+        return items;
+    }
+
+    async function saveStack() {
+        if (selectedStackBooks.length === 0) return;
+        
+        const titleText = stackTitle.trim() || '無題のスタック';
+        const stackId = editingStackId || `stack-${Date.now()}`;
+        
+        const markdown = `---
+title: ${titleText}
+author: Stack
+theme_color: white
+play_mode: stack
+id: ${stackId}
+---
+
+${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.id})`).join('\n')}
+`;
+
+        try {
+            const response = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ markdown, id: editingStackId ? stackId : undefined })
+            });
+
+            if (response.ok) {
+                isStackSelectionMode = false;
+                showStackModal = false;
+                selectedStackBooks = [];
+                editingStackId = '';
+                await invalidateAll();
+            } else {
+                const errData = await response.json();
+                alert(`Failed to save stack: ${errData.error}`);
+            }
+        } catch (err) {
+            console.error('Save stack error:', err);
+            alert('An error occurred during save.');
+        }
+    }
+
+    async function handleDuplicateStack(book: any) {
+        try {
+            const originalMarkdown = book.markdownContent || '';
+            let newTitle = `${book.title} (Copy)`;
+            let newMarkdown = originalMarkdown;
+            newMarkdown = newMarkdown.replace(/^title:\s*(.*)$/m, `title: ${newTitle}`);
+            newMarkdown = newMarkdown.replace(/^id:\s*(.*)$/m, `id: stack-${Date.now()}`);
+
+            const response = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ markdown: newMarkdown })
+            });
+
+            if (response.ok) {
+                await invalidateAll();
+            } else {
+                const errData = await response.json();
+                alert(`Failed to duplicate stack: ${errData.error}`);
+            }
+        } catch (err) {
+            console.error('Duplicate stack error:', err);
+            alert('An error occurred during duplication.');
+        }
+    }
+
+    function openStackEditMode(book: any) {
+        editingStackId = book.id;
+        stackTitle = book.title;
+        
+        const subItems = parseStackMarkdown(book.markdownContent || '');
+        selectedStackBooks = subItems.map(item => ({
+            id: item.id,
+            title: item.title,
+            isCard: item.type === 'card'
+        }));
+        
+        isStackSelectionMode = true;
+        showStackModal = true;
+    }
+
+    function handleStackClick(book: any) {
+        activeStack = book;
+    }
+
+    // Derived books to display on the shelf
+    let displayedBooks = $derived.by(() => {
+        if (!activeStack) {
+            return data.books;
+        }
+
+        const subItemRefs = parseStackMarkdown(activeStack.markdownContent || '');
+        const matchedBooks: any[] = [];
+        subItemRefs.forEach(ref => {
+            const found = data.books.find((b: any) => b.id === ref.id || b.slug === ref.id);
+            if (found) {
+                matchedBooks.push(found);
+            }
+        });
+        return matchedBooks;
+    });
+
+    let selectedStackBookIds = $derived(selectedStackBooks.map(b => b.id));
 
     // Delete handler
     async function handleDeleteBook(book: any) {
@@ -653,15 +830,29 @@
         </form>
     </div>
 
+    <!-- Stack view header if inside a stack -->
+    {#if activeStack}
+        <div class="stack-view-header">
+            <button class="back-to-home-btn" onclick={() => activeStack = null}>
+                ◀ 本棚に戻る
+            </button>
+            <h2 class="stack-view-title">{activeStack.title}</h2>
+        </div>
+    {/if}
+
     <!-- 3D wooden bookshelf displayed directly on the landing page -->
     <div class="bookshelf-section">
-        {#if !data.books || data.books.length === 0}
+        {#if !displayedBooks || displayedBooks.length === 0}
             <div class="empty-shelf">
-                <p>本棚にはまだ本がありません。プロンプトを入力して生成してください。</p>
+                {#if activeStack}
+                    <p>このスタックには本やカードがありません。</p>
+                {:else}
+                    <p>本棚にはまだ本がありません。プロンプトを入力して生成してください。</p>
+                {/if}
             </div>
         {:else}
             <Bookshelf
-                books={data.books}
+                books={displayedBooks}
                 currentUserId={data.currentUserId}
                 showActions={true}
                 bind:selectedBookId={selectedBookId}
@@ -670,9 +861,92 @@
                 onDeleteBook={handleDeleteBook}
                 onDownloadBook={handleDownloadBook}
                 fromPage="home"
+                showStackBtn={!activeStack && !!data.currentUserId}
+                isStackSelection={isStackSelectionMode}
+                selectedStackBookIds={selectedStackBookIds}
+                onToggleSelection={handleToggleSelection}
+                onStackClick={handleStackClick}
+                onDuplicateStack={handleDuplicateStack}
+                onToggleStackSelectionMode={toggleStackSelectionMode}
             />
         {/if}
     </div>
+
+    <!-- Stack Editor Popup Panel -->
+    {#if showStackModal}
+        <div class="stack-popup-panel">
+            <div class="stack-popup-header">
+                <h3>{editingStackId ? 'Stackを編集' : '新規Stack作成'}</h3>
+                <button class="close-popup-btn" onclick={cancelStackSelection}>✕</button>
+            </div>
+            <div class="stack-popup-body">
+                <p class="select-hint">Select HyperBook or HyperCard.</p>
+                
+                <div class="form-group-stack">
+                    <label for="stack-title">Stackの名前</label>
+                    <input 
+                        id="stack-title"
+                        type="text" 
+                        bind:value={stackTitle} 
+                        placeholder="スタック名を入力してください..." 
+                        class="stack-title-input-field"
+                    />
+                </div>
+
+                <div class="stack-listbox-container">
+                    <label class="listbox-label">選択されたカード・本一覧</label>
+                    <div class="stack-listbox">
+                        {#if selectedStackBooks.length === 0}
+                            <div class="empty-listbox">本棚の本またはカードをクリックして追加してください。</div>
+                        {:else}
+                            <div class="listbox-items">
+                                {#each selectedStackBooks as item, idx}
+                                    <div class="listbox-item">
+                                        <span class="item-title" title={item.title}>{item.title}</span>
+                                        <span class="item-badge">{item.isCard ? 'Card' : 'Book'}</span>
+                                        <div class="item-controls">
+                                            <button 
+                                                type="button"
+                                                class="control-arrow-btn"
+                                                onclick={() => moveStackItem(idx, -1)}
+                                                disabled={idx === 0}
+                                                title="上に移動"
+                                            >
+                                                ▲
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                class="control-arrow-btn"
+                                                onclick={() => moveStackItem(idx, 1)}
+                                                disabled={idx === selectedStackBooks.length - 1}
+                                                title="下に移動"
+                                            >
+                                                ▼
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                class="control-remove-btn"
+                                                onclick={() => removeStackItem(idx)}
+                                                title="削除"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                </div>
+            </div>
+            <div class="stack-popup-footer">
+                <button class="btn-popup btn-popup-secondary" onclick={cancelStackSelection}>キャンセル</button>
+                <button class="btn-popup btn-popup-primary" onclick={saveStack} disabled={selectedStackBooks.length === 0}>
+                    {editingStackId ? '保存する' : 'Stackを作成'}
+                </button>
+            </div>
+        </div>
+    {/if}
 
     {#if showSettingsModal}
         <div class="modal-overlay" onclick={() => showSettingsModal = false} onkeydown={(e) => e.key === 'Escape' && (showSettingsModal = false)} role="presentation">
@@ -1762,5 +2036,329 @@
     }
     .landing-container[data-theme="light"] .success-msg {
         color: #059669;
+    }
+    /* --- Stack View Header --- */
+    .stack-view-header {
+        width: 90%;
+        max-width: 960px;
+        margin: 20px auto 0;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-sizing: border-box;
+    }
+    .back-to-home-btn {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: #ffffff;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-weight: 500;
+    }
+    .back-to-home-btn:hover {
+        background: rgba(255, 255, 255, 0.18);
+        transform: translateX(-2px);
+    }
+    .stack-view-title {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #ffffff;
+        font-family: 'Outfit', sans-serif;
+    }
+    .landing-container[data-theme="light"] .back-to-home-btn {
+        background: rgba(61, 37, 22, 0.06);
+        border-color: rgba(61, 37, 22, 0.15);
+        color: #3d2516;
+    }
+    .landing-container[data-theme="light"] .back-to-home-btn:hover {
+        background: rgba(61, 37, 22, 0.12);
+    }
+    .landing-container[data-theme="light"] .stack-view-title {
+        color: #3d2516;
+    }
+
+    /* --- Stack Editor Popup Panel --- */
+    .stack-popup-panel {
+        position: fixed;
+        right: 24px;
+        top: 100px;
+        width: 340px;
+        background: rgba(26, 18, 11, 0.95);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        z-index: 200;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        backdrop-filter: blur(10px);
+        font-family: system-ui, -apple-system, sans-serif;
+    }
+    .landing-container[data-theme="light"] .stack-popup-panel {
+        background: rgba(255, 255, 255, 0.95);
+        border-color: rgba(61, 37, 22, 0.15);
+        box-shadow: 0 10px 30px rgba(61, 37, 22, 0.15);
+    }
+
+    .stack-popup-header {
+        padding: 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .landing-container[data-theme="light"] .stack-popup-header {
+        border-bottom-color: rgba(61, 37, 22, 0.08);
+    }
+    .stack-popup-header h3 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #ffffff;
+    }
+    .landing-container[data-theme="light"] .stack-popup-header h3 {
+        color: #3d2516;
+    }
+    .close-popup-btn {
+        background: none;
+        border: none;
+        color: #a0aec0;
+        font-size: 1.1rem;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+    .close-popup-btn:hover {
+        color: #ffffff;
+    }
+    .landing-container[data-theme="light"] .close-popup-btn:hover {
+        color: #3d2516;
+    }
+
+    .stack-popup-body {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    .select-hint {
+        margin: 0;
+        font-size: 0.8rem;
+        color: #a78bfa;
+        font-weight: 600;
+        background: rgba(167, 139, 250, 0.1);
+        padding: 8px 12px;
+        border-radius: 8px;
+        border-left: 3px solid #8b5cf6;
+    }
+    .form-group-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .form-group-stack label {
+        font-size: 0.75rem;
+        font-weight: bold;
+        color: #a0aec0;
+    }
+    .landing-container[data-theme="light"] .form-group-stack label {
+        color: #718096;
+    }
+    .stack-title-input-field {
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 8px 12px;
+        color: #ffffff;
+        font-size: 0.85rem;
+        outline: none;
+    }
+    .landing-container[data-theme="light"] .stack-title-input-field {
+        background: #f7fafc;
+        border-color: rgba(61, 37, 22, 0.15);
+        color: #3d2516;
+    }
+    .stack-title-input-field:focus {
+        border-color: #8b5cf6;
+    }
+
+    .stack-listbox-container {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .listbox-label {
+        font-size: 0.75rem;
+        font-weight: bold;
+        color: #a0aec0;
+    }
+    .landing-container[data-theme="light"] .listbox-label {
+        color: #718096;
+    }
+    .stack-listbox {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(0, 0, 0, 0.15);
+        border-radius: 8px;
+        min-height: 120px;
+        max-height: 220px;
+        overflow-y: auto;
+        padding: 8px;
+        box-sizing: border-box;
+    }
+    .landing-container[data-theme="light"] .stack-listbox {
+        border-color: rgba(61, 37, 22, 0.08);
+        background: #f7fafc;
+    }
+    .empty-listbox {
+        color: #718096;
+        font-size: 0.75rem;
+        text-align: center;
+        padding: 40px 10px;
+    }
+    .listbox-items {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .listbox-item {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 6px;
+        padding: 6px 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        box-sizing: border-box;
+    }
+    .landing-container[data-theme="light"] .listbox-item {
+        background: #ffffff;
+        border-color: rgba(61, 37, 22, 0.08);
+    }
+    .item-title {
+        font-size: 0.8rem;
+        color: #ffffff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex-grow: 1;
+        text-align: left;
+    }
+    .landing-container[data-theme="light"] .item-title {
+        color: #3d2516;
+    }
+    .item-badge {
+        font-size: 0.6rem;
+        background: rgba(255, 255, 255, 0.1);
+        color: #a0aec0;
+        padding: 2px 6px;
+        border-radius: 4px;
+        flex-shrink: 0;
+    }
+    .landing-container[data-theme="light"] .item-badge {
+        background: rgba(61, 37, 22, 0.06);
+        color: #718096;
+    }
+    .item-controls {
+        display: flex;
+        gap: 2px;
+        align-items: center;
+        flex-shrink: 0;
+    }
+    .control-arrow-btn, .control-remove-btn {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #cbd5e0;
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 0.65rem;
+        padding: 0;
+    }
+    .landing-container[data-theme="light"] .control-arrow-btn, 
+    .landing-container[data-theme="light"] .control-remove-btn {
+        background: #f7fafc;
+        border-color: rgba(61, 37, 22, 0.1);
+        color: #4a5568;
+    }
+    .control-arrow-btn:hover:not(:disabled), .control-remove-btn:hover {
+        background: rgba(255, 255, 255, 0.15);
+        color: #ffffff;
+    }
+    .landing-container[data-theme="light"] .control-arrow-btn:hover:not(:disabled), 
+    .landing-container[data-theme="light"] .control-remove-btn:hover {
+        background: rgba(61, 37, 22, 0.08);
+        color: #000000;
+    }
+    .control-arrow-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+    }
+
+    .stack-popup-footer {
+        padding: 16px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+    .landing-container[data-theme="light"] .stack-popup-footer {
+        border-top-color: rgba(61, 37, 22, 0.08);
+    }
+    .btn-popup {
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+    }
+    .btn-popup-secondary {
+        background: rgba(255, 255, 255, 0.08);
+        color: #cbd5e0;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .landing-container[data-theme="light"] .btn-popup-secondary {
+        background: #e2e8f0;
+        color: #4a5568;
+        border-color: rgba(61, 37, 22, 0.1);
+    }
+    .btn-popup-secondary:hover {
+        background: rgba(255, 255, 255, 0.15);
+    }
+    .landing-container[data-theme="light"] .btn-popup-secondary:hover {
+        background: #cbd5e0;
+    }
+    .btn-popup-primary {
+        background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+        color: #ffffff;
+    }
+    .btn-popup-primary:hover:not(:disabled) {
+        filter: brightness(1.1);
+        transform: translateY(-1px);
+    }
+    .btn-popup-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    @media (max-width: 768px) {
+        .stack-popup-panel {
+            right: 12px;
+            top: auto;
+            bottom: 20px;
+            width: calc(100% - 24px);
+            max-width: 360px;
+        }
     }
 </style>

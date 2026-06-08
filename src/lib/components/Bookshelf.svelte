@@ -14,7 +14,14 @@
         fromPage = 'home',
         booksParam = '',
         titleParam = '',
-        logoParam = ''
+        logoParam = '',
+        showStackBtn = false,
+        isStackSelection = false,
+        selectedStackBookIds = [],
+        onStackClick = null,
+        onToggleSelection = null,
+        onDuplicateStack = null,
+        onToggleStackSelectionMode = null
     } = $props();
 
     let measureElements = $state<HTMLDivElement[]>([]);
@@ -86,31 +93,60 @@
         const path = isCard ? `/hypercard/${bookId}` : `/hyperbook/${bookId}`;
         goto(`${path}?${params.toString()}`);
     }
+
+    function handleItemClick(book: any) {
+        if (isStackSelection) {
+            if (!book.isStack) {
+                onToggleSelection?.(book);
+            }
+            return;
+        }
+        if (book.isStack) {
+            onStackClick?.(book);
+        } else {
+            handleBookClick(book.id);
+        }
+    }
 </script>
 
 <div class="shelf-container" id="shelfContainer">
-    {#each shelfRows as rowBooks}
+    {#each shelfRows as rowBooks, rowIndex}
         <div class="shelf-row">
+            {#if rowIndex === 0 && showStackBtn}
+                <button 
+                    type="button" 
+                    class="shelf-stack-mode-btn" 
+                    onclick={() => onToggleStackSelectionMode?.()}
+                >
+                    🗒️ Stack
+                </button>
+            {/if}
             <div class="shelf-books-area">
                 {#each rowBooks as book (book.id)}
                     <div class="book-item-wrapper">
-                        {#if showActions}
+                        {#if showActions && !isStackSelection}
                             <div class="book-action-bar">
-                                {#if book.isSample || (currentUserId && book.userId === currentUserId)}
+                                {#if book.isSample || (currentUserId && book.userId === currentUserId) || book.isStack}
                                     <button 
                                         class="action-btn prompt-btn" 
                                         class:selected={selectedBookId === book.id}
-                                        onclick={() => onPromptSelect?.(book)}
-                                        disabled={!currentUserId}
+                                        onclick={() => {
+                                            if (book.isStack) {
+                                                onDuplicateStack?.(book);
+                                            } else {
+                                                onPromptSelect?.(book);
+                                            }
+                                        }}
+                                        disabled={!currentUserId && !book.isStack}
                                     >
-                                        Prompt
+                                        {book.isStack ? 'Duplicate' : 'Prompt'}
                                     </button>
                                 {/if}
                                 {#if !book.isSample && currentUserId && book.userId === currentUserId}
                                     <button 
                                         class="action-btn edit-btn icon-btn" 
                                         onclick={() => onEditBook?.(book)}
-                                        title="Edit"
+                                        title={book.isStack ? 'Edit Stack' : 'Edit'}
                                     >
                                         ✍️
                                     </button>
@@ -137,10 +173,13 @@
                         <div 
                             class="book-item" 
                             class:is-card={book.isCard}
-                            onclick={() => handleBookClick(book.id)}
+                            class:is-stack={book.isStack}
+                            class:selected-in-selection={isStackSelection && selectedStackBookIds.includes(book.id)}
+                            class:unselectable-in-selection={isStackSelection && book.isStack}
+                            onclick={() => handleItemClick(book)}
                             onkeydown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
-                                    handleBookClick(book.id);
+                                    handleItemClick(book);
                                 }
                             }}
                             role="button"
@@ -162,6 +201,21 @@
                                     {#if book.subTitle}
                                         <div class="card-cover-subtitle">{book.subTitle}</div>
                                     {/if}
+                                    {#if isStackSelection && selectedStackBookIds.includes(book.id)}
+                                        <div class="stack-select-check-overlay">
+                                            <div class="check-circle">✓</div>
+                                        </div>
+                                    {/if}
+                                </div>
+                            {:else if book.isStack}
+                                <div class="book-cover" data-theme-color="white">
+                                    <div class="book-cover-title">{book.title}</div>
+                                    <div class="stack-indicator">🗒️ Stack</div>
+                                    {#if isStackSelection && selectedStackBookIds.includes(book.id)}
+                                        <div class="stack-select-check-overlay">
+                                            <div class="check-circle">✓</div>
+                                        </div>
+                                    {/if}
                                 </div>
                             {:else}
                                 <div class="book-cover" data-theme-color={book.themeColor || 'black'}>
@@ -177,6 +231,11 @@
                                     {#if book.author}
                                         <div class="book-cover-author">
                                             {book.author}
+                                        </div>
+                                    {/if}
+                                    {#if isStackSelection && selectedStackBookIds.includes(book.id)}
+                                        <div class="stack-select-check-overlay">
+                                            <div class="check-circle">✓</div>
                                         </div>
                                     {/if}
                                 </div>
@@ -671,6 +730,147 @@
         .measure-book {
             width: 80px;
             height: 120px;
+        }
+    }
+
+    /* --- Stack Specific Styles --- */
+    .shelf-stack-mode-btn {
+        position: absolute;
+        top: 12px;
+        right: 40px;
+        z-index: 40;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #f5ebe0;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease-in-out;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .shelf-stack-mode-btn:hover {
+        background: rgba(255, 255, 255, 0.18);
+        border-color: rgba(255, 255, 255, 0.3);
+        transform: translateY(-1px);
+    }
+
+    :global([data-theme="light"]) .shelf-stack-mode-btn {
+        background: rgba(61, 37, 22, 0.06);
+        border: 1px solid rgba(61, 37, 22, 0.2);
+        color: #3d2516;
+    }
+
+    :global([data-theme="light"]) .shelf-stack-mode-btn:hover {
+        background: rgba(61, 37, 22, 0.12);
+        border-color: rgba(61, 37, 22, 0.3);
+    }
+
+    /* Stack Book Cover (White, double thickness) */
+    .book-item.is-stack .book-cover {
+        background: linear-gradient(135deg, #ffffff 0%, #f9f9f9 50%, #f1f1f1 100%) !important;
+        color: #1a1a1a !important;
+        border: 1px solid rgba(0, 0, 0, 0.15) !important;
+        border-radius: 2px 5px 5px 2px !important;
+        box-shadow: 
+            2px 2px 0 #e0e0e0,
+            3px 3px 0 #888,
+            5px 5px 0 #e0e0e0,
+            6px 6px 0 #888,
+            8px 8px 0 #e0e0e0,
+            10px 10px 0 #2c3e50, /* Stack back cover color */
+            13px 15px 15px rgba(0, 0, 0, 0.35) !important;
+    }
+
+    .book-item.is-stack::before {
+        width: 10px !important;
+        right: -10px !important;
+        background: repeating-linear-gradient(
+            90deg,
+            #e0e0e0,
+            #e0e0e0 3px,
+            #888 3px,
+            #888 4px
+        ) !important;
+        box-shadow: inset -1px 0 3px rgba(0,0,0,0.2) !important;
+    }
+
+    .book-item.is-stack:hover .book-cover {
+        box-shadow: 
+            2px 2px 0 #e0e0e0,
+            3px 3px 0 #888,
+            5px 5px 0 #e0e0e0,
+            6px 6px 0 #888,
+            8px 8px 0 #e0e0e0,
+            10px 10px 0 #2c3e50,
+            16px 20px 25px rgba(0, 0, 0, 0.45) !important;
+    }
+
+    .stack-indicator {
+        font-size: 0.5rem;
+        background: rgba(139, 92, 246, 0.12);
+        color: #7c3aed;
+        padding: 2px 6px;
+        border-radius: 10px;
+        margin-top: 8px;
+        font-weight: bold;
+        border: 1px solid rgba(139, 92, 246, 0.25);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* Stack Selection styles */
+    .book-item.unselectable-in-selection {
+        opacity: 0.3;
+        pointer-events: none;
+        filter: grayscale(100%);
+    }
+
+    .book-item.selected-in-selection .book-cover {
+        outline: 3px solid #8b5cf6 !important;
+        outline-offset: 4px;
+        box-shadow: 0 0 15px rgba(139, 92, 246, 0.7) !important;
+    }
+
+    .stack-select-check-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(139, 92, 246, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        border-radius: inherit;
+    }
+
+    .check-circle {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: #8b5cf6;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        font-weight: bold;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    @media (max-width: 600px) {
+        .shelf-stack-mode-btn {
+            top: 10px;
+            right: 20px;
+            padding: 4px 8px;
+            font-size: 0.7rem;
         }
     }
 </style>
