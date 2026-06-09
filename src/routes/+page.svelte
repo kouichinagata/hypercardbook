@@ -1186,7 +1186,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         <div class="modal-overlay" onclick={() => showSettingsModal = false} onkeydown={(e) => e.key === 'Escape' && (showSettingsModal = false)} role="presentation">
             <div class="settings-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
                 <div class="modal-header">
-                    <h2>環境設定 (Settings)</h2>
+                    <h2>Settings</h2>
                     <button class="close-btn" onclick={() => showSettingsModal = false}>✕</button>
                 </div>
                 
@@ -1196,7 +1196,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                         class:active={settingsActiveTab === 'profile'} 
                         onclick={() => settingsActiveTab = 'profile'}
                     >
-                        プロフィール (Profile)
+                        Profile
                     </button>
                     <button 
                         class="tab-link" 
@@ -1217,50 +1217,18 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 <div class="modal-body">
                     {#if settingsActiveTab === 'profile'}
                         <div class="tab-pane">
-                            <div class="form-group">
-                                <label for="setting-avatar">プロフィール画像 (Avatar)</label>
-                                <div class="avatar-edit-container">
-                                    <img src={profileAvatarUrl || '/default-avatar.png'} alt="Preview" class="avatar-preview" />
-                                    <input 
-                                        type="file" 
-                                        accept="image/*" 
-                                        bind:this={avatarFileInputEl} 
-                                        onchange={handleAvatarUpload} 
-                                        class="hidden-file-input" 
-                                    />
-                                    <button 
-                                        type="button" 
-                                        class="avatar-upload-btn" 
-                                        onclick={() => avatarFileInputEl?.click()}
-                                        disabled={isUploadingAvatar}
-                                    >
-                                        {isUploadingAvatar ? 'Uploading...' : '画像を変更'}
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="setting-nickname">ペンネーム (Pen Name)</label>
-                                <input type="text" id="setting-nickname" bind:value={profileNickname} placeholder="ペンネームを入力" />
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="setting-bio">著者紹介 (Biography)</label>
-                                <textarea id="setting-bio" bind:value={profileAuthorBio} rows="4" placeholder="著者紹介を入力してください。空欄の場合、著者紹介ページは自動生成されません。"></textarea>
-                            </div>
-                            
                             <div class="password-change-zone">
-                                <h3>パスワード変更 (Change Password)</h3>
+                                <h3>Change Password</h3>
                                 <button type="button" class="theme-switch" onclick={() => showPasswordModal = true}>
-                                    パスワードを変更する
+                                    Change...
                                 </button>
                             </div>
                             
                             <div class="danger-zone">
-                                <h3>アカウント削除 (Delete Account)</h3>
+                                <h3>Delete Account</h3>
                                 {#if deleteStep === 'none'}
                                     <button type="button" class="danger-btn" onclick={startAccountDelete}>
-                                        アカウントを削除する
+                                        Delete...
                                     </button>
                                 {:else if deleteStep === 'warn'}
                                     <div class="delete-warning-box">
@@ -1298,7 +1266,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                                 onclick={() => deleteStep = 'none'}
                                                 disabled={deleteStep === 'loading'}
                                             >
-                                                キャンセル
+                                                Cancel
                                             </button>
                                             <button 
                                                 type="button" 
@@ -1316,8 +1284,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     {:else if settingsActiveTab === 'hypercardbook'}
                         <div class="tab-pane">
                             <div class="editor-header">
-                                <p>AIによる書籍生成時のフォーマットや全般設定を定義します。</p>
-                                <button type="button" class="reset-default-btn" onclick={() => profileHypercardbookMd = DEFAULT_HYPERCARDBOOK_MD}>デフォルト値に戻す</button>
+                                <p>System Prompt</p>
+                                <button type="button" class="reset-default-btn" onclick={() => profileHypercardbookMd = DEFAULT_HYPERCARDBOOK_MD}>Reset</button>
                             </div>
                             <textarea class="md-editor-textarea" bind:value={profileHypercardbookMd} rows="15"></textarea>
                         </div>
@@ -1325,7 +1293,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                         <div class="tab-pane">
                             <div class="editor-header">
                                 <p>AI生成時のキャラクター性、文体、カスタマイズ指示文を定義します。</p>
-                                <button type="button" class="reset-default-btn" onclick={() => profileCustompromptMd = DEFAULT_CUSTOMPROMPT_MD}>デフォルト値に戻す</button>
+                                <button type="button" class="reset-default-btn" onclick={() => profileCustompromptMd = DEFAULT_CUSTOMPROMPT_MD}>Reset</button>
                             </div>
                             <textarea class="md-editor-textarea" bind:value={profileCustompromptMd} rows="15"></textarea>
                         </div>
@@ -1333,9 +1301,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 </div>
                 
                 <div class="modal-footer">
-                    <button type="button" class="cancel-btn" onclick={() => showSettingsModal = false}>キャンセル</button>
+                    <button type="button" class="cancel-btn" onclick={() => showSettingsModal = false}>Cancel</button>
                     <button type="button" class="save-btn" onclick={saveSettings} disabled={isSavingSettings}>
-                        {isSavingSettings ? '保存中...' : '設定を保存'}
+                        {isSavingSettings ? 'Saving...' : 'Save'}
                     </button>
                 </div>
             </div>
