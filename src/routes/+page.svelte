@@ -1718,6 +1718,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         border: 1px solid rgba(255, 255, 255, 0.1);
         width: 90%;
         max-width: 600px;
+        height: 520px;
         border-radius: 16px;
         display: flex;
         flex-direction: column;
