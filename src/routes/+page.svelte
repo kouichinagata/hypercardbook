@@ -584,20 +584,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             kinds: 'Skills',
             owner: 'HyperCardBook',
             prompt: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
-        },
-        {
-            id: 'markdown-to-notion',
-            name: 'Markdown to Notion DB',
-            kinds: 'MCP, Skills, Hook',
-            owner: 'HyperCardBook',
-            prompt: 'Provide options and format structures to easily sync or push generated book/card markdown data into a Notion Database.'
-        },
-        {
-            id: 'pagescroll-hooks',
-            name: 'PageScroll Hooks',
-            kinds: 'Hooks',
-            owner: 'HyperCardBook',
-            prompt: 'Hook into page scroll events to trigger animations or sounds.'
         }
     ];
 
@@ -606,8 +592,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     let selectedPluginId = $state<string>('');
     let selectedPluginName = $state<string>('');
     let selectedPluginPrompt = $state<string>('');
-    let pluginSubView = $state<'list' | 'add'>('list');
+    let pluginSubView = $state<'list' | 'add' | 'new'>('list');
     let selectedAddPluginId = $state<string>('');
+    let newPluginName = $state('');
+    let newPluginPrompt = $state('');
 
     let allPlugins = $derived.by(() => {
         const activeSystem = SYSTEM_PLUGINS.filter(sp => activePluginIds.includes(sp.id));
@@ -659,17 +647,30 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         selectedPluginPrompt = '';
     }
 
-    function createNewPlugin() {
+    function openNewPluginView() {
+        newPluginName = '';
+        newPluginPrompt = '';
+        pluginSubView = 'new';
+    }
+
+    function saveNewPlugin() {
+        if (!newPluginName.trim()) {
+            alert('Please enter a skill name.');
+            return;
+        }
         const newId = `my-plugin-${Date.now()}`;
         const newCustom: Plugin = {
             id: newId,
-            name: 'New Skill',
+            name: newPluginName.trim(),
             kinds: 'Skills',
             owner: 'My plugin',
-            prompt: 'Modify this prompt to define the skill\'s instructions.'
+            prompt: newPluginPrompt.trim()
         };
         userPlugins.push(newCustom);
-        activePluginIds.push(newId);
+        if (!activePluginIds.includes(newId)) {
+            activePluginIds.push(newId);
+        }
+        pluginSubView = 'list';
         selectPlugin(newCustom);
     }
     
@@ -708,7 +709,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         profileHypercardbookMd = metadata.hypercardbook_md || DEFAULT_HYPERCARDBOOK_MD;
         
         userPlugins = metadata.user_plugins || [];
-        activePluginIds = metadata.active_plugin_ids || ['reading-aloud', 'markdown-to-notion'];
+        activePluginIds = metadata.active_plugin_ids || ['reading-aloud'];
         selectedPluginId = '';
         selectedPluginName = '';
         selectedPluginPrompt = '';
@@ -1466,7 +1467,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                     <div class="plugin-actions-row">
                                         <button type="button" class="plugin-action-btn" onclick={openAddPluginView}>Add</button>
                                         <button type="button" class="plugin-action-btn" onclick={deleteSelectedPlugin} disabled={!selectedPluginId}>Delete</button>
-                                        <button type="button" class="plugin-action-btn" onclick={createNewPlugin}>New</button>
+                                        <button type="button" class="plugin-action-btn" onclick={openNewPluginView}>New</button>
                                     </div>
                                 </div>
 
@@ -1533,6 +1534,43 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                             disabled={!selectedAddPluginId || activePluginIds.includes(selectedAddPluginId)}
                                         >
                                             Add
+                                        </button>
+                                    </div>
+                                </div>
+                            {:else if pluginSubView === 'new'}
+                                <div class="plugin-add-section">
+                                    <h3>Create New Skill</h3>
+                                    <div class="form-group" style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; width: 100%;">
+                                        <label for="new-plugin-name" style="font-size: 13px; font-weight: 600;">Skill Name</label>
+                                        <input 
+                                            type="text" 
+                                            id="new-plugin-name"
+                                            class="plugin-name-input" 
+                                            bind:value={newPluginName} 
+                                            placeholder="e.g. ですます切り替え"
+                                            style="width: 100%; box-sizing: border-box;"
+                                        />
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; width: 100%;">
+                                        <label for="new-plugin-prompt" style="font-size: 13px; font-weight: 600;">Prompt Instructions</label>
+                                        <textarea 
+                                            id="new-plugin-prompt"
+                                            class="md-editor-textarea" 
+                                            bind:value={newPluginPrompt} 
+                                            rows="6"
+                                            placeholder="Enter skill instructions/prompt..."
+                                            style="width: 100%; box-sizing: border-box; resize: vertical;"
+                                        ></textarea>
+                                    </div>
+                                    <div class="plugin-add-actions">
+                                        <button type="button" class="plugin-action-btn" onclick={() => pluginSubView = 'list'}>Cancel</button>
+                                        <button 
+                                            type="button" 
+                                            class="plugin-action-btn" 
+                                            onclick={saveNewPlugin} 
+                                            disabled={!newPluginName.trim()}
+                                        >
+                                            Create
                                         </button>
                                     </div>
                                 </div>

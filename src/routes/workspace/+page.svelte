@@ -61,20 +61,6 @@
             kinds: 'Skills',
             owner: 'HyperCardBook',
             prompt: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
-        },
-        {
-            id: 'markdown-to-notion',
-            name: 'Markdown to Notion DB',
-            kinds: 'MCP, Skills, Hook',
-            owner: 'HyperCardBook',
-            prompt: 'Provide options and format structures to easily sync or push generated book/card markdown data into a Notion Database.'
-        },
-        {
-            id: 'pagescroll-hooks',
-            name: 'PageScroll Hooks',
-            kinds: 'Hooks',
-            owner: 'HyperCardBook',
-            prompt: 'Hook into page scroll events to trigger animations or sounds.'
         }
     ];
 
@@ -928,7 +914,7 @@ ${markdown}
 
         const metadata = data.session?.user?.user_metadata || {};
         userPlugins = metadata.user_plugins || [];
-        activePluginIds = metadata.active_plugin_ids || ['reading-aloud', 'markdown-to-notion'];
+        activePluginIds = metadata.active_plugin_ids || ['reading-aloud'];
 
         // Populate state from Page Loader Data
         markdown = data.markdown || '';

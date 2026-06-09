@@ -2,7 +2,7 @@
     import Card from '$lib/components/Card.svelte';
 
     let { data } = $props();
-    let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || ['reading-aloud', 'markdown-to-notion']);
+    let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || ['reading-aloud']);
 </script>
 
 <Card 
