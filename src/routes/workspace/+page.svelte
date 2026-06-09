@@ -49,9 +49,10 @@
     interface Plugin {
         id: string;
         name: string;
+        description: string;
         kinds: string;
         owner: string;
-        prompt: string;
+        skill: string;
     }
 
     const SYSTEM_PLUGINS: Plugin[] = [
@@ -60,7 +61,8 @@
             name: 'Reading aloud',
             kinds: 'Skills',
             owner: 'HyperCardBook',
-            prompt: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
+            description: 'Enable native vocal read-aloud option for pages using browser SpeechSynthesis.',
+            skill: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
         }
     ];
 
@@ -777,7 +779,7 @@ ${markdown}
         allPlugins.forEach(p => {
             const command = `/${p.name}`;
             if (promptText.includes(command)) {
-                skillDirectives += `\n\n[Skill Directive: ${p.name}]\n${p.prompt}`;
+                skillDirectives += `\n\n[Skill Directive: ${p.name}]\n${p.skill}`;
             }
         });
         if (skillDirectives) {
@@ -864,9 +866,10 @@ ${markdown}
                 const newSkill = {
                     id: newId,
                     name: skillName,
+                    description: '',
                     kinds: 'Skills',
                     owner: 'My plugin',
-                    prompt: skillPrompt
+                    skill: skillPrompt
                 };
                 
                 userPlugins.push(newSkill);

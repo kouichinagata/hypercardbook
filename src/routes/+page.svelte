@@ -572,9 +572,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     interface Plugin {
         id: string;
         name: string;
+        description: string;
         kinds: string;
         owner: string;
-        prompt: string;
+        skill: string;
     }
 
     const SYSTEM_PLUGINS: Plugin[] = [
@@ -583,7 +584,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             name: 'Reading aloud',
             kinds: 'Skills',
             owner: 'HyperCardBook',
-            prompt: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
+            description: 'Enable native vocal read-aloud option for pages using browser SpeechSynthesis.',
+            skill: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
         }
     ];
 
@@ -591,11 +593,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     let activePluginIds = $state<string[]>([]);
     let selectedPluginId = $state<string>('');
     let selectedPluginName = $state<string>('');
-    let selectedPluginPrompt = $state<string>('');
-    let pluginSubView = $state<'list' | 'add' | 'new'>('list');
+    let selectedPluginDescription = $state<string>('');
+    let selectedPluginSkill = $state<string>('');
+    let pluginSubView = $state<'list' | 'add'>('list');
     let selectedAddPluginId = $state<string>('');
-    let newPluginName = $state('');
-    let newPluginPrompt = $state('');
+    let isCreatingNewSkill = $state(false);
 
     let allPlugins = $derived.by(() => {
         const activeSystem = SYSTEM_PLUGINS.filter(sp => activePluginIds.includes(sp.id));
@@ -605,26 +607,78 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     let selectedPlugin = $derived(allPlugins.find(p => p.id === selectedPluginId));
 
     function selectPlugin(p: Plugin) {
+        isCreatingNewSkill = false;
         selectedPluginId = p.id;
         selectedPluginName = p.name;
-        selectedPluginPrompt = p.prompt;
+        selectedPluginDescription = p.description || '';
+        selectedPluginSkill = p.skill || '';
+        aiInstructionInput = '';
+    }
+
+    function updateSelectedSkillFields(name: string, description: string, skillText: string) {
+        if (isCreatingNewSkill) {
+            selectedPluginName = name;
+            selectedPluginDescription = description;
+            selectedPluginSkill = skillText;
+            return;
+        }
+
+        if (!selectedPluginId) return;
+
+        // If editing a system plugin, clone it to custom user plugin
+        const current = allPlugins.find(p => p.id === selectedPluginId);
+        if (current && current.owner === 'HyperCardBook') {
+            const newId = `my-plugin-${current.id}-${Date.now()}`;
+            const cloned: Plugin = {
+                id: newId,
+                name: name,
+                description: description,
+                kinds: current.kinds,
+                owner: 'My plugin',
+                skill: skillText
+            };
+            userPlugins.push(cloned);
+            
+            // Deactivate system plugin, activate custom plugin
+            activePluginIds = activePluginIds.filter(id => id !== current.id);
+            if (!activePluginIds.includes(newId)) {
+                activePluginIds.push(newId);
+            }
+            
+            selectedPluginId = newId;
+            selectedPluginName = name;
+            selectedPluginDescription = description;
+            selectedPluginSkill = skillText;
+            return;
+        }
+
+        // Otherwise, update existing user plugin in place
+        const idx = userPlugins.findIndex(up => up.id === selectedPluginId);
+        if (idx !== -1) {
+            userPlugins[idx].name = name;
+            userPlugins[idx].description = description;
+            userPlugins[idx].skill = skillText;
+            
+            selectedPluginName = name;
+            selectedPluginDescription = description;
+            selectedPluginSkill = skillText;
+        }
     }
 
     function handleNameInput() {
-        const idx = userPlugins.findIndex(up => up.id === selectedPluginId);
-        if (idx !== -1) {
-            userPlugins[idx].name = selectedPluginName;
-        }
+        updateSelectedSkillFields(selectedPluginName, selectedPluginDescription, selectedPluginSkill);
     }
 
-    function handlePromptInput() {
-        const idx = userPlugins.findIndex(up => up.id === selectedPluginId);
-        if (idx !== -1) {
-            userPlugins[idx].prompt = selectedPluginPrompt;
-        }
+    function handleDescriptionInput() {
+        updateSelectedSkillFields(selectedPluginName, selectedPluginDescription, selectedPluginSkill);
+    }
+
+    function handleSkillInput() {
+        updateSelectedSkillFields(selectedPluginName, selectedPluginDescription, selectedPluginSkill);
     }
 
     function openAddPluginView() {
+        isCreatingNewSkill = false;
         pluginSubView = 'add';
         selectedAddPluginId = '';
     }
@@ -636,6 +690,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         }
         pluginSubView = 'list';
         selectedPluginId = selectedAddPluginId;
+        const found = SYSTEM_PLUGINS.find(p => p.id === selectedAddPluginId);
+        if (found) {
+            selectPlugin(found);
+        }
     }
 
     function deleteSelectedPlugin() {
@@ -644,34 +702,83 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         userPlugins = userPlugins.filter(up => up.id !== selectedPluginId);
         selectedPluginId = '';
         selectedPluginName = '';
-        selectedPluginPrompt = '';
+        selectedPluginDescription = '';
+        selectedPluginSkill = '';
     }
 
-    function openNewPluginView() {
-        newPluginName = '';
-        newPluginPrompt = '';
-        pluginSubView = 'new';
+    function handleNewSkillClick() {
+        selectedPluginId = '';
+        isCreatingNewSkill = true;
+        selectedPluginName = '';
+        selectedPluginDescription = '';
+        selectedPluginSkill = '';
+        aiInstructionInput = '';
     }
 
-    function saveNewPlugin() {
-        if (!newPluginName.trim()) {
+    function cancelNewSkillCreation() {
+        isCreatingNewSkill = false;
+        selectedPluginId = '';
+        selectedPluginName = '';
+        selectedPluginDescription = '';
+        selectedPluginSkill = '';
+    }
+
+    function saveNewSkill() {
+        if (!selectedPluginName.trim()) {
             alert('Please enter a skill name.');
             return;
         }
         const newId = `my-plugin-${Date.now()}`;
-        const newCustom: Plugin = {
+        const newSkill: Plugin = {
             id: newId,
-            name: newPluginName.trim(),
+            name: selectedPluginName.trim(),
+            description: selectedPluginDescription.trim(),
             kinds: 'Skills',
             owner: 'My plugin',
-            prompt: newPluginPrompt.trim()
+            skill: selectedPluginSkill.trim()
         };
-        userPlugins.push(newCustom);
+        userPlugins.push(newSkill);
         if (!activePluginIds.includes(newId)) {
             activePluginIds.push(newId);
         }
-        pluginSubView = 'list';
-        selectPlugin(newCustom);
+        isCreatingNewSkill = false;
+        selectPlugin(newSkill);
+    }
+
+    // AI Refiner State & Actions
+    let aiInstructionInput = $state('');
+    let isGeneratingSkill = $state(false);
+
+    async function runAIGenerator() {
+        if (!aiInstructionInput.trim()) {
+            alert('Please enter instructions for the AI.');
+            return;
+        }
+        isGeneratingSkill = true;
+        try {
+            const res = await fetch('/api/generate-skill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: selectedPluginName,
+                    description: selectedPluginDescription,
+                    skill: selectedPluginSkill,
+                    instruction: aiInstructionInput
+                })
+            });
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || 'Failed to generate skill.');
+            }
+            const data = await res.json();
+            updateSelectedSkillFields(data.name || '', data.description || '', data.skill || '');
+            aiInstructionInput = '';
+        } catch (err: any) {
+            console.error(err);
+            alert(err.message || 'AI generation failed.');
+        } finally {
+            isGeneratingSkill = false;
+        }
     }
     
     // Upload state in profile
@@ -712,7 +819,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         activePluginIds = metadata.active_plugin_ids || ['reading-aloud'];
         selectedPluginId = '';
         selectedPluginName = '';
-        selectedPluginPrompt = '';
+        selectedPluginDescription = '';
+        selectedPluginSkill = '';
+        aiInstructionInput = '';
+        isCreatingNewSkill = false;
         pluginSubView = 'list';
         
         settingsActiveTab = 'profile';
@@ -1467,33 +1577,90 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                     <div class="plugin-actions-row">
                                         <button type="button" class="plugin-action-btn" onclick={openAddPluginView}>Add</button>
                                         <button type="button" class="plugin-action-btn" onclick={deleteSelectedPlugin} disabled={!selectedPluginId}>Delete</button>
-                                        <button type="button" class="plugin-action-btn" onclick={openNewPluginView}>New</button>
+                                        <button type="button" class="plugin-action-btn" onclick={handleNewSkillClick}>New</button>
                                     </div>
                                 </div>
 
-                                {#if selectedPlugin}
-                                    <div class="plugin-prompt-section">
-                                        <div class="editor-header">
-                                            {#if selectedPlugin.owner === 'My plugin'}
-                                                <input 
-                                                    type="text" 
-                                                    class="plugin-name-input" 
-                                                    bind:value={selectedPluginName} 
-                                                    oninput={handleNameInput} 
-                                                    placeholder="Plugin Name"
-                                                />
-                                            {:else}
-                                                <p>{selectedPlugin.name} Prompt</p>
+                                {#if selectedPlugin || isCreatingNewSkill}
+                                    <div class="plugin-prompt-section" style="border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 12px; display: flex; flex-direction: column; gap: 12px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <h4 style="margin: 0; font-size: 13px; font-weight: 600;">
+                                                {isCreatingNewSkill ? 'Create New Skill' : 'Edit Skill Details'}
+                                            </h4>
+                                            {#if isCreatingNewSkill}
+                                                <div style="display: flex; gap: 8px;">
+                                                    <button type="button" class="plugin-action-btn" onclick={cancelNewSkillCreation}>Cancel</button>
+                                                    <button type="button" class="plugin-action-btn" onclick={saveNewSkill} disabled={!selectedPluginName.trim()}>Create</button>
+                                                </div>
                                             {/if}
                                         </div>
-                                        <textarea 
-                                            class="md-editor-textarea" 
-                                            bind:value={selectedPluginPrompt} 
-                                            oninput={handlePromptInput}
-                                            disabled={selectedPlugin.owner !== 'My plugin'}
-                                            rows="6"
-                                            placeholder={selectedPlugin.owner === 'My plugin' ? 'Enter skill instructions/prompt...' : 'System plugin prompt (Read Only)'}
-                                        ></textarea>
+
+                                        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Skill Name</label>
+                                            <input 
+                                                type="text" 
+                                                class="plugin-name-input" 
+                                                bind:value={selectedPluginName} 
+                                                oninput={handleNameInput} 
+                                                placeholder="e.g. ですます切り替え"
+                                                style="width: 100%; box-sizing: border-box;"
+                                                disabled={selectedPlugin && selectedPlugin.kinds !== 'Skills'}
+                                            />
+                                        </div>
+
+                                        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Description</label>
+                                            <input 
+                                                type="text" 
+                                                class="plugin-name-input" 
+                                                bind:value={selectedPluginDescription} 
+                                                oninput={handleDescriptionInput} 
+                                                placeholder="e.g. 文章の敬体を変換する"
+                                                style="width: 100%; box-sizing: border-box;"
+                                                disabled={selectedPlugin && selectedPlugin.kinds !== 'Skills'}
+                                            />
+                                        </div>
+
+                                        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Skill Text (Skill文)</label>
+                                            <textarea 
+                                                class="md-editor-textarea" 
+                                                bind:value={selectedPluginSkill} 
+                                                oninput={handleSkillInput}
+                                                rows="6"
+                                                placeholder="Enter skill instructions/directives..."
+                                                style="width: 100%; box-sizing: border-box; resize: vertical;"
+                                                disabled={selectedPlugin && selectedPlugin.kinds !== 'Skills'}
+                                            ></textarea>
+                                        </div>
+
+                                        {#if isCreatingNewSkill || (selectedPlugin && selectedPlugin.kinds === 'Skills')}
+                                            <div class="ai-assistant-pane" style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                    <span style="font-size: 12px; font-weight: 600; color: #c084fc;">AI Skill Generator / Refiner</span>
+                                                </div>
+                                                <div style="display: flex; gap: 8px; width: 100%;">
+                                                    <input 
+                                                        type="text" 
+                                                        class="plugin-name-input" 
+                                                        bind:value={aiInstructionInput} 
+                                                        placeholder="e.g., Translate to English, or make it more polite..."
+                                                        style="flex: 1; min-width: 0;"
+                                                        onkeydown={(e) => e.key === 'Enter' && runAIGenerator()}
+                                                        disabled={isGeneratingSkill}
+                                                    />
+                                                    <button 
+                                                        type="button" 
+                                                        class="plugin-action-btn" 
+                                                        onclick={runAIGenerator}
+                                                        disabled={isGeneratingSkill || !aiInstructionInput.trim()}
+                                                        style="background: #8b5cf6; border-color: #8b5cf6; color: #ffffff;"
+                                                    >
+                                                        {isGeneratingSkill ? 'Running...' : 'Run'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        {/if}
                                     </div>
                                 {/if}
                             {:else if pluginSubView === 'add'}
@@ -1534,43 +1701,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                             disabled={!selectedAddPluginId || activePluginIds.includes(selectedAddPluginId)}
                                         >
                                             Add
-                                        </button>
-                                    </div>
-                                </div>
-                            {:else if pluginSubView === 'new'}
-                                <div class="plugin-add-section">
-                                    <h3>Create New Skill</h3>
-                                    <div class="form-group" style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; width: 100%;">
-                                        <label for="new-plugin-name" style="font-size: 13px; font-weight: 600;">Skill Name</label>
-                                        <input 
-                                            type="text" 
-                                            id="new-plugin-name"
-                                            class="plugin-name-input" 
-                                            bind:value={newPluginName} 
-                                            placeholder="e.g. ですます切り替え"
-                                            style="width: 100%; box-sizing: border-box;"
-                                        />
-                                    </div>
-                                    <div class="form-group" style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; width: 100%;">
-                                        <label for="new-plugin-prompt" style="font-size: 13px; font-weight: 600;">Prompt Instructions</label>
-                                        <textarea 
-                                            id="new-plugin-prompt"
-                                            class="md-editor-textarea" 
-                                            bind:value={newPluginPrompt} 
-                                            rows="6"
-                                            placeholder="Enter skill instructions/prompt..."
-                                            style="width: 100%; box-sizing: border-box; resize: vertical;"
-                                        ></textarea>
-                                    </div>
-                                    <div class="plugin-add-actions">
-                                        <button type="button" class="plugin-action-btn" onclick={() => pluginSubView = 'list'}>Cancel</button>
-                                        <button 
-                                            type="button" 
-                                            class="plugin-action-btn" 
-                                            onclick={saveNewPlugin} 
-                                            disabled={!newPluginName.trim()}
-                                        >
-                                            Create
                                         </button>
                                     </div>
                                 </div>
