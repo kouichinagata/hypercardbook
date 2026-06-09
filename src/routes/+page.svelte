@@ -1217,6 +1217,42 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 <div class="modal-body">
                     {#if settingsActiveTab === 'profile'}
                         <div class="tab-pane">
+                            <div class="form-group">
+                                <label for="setting-avatar">Avatar</label>
+                                <div class="avatar-edit-container">
+                                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                                    <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
+                                    <img 
+                                        src={profileAvatarUrl || '/default-avatar.png'} 
+                                        alt="Preview" 
+                                        class="avatar-preview clickable-avatar" 
+                                        onclick={() => avatarFileInputEl?.click()}
+                                        role="button"
+                                        tabindex="0"
+                                    />
+                                    <input 
+                                        type="file" 
+                                        accept="image/*" 
+                                        bind:this={avatarFileInputEl} 
+                                        onchange={handleAvatarUpload} 
+                                        class="hidden-file-input" 
+                                    />
+                                    {#if isUploadingAvatar}
+                                        <span class="uploading-status">Uploading...</span>
+                                    {/if}
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="setting-nickname">Pen Name</label>
+                                <input type="text" id="setting-nickname" bind:value={profileNickname} placeholder="" />
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="setting-bio">Biography</label>
+                                <textarea id="setting-bio" bind:value={profileAuthorBio} rows="4" placeholder=""></textarea>
+                            </div>
+                            
                             <div class="password-change-zone">
                                 <h3>Change Password</h3>
                                 <button type="button" class="theme-switch" onclick={() => showPasswordModal = true}>
@@ -1825,6 +1861,21 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         border-radius: 50%;
         object-fit: cover;
         border: 2px solid rgba(255,255,255,0.1);
+    }
+    .clickable-avatar {
+        cursor: pointer;
+        transition: opacity 0.2s, transform 0.2s;
+    }
+    .clickable-avatar:hover {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+    .clickable-avatar:active {
+        transform: scale(0.95);
+    }
+    .uploading-status {
+        font-size: 12px;
+        opacity: 0.7;
     }
     .avatar-upload-btn {
         background: rgba(255,255,255,0.05);
