@@ -1,13 +1,69 @@
 <script lang="ts">
     import { marked } from 'marked';
+    import { onDestroy } from 'svelte';
+    import { browser } from '$app/environment';
 
     let {
         markdown = '',
         id = '',
         showNewTab = true,
         isEmbed = false,
-        backUrl = '/'
+        backUrl = '/',
+        activePluginIds = []
     } = $props();
+
+    // Text to Speech states & methods
+    let isSpeaking = $state(false);
+
+    function handleToggleSpeak() {
+        if (!browser || !window.speechSynthesis) return;
+        
+        if (isSpeaking) {
+            window.speechSynthesis.cancel();
+            isSpeaking = false;
+            return;
+        }
+        
+        let textToSpeak = `Title: ${cardTitle}\n`;
+        if (cardSubTitle) textToSpeak += `${cardSubTitle}\n`;
+        
+        const bodyText = cardBodyHtml.replace(/<[^>]*>/g, '').trim();
+        textToSpeak += bodyText;
+        
+        if (!textToSpeak.trim()) return;
+        speak(textToSpeak);
+    }
+
+    function speak(text: string) {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        
+        isSpeaking = true;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ja-JP';
+        utterance.onend = () => {
+            isSpeaking = false;
+        };
+        utterance.onerror = () => {
+            isSpeaking = false;
+        };
+        
+        window.speechSynthesis.speak(utterance);
+    }
+
+    onDestroy(() => {
+        if (browser && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+    });
+
+    $effect(() => {
+        // Cancel speaking if markdown changes
+        if (markdown && browser && window.speechSynthesis && isSpeaking) {
+            window.speechSynthesis.cancel();
+            isSpeaking = false;
+        }
+    });
 
     // Parse Card values
     let cardTitle = $derived.by(() => {
@@ -237,14 +293,21 @@
     {/if}
 
     <div class="card-webview-frame-wrapper" class:embed-mode={isEmbed}>
-        {#if !isEmbed}
+        {#if !isEmbed || activePluginIds.includes('reading-aloud')}
         <div class="card-action-container" class:embed-mode={isEmbed}>
-            <button class="card-action-btn" onclick={handleDownloadHtml} title="Download HTML">
-                💾
-            </button>
-            <button class="card-action-btn" onclick={handleExportHtmlLink} disabled={isExportingHtml} title="Export HTML">
-                🌐
-            </button>
+            {#if activePluginIds.includes('reading-aloud')}
+                <button class="card-action-btn" onclick={handleToggleSpeak} title="Read Aloud">
+                    {isSpeaking ? '⏸️' : '🔊'}
+                </button>
+            {/if}
+            {#if !isEmbed}
+                <button class="card-action-btn" onclick={handleDownloadHtml} title="Download HTML">
+                    💾
+                </button>
+                <button class="card-action-btn" onclick={handleExportHtmlLink} disabled={isExportingHtml} title="Export HTML">
+                    🌐
+                </button>
+            {/if}
         </div>
         {/if}
 

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, tick } from 'svelte';
     import { page } from '$app/state';
-    import { goto } from '$app/navigation';
+    import { goto, invalidateAll } from '$app/navigation';
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
     import { marked } from 'marked';
@@ -45,6 +45,47 @@
         text: string;
     }
     let chatHistory: ChatMessage[] = $state([]);
+
+    interface Plugin {
+        id: string;
+        name: string;
+        kinds: string;
+        owner: string;
+        prompt: string;
+    }
+
+    const SYSTEM_PLUGINS: Plugin[] = [
+        {
+            id: 'reading-aloud',
+            name: 'Reading aloud',
+            kinds: 'Skills',
+            owner: 'HyperCardBook',
+            prompt: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
+        },
+        {
+            id: 'markdown-to-notion',
+            name: 'Markdown to Notion DB',
+            kinds: 'MCP, Skills, Hook',
+            owner: 'HyperCardBook',
+            prompt: 'Provide options and format structures to easily sync or push generated book/card markdown data into a Notion Database.'
+        },
+        {
+            id: 'pagescroll-hooks',
+            name: 'PageScroll Hooks',
+            kinds: 'Hooks',
+            owner: 'HyperCardBook',
+            prompt: 'Hook into page scroll events to trigger animations or sounds.'
+        }
+    ];
+
+    let userPlugins = $state<Plugin[]>([]);
+    let activePluginIds = $state<string[]>([]);
+
+    let allPlugins = $derived.by(() => {
+        const activeSystem = SYSTEM_PLUGINS.filter(sp => activePluginIds.includes(sp.id));
+        return [...userPlugins, ...activeSystem];
+    });
+
     let currentInput = $state('');
     let isGenerating = $state(false);
     let errorMsg = $state('');
@@ -733,20 +774,32 @@ ${markdown}
         const images = successFiles.filter(f => f.type === 'image');
         const texts = successFiles.filter(f => f.type === 'text');
 
-        let finalPrompt = promptText;
+        let visiblePrompt = promptText;
         if (successFiles.length > 0) {
-            finalPrompt += '\n\n<!-- ATTACHMENTS_START -->';
+            visiblePrompt += '\n\n<!-- ATTACHMENTS_START -->';
             if (images.length > 0) {
-                finalPrompt += '\n### 添付画像\n' + images.map(img => `![${img.name}](${img.url})`).join('\n');
+                visiblePrompt += '\n### 添付画像\n' + images.map(img => `![${img.name}](${img.url})`).join('\n');
             }
             if (texts.length > 0) {
-                finalPrompt += '\n### 添付テキスト\n' + texts.map(txt => `📄 ${txt.name}\n\`\`\`content\n${txt.content}\n\`\`\``).join('\n\n');
+                visiblePrompt += '\n### 添付テキスト\n' + texts.map(txt => `📄 ${txt.name}\n\`\`\`content\n${txt.content}\n\`\`\``).join('\n\n');
             }
-            finalPrompt += '\n<!-- ATTACHMENTS_END -->';
+            visiblePrompt += '\n<!-- ATTACHMENTS_END -->';
+        }
+
+        let finalPrompt = visiblePrompt;
+        let skillDirectives = '';
+        allPlugins.forEach(p => {
+            const command = `/${p.name}`;
+            if (promptText.includes(command)) {
+                skillDirectives += `\n\n[Skill Directive: ${p.name}]\n${p.prompt}`;
+            }
+        });
+        if (skillDirectives) {
+            finalPrompt += skillDirectives;
         }
 
         // Add user message to history
-        chatHistory = [...chatHistory, { role: 'user', text: finalPrompt }];
+        chatHistory = [...chatHistory, { role: 'user', text: visiblePrompt }];
         currentInput = '';
         attachedFiles = [];
         isGenerating = true;
@@ -813,6 +866,45 @@ ${markdown}
                 const startIndex = accumulatedText.indexOf('---');
                 markdown = accumulatedText.substring(startIndex).trim();
             }
+
+            // Check for automatic skill creation tag
+            const skillMatch = accumulatedText.match(/\[CREATE_SKILL:\s*(.+?)\]\n?([\s\S]*?)\[\/CREATE_SKILL\]/i);
+            if (skillMatch) {
+                const skillName = skillMatch[1].trim();
+                const skillPrompt = skillMatch[2].trim();
+                
+                // Add to user plugins list
+                const newId = `my-plugin-${Date.now()}`;
+                const newSkill = {
+                    id: newId,
+                    name: skillName,
+                    kinds: 'Skills',
+                    owner: 'My plugin',
+                    prompt: skillPrompt
+                };
+                
+                userPlugins.push(newSkill);
+                activePluginIds.push(newId);
+                
+                // Persist user plugins and active plugins to Supabase user metadata
+                try {
+                    const { error: updateError } = await supabase.auth.updateUser({
+                        data: {
+                            user_plugins: $state.snapshot(userPlugins),
+                            active_plugin_ids: $state.snapshot(activePluginIds)
+                        }
+                    });
+                    if (updateError) throw updateError;
+                    
+                    // Show registered notice and remove raw tag from chat log display
+                    chatHistory[lastIndex].text = accumulatedText.replace(/\[CREATE_SKILL:\s*.+?\]\n?[\s\S]*?\[\/CREATE_SKILL\]/i, '').trim() + 
+                        `\n\n💡 **System: Registered new Skill "${skillName}"**`;
+                    
+                    await invalidateAll();
+                } catch (saveErr) {
+                    console.error('Failed to auto-save created skill:', saveErr);
+                }
+            }
         } catch (err: any) {
             console.error('Generation failed:', err);
             errorMsg = err.message || '接続エラーが発生しました。GEMINI_API_KEYが正しく設定されているかご確認ください。';
@@ -833,6 +925,10 @@ ${markdown}
         if (!data.session?.user) {
             saveStatus = 'Read Only';
         }
+
+        const metadata = data.session?.user?.user_metadata || {};
+        userPlugins = metadata.user_plugins || [];
+        activePluginIds = metadata.active_plugin_ids || ['reading-aloud', 'markdown-to-notion'];
 
         // Populate state from Page Loader Data
         markdown = data.markdown || '';
@@ -1448,12 +1544,12 @@ ${markdown}
             <div class="preview-container" class:hidden={activeTab !== 'preview'}>
                 {#if mode === 'card'}
                     <div onclick={handleWebViewClick} role="presentation" class="preview-scroll-wrapper" style="width: 100%; height: 100%; overflow-y: auto;">
-                        <Card markdown={markdown} id={bookUuid || cardSlug} isEmbed={true} showNewTab={false} />
+                        <Card markdown={markdown} id={bookUuid || cardSlug} isEmbed={true} showNewTab={false} activePluginIds={activePluginIds} />
                     </div>
                 {:else}
                     {#if markdown}
                         <div onclick={handleWebViewClick} role="presentation" class="preview-scroll-wrapper" style="width: 100%; height: 100%; overflow-y: auto;">
-                            <Book {markdown} id={bookUuid} />
+                            <Book {markdown} id={bookUuid} activePluginIds={activePluginIds} />
                         </div>
                     {:else}
                         <div class="empty-preview">

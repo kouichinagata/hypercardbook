@@ -4,7 +4,70 @@
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
 
-    let { markdown = '', backUrl = '', id = '' } = $props();
+    let { markdown = '', backUrl = '', id = '', activePluginIds = [] } = $props();
+
+    // Text to Speech states & methods
+    let isSpeaking = $state(false);
+
+    function handleToggleSpeak() {
+        if (!browser || !window.speechSynthesis) return;
+        
+        if (isSpeaking) {
+            window.speechSynthesis.cancel();
+            isSpeaking = false;
+            return;
+        }
+        
+        if (currentIndex === -1) {
+            let textToSpeak = `Title: ${title}`;
+            if (author) textToSpeak += `, Author: ${author}`;
+            speak(textToSpeak);
+            return;
+        }
+        
+        const currentSpread = spreads[currentIndex];
+        if (!currentSpread) return;
+        
+        let textToSpeak = '';
+        if (currentSpread.leftMarkdown) textToSpeak += currentSpread.leftMarkdown + '\n';
+        if (currentSpread.rightMarkdown) textToSpeak += currentSpread.rightMarkdown;
+        
+        if (!textToSpeak.trim()) return;
+        speak(textToSpeak);
+    }
+
+    function speak(text: string) {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        
+        const cleanText = text
+            .replace(/<[^>]*>/g, '')
+            .replace(/#+\s*/g, '')
+            .replace(/[*_`~-]/g, '')
+            .trim();
+            
+        if (!cleanText) return;
+        
+        isSpeaking = true;
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = 'ja-JP';
+        utterance.onend = () => {
+            isSpeaking = false;
+        };
+        utterance.onerror = () => {
+            isSpeaking = false;
+        };
+        
+        window.speechSynthesis.speak(utterance);
+    }
+
+    $effect(() => {
+        // Cancel speaking if currentIndex changes
+        if (currentIndex !== undefined && browser && window.speechSynthesis && isSpeaking) {
+            window.speechSynthesis.cancel();
+            isSpeaking = false;
+        }
+    });
 
     // Book state
     let title = $state('');
@@ -575,6 +638,9 @@
             window.removeEventListener('resize', adjustBookScale);
             document.removeEventListener('fullscreenchange', handleFullscreenChange);
             document.removeEventListener('error', handleImageError, true);
+            if (browser && window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
         };
     });
 </script>
@@ -599,6 +665,11 @@
 
     <div class="header-area">
         <div class="theme-switch-container">
+            {#if activePluginIds.includes('reading-aloud')}
+                <button class="theme-switch" onclick={handleToggleSpeak} title="Read Aloud">
+                    {isSpeaking ? '⏸️' : '🔊'}
+                </button>
+            {/if}
             <button class="theme-switch" onclick={toggleViewMode} title="見開き/縦並び切替">
                 {viewMode === 'vertical' ? '📖' : '📃'}
             </button>

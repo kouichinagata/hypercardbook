@@ -558,7 +558,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 
     // Settings modal states
     let showSettingsModal = $state(false);
-    let settingsActiveTab = $state('profile'); // 'profile', 'hypercardbook', 'customprompt'
+    let settingsActiveTab = $state('profile'); // 'profile', 'hypercardbook', 'plugin'
     
     // User profile states
     let profileNickname = $state('');
@@ -567,7 +567,111 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     
     // Config files states
     let profileHypercardbookMd = $state('');
-    let profileCustompromptMd = $state('');
+
+    // Plugins management states
+    interface Plugin {
+        id: string;
+        name: string;
+        kinds: string;
+        owner: string;
+        prompt: string;
+    }
+
+    const SYSTEM_PLUGINS: Plugin[] = [
+        {
+            id: 'reading-aloud',
+            name: 'Reading aloud',
+            kinds: 'Skills',
+            owner: 'HyperCardBook',
+            prompt: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
+        },
+        {
+            id: 'markdown-to-notion',
+            name: 'Markdown to Notion DB',
+            kinds: 'MCP, Skills, Hook',
+            owner: 'HyperCardBook',
+            prompt: 'Provide options and format structures to easily sync or push generated book/card markdown data into a Notion Database.'
+        },
+        {
+            id: 'pagescroll-hooks',
+            name: 'PageScroll Hooks',
+            kinds: 'Hooks',
+            owner: 'HyperCardBook',
+            prompt: 'Hook into page scroll events to trigger animations or sounds.'
+        }
+    ];
+
+    let userPlugins = $state<Plugin[]>([]);
+    let activePluginIds = $state<string[]>([]);
+    let selectedPluginId = $state<string>('');
+    let selectedPluginName = $state<string>('');
+    let selectedPluginPrompt = $state<string>('');
+    let pluginSubView = $state<'list' | 'add'>('list');
+    let selectedAddPluginId = $state<string>('');
+
+    let allPlugins = $derived.by(() => {
+        const activeSystem = SYSTEM_PLUGINS.filter(sp => activePluginIds.includes(sp.id));
+        return [...userPlugins, ...activeSystem];
+    });
+
+    let selectedPlugin = $derived(allPlugins.find(p => p.id === selectedPluginId));
+
+    function selectPlugin(p: Plugin) {
+        selectedPluginId = p.id;
+        selectedPluginName = p.name;
+        selectedPluginPrompt = p.prompt;
+    }
+
+    function handleNameInput() {
+        const idx = userPlugins.findIndex(up => up.id === selectedPluginId);
+        if (idx !== -1) {
+            userPlugins[idx].name = selectedPluginName;
+        }
+    }
+
+    function handlePromptInput() {
+        const idx = userPlugins.findIndex(up => up.id === selectedPluginId);
+        if (idx !== -1) {
+            userPlugins[idx].prompt = selectedPluginPrompt;
+        }
+    }
+
+    function openAddPluginView() {
+        pluginSubView = 'add';
+        selectedAddPluginId = '';
+    }
+
+    function installSelectedSystemPlugin() {
+        if (!selectedAddPluginId) return;
+        if (!activePluginIds.includes(selectedAddPluginId)) {
+            activePluginIds.push(selectedAddPluginId);
+        }
+        pluginSubView = 'list';
+        selectedPluginId = selectedAddPluginId;
+    }
+
+    function deleteSelectedPlugin() {
+        if (!selectedPluginId) return;
+        activePluginIds = activePluginIds.filter(id => id !== selectedPluginId);
+        userPlugins = userPlugins.filter(up => up.id !== selectedPluginId);
+        selectedPluginId = '';
+        selectedPluginName = '';
+        selectedPluginPrompt = '';
+    }
+
+    function createNewPlugin() {
+        const newId = `my-plugin-${Date.now()}`;
+        const newCustom: Plugin = {
+            id: newId,
+            name: 'New Skill',
+            kinds: 'Skills',
+            owner: 'My plugin',
+            prompt: 'Modify this prompt to define the skill\'s instructions.'
+        };
+        userPlugins.push(newCustom);
+        activePluginIds.push(newId);
+        selectPlugin(newCustom);
+    }
     
     // Upload state in profile
     let isUploadingAvatar = $state(false);
@@ -593,10 +697,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 - language: ja (日本語)
 - default_theme: dark`;
 
-    const DEFAULT_CUSTOMPROMPT_MD = `# カスタムプロンプト指示
-- 丁寧な日本語で解説してください。
-- 専門用語には簡単な説明を添えてください。`;
-
     function openSettingsModal() {
         if (!data.session?.user) return;
         const metadata = data.session.user.user_metadata || {};
@@ -606,7 +706,13 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         profileAuthorBio = metadata.author_bio || '';
         
         profileHypercardbookMd = metadata.hypercardbook_md || DEFAULT_HYPERCARDBOOK_MD;
-        profileCustompromptMd = metadata.customprompt_md || DEFAULT_CUSTOMPROMPT_MD;
+        
+        userPlugins = metadata.user_plugins || [];
+        activePluginIds = metadata.active_plugin_ids || ['reading-aloud', 'markdown-to-notion'];
+        selectedPluginId = '';
+        selectedPluginName = '';
+        selectedPluginPrompt = '';
+        pluginSubView = 'list';
         
         settingsActiveTab = 'profile';
         deleteStep = 'none';
@@ -669,7 +775,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     avatar_url: profileAvatarUrl,
                     author_bio: profileAuthorBio,
                     hypercardbook_md: profileHypercardbookMd,
-                    customprompt_md: profileCustompromptMd
+                    user_plugins: $state.snapshot(userPlugins),
+                    active_plugin_ids: $state.snapshot(activePluginIds)
                 }
             });
             
@@ -1207,10 +1314,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     </button>
                     <button 
                         class="tab-link" 
-                        class:active={settingsActiveTab === 'customprompt'} 
-                        onclick={() => settingsActiveTab = 'customprompt'}
+                        class:active={settingsActiveTab === 'plugin'} 
+                        onclick={() => settingsActiveTab = 'plugin'}
                     >
-                        customprompt.md
+                        Plugin
                     </button>
                 </div>
                 
@@ -1325,13 +1432,111 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                             </div>
                             <textarea class="md-editor-textarea" bind:value={profileHypercardbookMd} rows="15"></textarea>
                         </div>
-                    {:else if settingsActiveTab === 'customprompt'}
-                        <div class="tab-pane">
-                            <div class="editor-header">
-                                <p>AI生成時のキャラクター性、文体、カスタマイズ指示文を定義します。</p>
-                                <button type="button" class="reset-default-btn" onclick={() => profileCustompromptMd = DEFAULT_CUSTOMPROMPT_MD}>Reset</button>
-                            </div>
-                            <textarea class="md-editor-textarea" bind:value={profileCustompromptMd} rows="15"></textarea>
+                    {:else if settingsActiveTab === 'plugin'}
+                        <div class="tab-pane plugin-tab-layout">
+                            {#if pluginSubView === 'list'}
+                                <div class="plugin-main-section">
+                                    <div class="plugin-list-wrapper">
+                                        <table class="plugin-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Plugin</th>
+                                                    <th>Kinds</th>
+                                                    <th>Owner</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {#each allPlugins as p}
+                                                    <tr 
+                                                        class="plugin-row" 
+                                                        class:selected={selectedPluginId === p.id}
+                                                        onclick={() => selectPlugin(p)}
+                                                    >
+                                                        <td>
+                                                            {activePluginIds.includes(p.id) ? '＊' : ''}{p.name}
+                                                        </td>
+                                                        <td>{p.kinds}</td>
+                                                        <td>{p.owner}</td>
+                                                    </tr>
+                                                {/each}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    <div class="plugin-actions-row">
+                                        <button type="button" class="plugin-action-btn" onclick={openAddPluginView}>Add</button>
+                                        <button type="button" class="plugin-action-btn" onclick={deleteSelectedPlugin} disabled={!selectedPluginId}>Delete</button>
+                                        <button type="button" class="plugin-action-btn" onclick={createNewPlugin}>New</button>
+                                    </div>
+                                </div>
+
+                                {#if selectedPlugin}
+                                    <div class="plugin-prompt-section">
+                                        <div class="editor-header">
+                                            {#if selectedPlugin.owner === 'My plugin'}
+                                                <input 
+                                                    type="text" 
+                                                    class="plugin-name-input" 
+                                                    bind:value={selectedPluginName} 
+                                                    oninput={handleNameInput} 
+                                                    placeholder="Plugin Name"
+                                                />
+                                            {:else}
+                                                <p>{selectedPlugin.name} Prompt</p>
+                                            {/if}
+                                        </div>
+                                        <textarea 
+                                            class="md-editor-textarea" 
+                                            bind:value={selectedPluginPrompt} 
+                                            oninput={handlePromptInput}
+                                            disabled={selectedPlugin.owner !== 'My plugin'}
+                                            rows="6"
+                                            placeholder={selectedPlugin.owner === 'My plugin' ? 'Enter skill instructions/prompt...' : 'System plugin prompt (Read Only)'}
+                                        ></textarea>
+                                    </div>
+                                {/if}
+                            {:else if pluginSubView === 'add'}
+                                <div class="plugin-add-section">
+                                    <h3>Add System Plugins</h3>
+                                    <div class="plugin-list-wrapper">
+                                        <table class="plugin-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Plugin</th>
+                                                    <th>Kinds</th>
+                                                    <th>Owner</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {#each SYSTEM_PLUGINS as p}
+                                                    <tr 
+                                                        class="plugin-row" 
+                                                        class:selected={selectedAddPluginId === p.id}
+                                                        onclick={() => selectedAddPluginId = p.id}
+                                                    >
+                                                        <td>
+                                                            {activePluginIds.includes(p.id) ? '＊' : ''}{p.name}
+                                                        </td>
+                                                        <td>{p.kinds}</td>
+                                                        <td>{p.owner}</td>
+                                                    </tr>
+                                                {/each}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="plugin-add-actions">
+                                        <button type="button" class="plugin-action-btn" onclick={() => pluginSubView = 'list'}>Cancel</button>
+                                        <button 
+                                            type="button" 
+                                            class="plugin-action-btn" 
+                                            onclick={installSelectedSystemPlugin} 
+                                            disabled={!selectedAddPluginId || activePluginIds.includes(selectedAddPluginId)}
+                                        >
+                                            Add
+                                        </button>
+                                    </div>
+                                </div>
+                            {/if}
                         </div>
                     {/if}
                 </div>
@@ -2792,5 +2997,141 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 
     .golden-plate.no-pointer {
         cursor: default;
+    }
+
+    /* Plugin/Skills tab stylings */
+    .plugin-tab-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        box-sizing: border-box;
+    }
+    .plugin-main-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .plugin-list-wrapper {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.2);
+        max-height: 180px;
+        overflow-y: auto;
+    }
+    .landing-container[data-theme="light"] .plugin-list-wrapper {
+        border-color: rgba(61, 37, 22, 0.15);
+        background: rgba(255, 255, 255, 0.4);
+    }
+    .plugin-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        text-align: left;
+    }
+    .plugin-table th, .plugin-table td {
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .landing-container[data-theme="light"] .plugin-table th, 
+    .landing-container[data-theme="light"] .plugin-table td {
+        border-bottom-color: rgba(61, 37, 22, 0.08);
+    }
+    .plugin-table th {
+        font-weight: 600;
+        opacity: 0.8;
+        background: rgba(0, 0, 0, 0.15);
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    .landing-container[data-theme="light"] .plugin-table th {
+        background: rgba(61, 37, 22, 0.05);
+    }
+    .plugin-row {
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .plugin-row:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+    .landing-container[data-theme="light"] .plugin-row:hover {
+        background: rgba(61, 37, 22, 0.05);
+    }
+    .plugin-row.selected {
+        background: rgba(139, 92, 246, 0.2) !important;
+        color: #c084fc;
+    }
+    .landing-container[data-theme="light"] .plugin-row.selected {
+        background: rgba(139, 92, 246, 0.15) !important;
+        color: #8b5cf6;
+    }
+    .plugin-actions-row {
+        display: flex;
+        gap: 8px;
+    }
+    .plugin-action-btn {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: inherit;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+    .plugin-action-btn:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.1);
+    }
+    .plugin-action-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .landing-container[data-theme="light"] .plugin-action-btn {
+        background: rgba(61, 37, 22, 0.05);
+        border-color: rgba(61, 37, 22, 0.15);
+    }
+    .landing-container[data-theme="light"] .plugin-action-btn:hover:not(:disabled) {
+        background: rgba(61, 37, 22, 0.1);
+    }
+    .plugin-prompt-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .plugin-name-input {
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: inherit;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        width: 200px;
+    }
+    .landing-container[data-theme="light"] .plugin-name-input {
+        background: rgba(255, 255, 255, 0.5);
+        border-color: rgba(61, 37, 22, 0.15);
+    }
+    .plugin-add-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+        border: 1px dashed rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+    }
+    .landing-container[data-theme="light"] .plugin-add-section {
+        border-color: rgba(61, 37, 22, 0.2);
+    }
+    .plugin-add-section h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+    }
+    .plugin-add-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
     }
 </style>

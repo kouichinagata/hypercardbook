@@ -57,6 +57,14 @@ CRITICAL RULES:
    - The user may attach images and text files to their prompt.
    - Images will be provided as Markdown links in the prompt, e.g., \`![filename](URL)\`. You must use these exact image URLs in your generated Markdown book if you decide to include images.
    - Text contents will be provided in a code block under "### 添付テキスト". Use the information inside these files to enrich the content, structure, or style of the generated book as requested.
+
+8. CREATE SKILLS COMMAND:
+   - If the user asks you to save a rule, prompt, style, or instruction as a Skill, or says "Skills化して" / "Skillsにしといて", you must output a special block at the very end of your response (outside of the markdown code block) in this exact format:
+     [CREATE_SKILL: SkillName]
+     Prompt text...
+     [/CREATE_SKILL]
+   - The SkillName should be a short, descriptive name (in English or Japanese) for the skill.
+   - The Prompt text should be the detailed instructions/rules to guide the AI to generate/modify content in that specific style or way.
 `;
 
 const cardSystemInstruction = `
@@ -110,6 +118,14 @@ CRITICAL RULES:
    - The user may attach images and text files to their prompt.
    - Images will be provided as Markdown links in the prompt, e.g., \`![filename](URL)\`. You must use these exact image URLs in your generated Markdown card if you decide to include them.
    - Text contents will be provided in a code block under "### 添付テキスト". Use the information inside these files to enrich the content, structure, or style of the generated card as requested.
+
+7. CREATE SKILLS COMMAND:
+   - If the user asks you to save a rule, prompt, style, or instruction as a Skill, or says "Skills化して" / "Skillsにしといて", you must output a special block at the very end of your response (outside of the markdown code block) in this exact format:
+     [CREATE_SKILL: SkillName]
+     Prompt text...
+     [/CREATE_SKILL]
+   - The SkillName should be a short, descriptive name (in English or Japanese) for the skill.
+   - The Prompt text should be the detailed instructions/rules to guide the AI to generate/modify content in that specific style or way.
 `;
 
 export const POST: RequestHandler = async ({ request, locals }) => {
