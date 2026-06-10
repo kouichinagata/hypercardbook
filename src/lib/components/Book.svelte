@@ -4,6 +4,8 @@
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
 
+    import { LANGUAGES } from '$lib/languages';
+
     let { markdown = '', backUrl = '', id = '', activePluginIds = [], language = 'ja' } = $props();
 
     // Text to Speech states & methods
@@ -51,16 +53,10 @@
         isSpeaking = true;
         const utterance = new SpeechSynthesisUtterance(cleanText);
         
-        // Ensure robust language code matching (handles both 'en' and 'en-US' formats)
-        const baseLang = (language || 'ja').split('-')[0].toLowerCase();
-        const langMap: Record<string, string> = {
-            'ja': 'ja-JP',
-            'en': 'en-US',
-            'fr': 'fr-FR',
-            'es': 'es-ES',
-            'zh': 'zh-CN'
-        };
-        utterance.lang = langMap[baseLang] || 'ja-JP';
+        // Ensure robust language code matching from LANGUAGES definition
+        const matchedLang = LANGUAGES.find(l => l.code === language) || 
+                            LANGUAGES.find(l => l.code.split('-')[0].toLowerCase() === (language || 'ja').split('-')[0].toLowerCase());
+        utterance.lang = matchedLang ? matchedLang.locale : 'ja-JP';
         
         console.log(`[TTS] Speaking with lang: ${utterance.lang} (raw language prop: ${language})`);
 

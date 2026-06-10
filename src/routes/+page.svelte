@@ -4,6 +4,7 @@
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
     import Bookshelf from '$lib/components/Bookshelf.svelte';
+    import { LANGUAGES } from '$lib/languages';
 
     let { data } = $props();
 
@@ -153,15 +154,19 @@
     
     let currentLanguage = $state('en');
     let showLangDropdown = $state(false);
+    let showFullLangModal = $state(false);
+    let langSearchQuery = $state('');
     let translatedCovers = $state<Record<string, { title: string; author: string }>>({});
 
-    const languages = [
-        { code: 'en', flag: '🇺🇸', label: 'English' },
-        { code: 'ja', flag: '🇯🇵', label: '日本語' },
-        { code: 'fr', flag: '🇫🇷', label: 'Français' },
-        { code: 'es', flag: '🇪🇸', label: 'Español' },
-        { code: 'zh', flag: '🇨🇳', label: '中文' }
-    ];
+    // Quick access to top languages
+    const QUICK_LANGUAGES = LANGUAGES.filter(l => ['en', 'ja', 'zh-CN', 'es', 'fr'].includes(l.code));
+
+    let filteredLanguages = $derived(
+        LANGUAGES.filter(lang => 
+            lang.label.toLowerCase().includes(langSearchQuery.toLowerCase()) || 
+            lang.code.toLowerCase().includes(langSearchQuery.toLowerCase())
+        )
+    );
 
     const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
@@ -178,11 +183,9 @@
         } else if (data.session?.user?.user_metadata?.language) {
             currentLanguage = data.session.user.user_metadata.language;
         } else {
-            const browserLang = navigator.language || 'en';
-            currentLanguage = browserLang.startsWith('ja') ? 'ja' :
-                              browserLang.startsWith('fr') ? 'fr' :
-                              browserLang.startsWith('es') ? 'es' :
-                              browserLang.startsWith('zh') ? 'zh' : 'en';
+            const browserLang = (navigator.language || 'en').toLowerCase();
+            const matched = LANGUAGES.find(l => browserLang.startsWith(l.code.toLowerCase()) || l.code.toLowerCase().startsWith(browserLang));
+            currentLanguage = matched ? matched.code : 'en';
         }
 
         // Check onboarding trigger (new logins with empty profile data)
@@ -733,6 +736,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     let profileNickname = $state('');
     let profileAvatarUrl = $state('');
     let profileAuthorBio = $state('');
+    let profileLanguage = $state('en');
     
     // Config files states
     let profileHypercardbookMd = $state('');
@@ -981,6 +985,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         profileNickname = metadata.nickname || '';
         profileAvatarUrl = metadata.avatar_url || '';
         profileAuthorBio = metadata.author_bio || '';
+        profileLanguage = metadata.language || currentLanguage || 'en';
         
         profileHypercardbookMd = metadata.hypercardbook_md || DEFAULT_HYPERCARDBOOK_MD;
         
@@ -1054,6 +1059,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     nickname: profileNickname,
                     avatar_url: profileAvatarUrl,
                     author_bio: profileAuthorBio,
+                    language: profileLanguage,
                     hypercardbook_md: profileHypercardbookMd,
                     user_plugins: $state.snapshot(userPlugins),
                     active_plugin_ids: $state.snapshot(activePluginIds)
@@ -1061,6 +1067,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             });
             
             if (updateError) throw updateError;
+            
+            currentLanguage = profileLanguage;
+            localStorage.setItem('reader-lang', profileLanguage);
+            await translateBookshelfCovers();
             
             showSettingsModal = false;
             await invalidateAll();
@@ -1230,16 +1240,21 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         <!-- Language selector flag dropdown -->
         <div class="lang-selector-container">
             <button class="theme-switch lang-btn" onclick={() => showLangDropdown = !showLangDropdown} title="Select Language">
-                {languages.find(l => l.code === currentLanguage)?.flag || '🇺🇸'}
+                {LANGUAGES.find(l => l.code === currentLanguage)?.flag || '🇺🇸'}
             </button>
             {#if showLangDropdown}
                 <div class="lang-dropdown">
-                    {#each languages as lang}
+                    {#each QUICK_LANGUAGES as lang}
                         <button class="lang-option" class:active={currentLanguage === lang.code} onclick={() => selectLanguage(lang.code)}>
                             <span class="flag-icon">{lang.flag}</span>
                             <span class="lang-label">{lang.label}</span>
                         </button>
                     {/each}
+                    <div style="border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 4px 0;"></div>
+                    <button class="lang-option" onclick={() => { showFullLangModal = true; showLangDropdown = false; langSearchQuery = ''; }}>
+                        <span class="flag-icon">🌐</span>
+                        <span class="lang-label">More...</span>
+                    </button>
                 </div>
             {/if}
         </div>
@@ -1601,7 +1616,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     <div class="form-group" style="margin-top: 16px;">
                         <label for="onboarding-language" style="display: block; margin-bottom: 8px; font-size: 13px; color: #9ca3af;">Default Reading Language</label>
                         <select id="onboarding-language" bind:value={onboardingLanguage} style="width: 100%; padding: 10px; background: #1f2937; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #fff; font-size: 14px; outline: none; box-sizing: border-box;">
-                            {#each languages as lang}
+                            {#each LANGUAGES as lang}
                                 <option value={lang.code}>{lang.flag} {lang.label}</option>
                             {/each}
                         </select>
@@ -1609,6 +1624,46 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 </div>
                 <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: flex-end;">
                     <button class="save-btn" onclick={saveOnboarding} style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); border: none; color: #fff; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: filter 0.2s;">Get Started</button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    {#if showFullLangModal}
+        <div class="modal-overlay" onclick={() => showFullLangModal = false} onkeydown={(e) => e.key === 'Escape' && (showFullLangModal = false)} role="presentation">
+            <div class="settings-modal-card lang-search-modal" onclick={(e) => e.stopPropagation()} role="presentation" style="max-width: 450px; height: 500px; display: flex; flex-direction: column;">
+                <div class="modal-header">
+                    <h2>Select Language</h2>
+                    <button class="close-btn" onclick={() => showFullLangModal = false}>✕</button>
+                </div>
+                <div class="modal-body" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; padding-top: 10px;">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <input 
+                            type="text" 
+                            bind:value={langSearchQuery} 
+                            placeholder="Search languages..." 
+                            style="width: 100%; padding: 10px 12px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #fff; font-size: 14px; outline: none; box-sizing: border-box;"
+                        />
+                    </div>
+                    <div class="lang-scroll-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 4px;">
+                        {#each filteredLanguages as lang}
+                            <button 
+                                class="lang-option" 
+                                class:active={currentLanguage === lang.code} 
+                                onclick={() => { selectLanguage(lang.code); showFullLangModal = false; }}
+                                style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; background: transparent; border: none; border-radius: 6px; color: #fff; cursor: pointer; text-align: left; font-size: 14px; transition: background 0.2s;"
+                            >
+                                <span style="font-size: 18px;">{lang.flag}</span>
+                                <span>{lang.label}</span>
+                                {#if currentLanguage === lang.code}
+                                    <span style="margin-left: auto; color: #a78bfa;">✓</span>
+                                {/if}
+                            </button>
+                        {/each}
+                        {#if filteredLanguages.length === 0}
+                            <p style="color: #9ca3af; text-align: center; font-size: 14px; margin-top: 20px;">No languages found.</p>
+                        {/if}
+                    </div>
                 </div>
             </div>
         </div>
@@ -1678,6 +1733,15 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                             <div class="form-group">
                                 <label for="setting-nickname">Pen Name</label>
                                 <input type="text" id="setting-nickname" bind:value={profileNickname} placeholder="" />
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="setting-language">Default Reading Language</label>
+                                <select id="setting-language" bind:value={profileLanguage}>
+                                    {#each LANGUAGES as lang}
+                                        <option value={lang.code}>{lang.flag} {lang.label}</option>
+                                    {/each}
+                                </select>
                             </div>
                             
                             <div class="form-group">
@@ -2414,6 +2478,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     .form-group input[type="text"],
     .form-group input[type="email"],
     .form-group input[type="password"],
+    .form-group select,
     .form-group textarea {
         background: rgba(0,0,0,0.2);
         border: 1px solid rgba(255,255,255,0.1);
@@ -2426,14 +2491,23 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         box-sizing: border-box;
         width: 100%;
     }
+    .form-group select option {
+        background: #1f2937;
+        color: #fff;
+    }
     .landing-container[data-theme="light"] .form-group input[type="text"],
     .landing-container[data-theme="light"] .form-group input[type="email"],
     .landing-container[data-theme="light"] .form-group input[type="password"],
+    .landing-container[data-theme="light"] .form-group select,
     .landing-container[data-theme="light"] .form-group textarea {
         background: rgba(255,255,255,0.5);
         border-color: rgba(61, 37, 22, 0.15);
     }
-    .form-group input:focus, .form-group textarea:focus {
+    .landing-container[data-theme="light"] .form-group select option {
+        background: #fff;
+        color: #000;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
         border-color: #8b5cf6;
     }
     
