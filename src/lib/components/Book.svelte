@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, tick } from 'svelte';
+    import { onMount, tick, untrack } from 'svelte';
     import { marked } from 'marked';
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
@@ -81,11 +81,16 @@
     }
 
     $effect(() => {
-        // Cancel speaking if currentIndex changes
-        if (currentIndex !== undefined && browser && window.speechSynthesis && isSpeaking) {
-            window.speechSynthesis.cancel();
-            isSpeaking = false;
-        }
+        // Cancel speaking ONLY if currentIndex changes
+        // Access currentIndex to establish dependency
+        const _ = currentIndex;
+        
+        untrack(() => {
+            if (browser && window.speechSynthesis && isSpeaking) {
+                window.speechSynthesis.cancel();
+                isSpeaking = false;
+            }
+        });
     });
 
     // Book state
