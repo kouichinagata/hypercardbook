@@ -50,6 +50,9 @@
         
         isSpeaking = true;
         const utterance = new SpeechSynthesisUtterance(cleanText);
+        
+        // Ensure robust language code matching (handles both 'en' and 'en-US' formats)
+        const baseLang = (language || 'ja').split('-')[0].toLowerCase();
         const langMap: Record<string, string> = {
             'ja': 'ja-JP',
             'en': 'en-US',
@@ -57,15 +60,24 @@
             'es': 'es-ES',
             'zh': 'zh-CN'
         };
-        utterance.lang = langMap[language] || 'ja-JP';
+        utterance.lang = langMap[baseLang] || 'ja-JP';
+        
+        console.log(`[TTS] Speaking with lang: ${utterance.lang} (raw language prop: ${language})`);
+
         utterance.onend = () => {
             isSpeaking = false;
         };
-        utterance.onerror = () => {
+        utterance.onerror = (event) => {
+            console.error('[TTS] SpeechSynthesisUtterance error:', event);
             isSpeaking = false;
         };
         
-        window.speechSynthesis.speak(utterance);
+        // Add a slight delay before speaking to avoid engine sync bugs in Chrome/macOS
+        setTimeout(() => {
+            if (isSpeaking && window.speechSynthesis) {
+                window.speechSynthesis.speak(utterance);
+            }
+        }, 50);
     }
 
     $effect(() => {
