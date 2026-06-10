@@ -4,7 +4,7 @@
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
 
-    let { markdown = '', backUrl = '', id = '', activePluginIds = [] } = $props();
+    let { markdown = '', backUrl = '', id = '', activePluginIds = [], language = 'ja' } = $props();
 
     // Text to Speech states & methods
     let isSpeaking = $state(false);
@@ -50,7 +50,14 @@
         
         isSpeaking = true;
         const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.lang = 'ja-JP';
+        const langMap: Record<string, string> = {
+            'ja': 'ja-JP',
+            'en': 'en-US',
+            'fr': 'fr-FR',
+            'es': 'es-ES',
+            'zh': 'zh-CN'
+        };
+        utterance.lang = langMap[language] || 'ja-JP';
         utterance.onend = () => {
             isSpeaking = false;
         };
@@ -91,10 +98,68 @@
     let bookEl: HTMLDivElement | null = $state(null);
     let pageSliderEl: HTMLInputElement | null = $state(null);
 
-    // Watch markdown changes and re-parse
+    // Watch markdown changes, handle translation if needed, and parse displayMarkdown
+    let displayMarkdown = $state('');
+    let isLoadingTranslation = $state(false);
+
     $effect(() => {
         if (markdown) {
-            parseBookMarkdown(markdown);
+            if (language === 'ja') {
+                displayMarkdown = markdown;
+                isLoadingTranslation = false;
+            } else {
+                loadTranslation();
+            }
+        }
+    });
+
+    async function loadTranslation() {
+        if (!id || !language || language === 'ja') return;
+        
+        const isUserBook = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        if (!isUserBook) {
+            const cacheKey = `sample-book-${id}-${language}`;
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                displayMarkdown = cached;
+                isLoadingTranslation = false;
+                return;
+            }
+        }
+
+        isLoadingTranslation = true;
+        try {
+            const res = await fetch('/api/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bookId: id,
+                    targetLanguage: language
+                })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                displayMarkdown = data.markdown;
+                
+                if (!isUserBook) {
+                    const cacheKey = `sample-book-${id}-${language}`;
+                    localStorage.setItem(cacheKey, data.markdown);
+                }
+            } else {
+                console.error('Translation failed, fallback to original.');
+                displayMarkdown = markdown;
+            }
+        } catch (err) {
+            console.error('Error fetching translation:', err);
+            displayMarkdown = markdown;
+        } finally {
+            isLoadingTranslation = false;
+        }
+    }
+
+    $effect(() => {
+        if (displayMarkdown) {
+            parseBookMarkdown(displayMarkdown);
         }
     });
 
@@ -682,7 +747,13 @@
         </div>
     </div>
 
-    <div class="book-viewport">
+    <div class="book-viewport" style="position: relative;">
+        {#if isLoadingTranslation}
+            <div class="translation-loader" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; color: #fff; border-radius: 8px; backdrop-filter: blur(4px);">
+                <div class="spinner" style="border: 4px solid rgba(255, 255, 255, 0.1); border-left-color: #8b5cf6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 12px;"></div>
+                <p style="font-family: inherit; font-size: 14px; letter-spacing: 0.05em; font-weight: 500; margin: 0;">Translating...</p>
+            </div>
+        {/if}
         <div 
             class="book-body" 
             class:opened={isOpened} 

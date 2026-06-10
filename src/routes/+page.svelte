@@ -146,12 +146,165 @@
     // Bookshelf theme state
     let uiTheme = $state('dark');
 
-    onMount(() => {
-        const saved = localStorage.getItem('shelf-theme');
-        if (saved) {
-            uiTheme = saved;
+    // Onboarding & Localization states
+    let showOnboardingModal = $state(false);
+    let onboardingNickname = $state('');
+    let onboardingLanguage = $state('en');
+    
+    let currentLanguage = $state('en');
+    let showLangDropdown = $state(false);
+    let translatedCovers = $state<Record<string, { title: string; author: string }>>({});
+
+    const languages = [
+        { code: 'en', flag: '🇺🇸', label: 'English' },
+        { code: 'ja', flag: '🇯🇵', label: '日本語' },
+        { code: 'fr', flag: '🇫🇷', label: 'Français' },
+        { code: 'es', flag: '🇪🇸', label: 'Español' },
+        { code: 'zh', flag: '🇨🇳', label: '中文' }
+    ];
+
+    const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    onMount(async () => {
+        const savedTheme = localStorage.getItem('shelf-theme');
+        if (savedTheme) {
+            uiTheme = savedTheme;
         }
+
+        // Determine default language
+        const savedLang = localStorage.getItem('reader-lang');
+        if (savedLang) {
+            currentLanguage = savedLang;
+        } else if (data.session?.user?.user_metadata?.language) {
+            currentLanguage = data.session.user.user_metadata.language;
+        } else {
+            const browserLang = navigator.language || 'en';
+            currentLanguage = browserLang.startsWith('ja') ? 'ja' :
+                              browserLang.startsWith('fr') ? 'fr' :
+                              browserLang.startsWith('es') ? 'es' :
+                              browserLang.startsWith('zh') ? 'zh' : 'en';
+        }
+
+        // Check onboarding trigger (new logins with empty profile data)
+        if (data.session?.user) {
+            const metadata = data.session.user.user_metadata || {};
+            if (!metadata.nickname || !metadata.language) {
+                onboardingNickname = metadata.nickname || data.session.user.email?.split('@')[0] || '';
+                onboardingLanguage = currentLanguage;
+                showOnboardingModal = true;
+            }
+        }
+
+        // Auto translate bookshelf covers on mount
+        await translateBookshelfCovers();
     });
+
+    async function saveOnboarding() {
+        if (!onboardingNickname.trim()) {
+            alert('Please enter a pen name.');
+            return;
+        }
+        try {
+            const { error } = await supabase.auth.updateUser({
+                data: {
+                    nickname: onboardingNickname.trim(),
+                    language: onboardingLanguage
+                }
+            });
+            if (error) throw error;
+            showOnboardingModal = false;
+            currentLanguage = onboardingLanguage;
+            localStorage.setItem('reader-lang', onboardingLanguage);
+            await translateBookshelfCovers();
+            await invalidateAll();
+        } catch (err: any) {
+            console.error('Failed to save onboarding settings:', err);
+            alert(`Failed to save settings: ${err.message || err}`);
+        }
+    }
+
+    async function selectLanguage(lang: string) {
+        currentLanguage = lang;
+        localStorage.setItem('reader-lang', lang);
+        showLangDropdown = false;
+        if (data.session?.user) {
+            await supabase.auth.updateUser({
+                data: { language: lang }
+            });
+        }
+        await translateBookshelfCovers();
+    }
+
+    async function translateBookshelfCovers() {
+        if (!data.books || data.books.length === 0) return;
+        
+        const targetLang = currentLanguage;
+        
+        for (const book of data.books) {
+            if (targetLang === 'ja') {
+                if (translatedCovers[book.id]) {
+                    delete translatedCovers[book.id];
+                }
+                continue;
+            }
+            
+            const isUserBook = isUuid(book.id);
+            
+            if (isUserBook) {
+                try {
+                    const { data: cached, error } = await supabase
+                        .from('book_translations')
+                        .select('title, author')
+                        .eq('book_id', book.id)
+                        .eq('language', targetLang)
+                        .maybeSingle();
+                        
+                    if (cached) {
+                        translatedCovers[book.id] = {
+                            title: cached.title,
+                            author: cached.author
+                        };
+                        continue;
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch cover cache from DB:', err);
+                }
+            } else {
+                const cacheKey = `sample-cover-${book.id}-${targetLang}`;
+                const cached = localStorage.getItem(cacheKey);
+                if (cached) {
+                    translatedCovers[book.id] = JSON.parse(cached);
+                    continue;
+                }
+            }
+            
+            try {
+                const res = await fetch('/api/translate-metadata', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: book.title,
+                        author: book.author || '',
+                        targetLanguage: targetLang
+                    })
+                });
+                if (res.ok) {
+                    const translated = await res.json();
+                    translatedCovers[book.id] = {
+                        title: translated.title,
+                        author: translated.author
+                    };
+                    
+                    if (!isUserBook) {
+                        const cacheKey = `sample-cover-${book.id}-${targetLang}`;
+                        localStorage.setItem(cacheKey, JSON.stringify(translatedCovers[book.id]));
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to translate cover metadata:', err);
+            }
+        }
+    }
 
     function toggleTheme() {
         uiTheme = uiTheme === 'dark' ? 'light' : 'dark';
@@ -262,6 +415,20 @@
 
     let myBooksList = $derived(data.books.filter((b: any) => !b.isSample));
     let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample));
+
+    function localizeBook(b: any) {
+        if (!b) return b;
+        const trans = translatedCovers[b.id];
+        return {
+            ...b,
+            title: trans?.title || b.title,
+            author: trans?.author || b.author
+        };
+    }
+
+    let myBooksListLocalized = $derived(myBooksList.map(localizeBook));
+    let sampleBooksListLocalized = $derived(sampleBooksList.map(localizeBook));
+    let publicBooksListLocalized = $derived(publicBooksList.map(localizeBook));
 
     $effect(() => {
         if (data.publicBooks) {
@@ -498,6 +665,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         });
         return matchedBooks;
     });
+
+    let displayedBooksLocalized = $derived(displayedBooks.map(localizeBook));
 
     let selectedStackBookIds = $derived(selectedStackBooks.map(b => b.id));
 
@@ -1057,6 +1226,23 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         <button class="theme-switch" onclick={toggleTheme}>
             {uiTheme === 'dark' ? '☀️' : '🌙'}
         </button>
+        
+        <!-- Language selector flag dropdown -->
+        <div class="lang-selector-container">
+            <button class="theme-switch lang-btn" onclick={() => showLangDropdown = !showLangDropdown} title="Select Language">
+                {languages.find(l => l.code === currentLanguage)?.flag || '🇺🇸'}
+            </button>
+            {#if showLangDropdown}
+                <div class="lang-dropdown">
+                    {#each languages as lang}
+                        <button class="lang-option" class:active={currentLanguage === lang.code} onclick={() => selectLanguage(lang.code)}>
+                            <span class="flag-icon">{lang.flag}</span>
+                            <span class="lang-label">{lang.label}</span>
+                        </button>
+                    {/each}
+                </div>
+            {/if}
+        </div>
     </div>
 
     <!-- Prompt input box repositioned slightly higher -->
@@ -1165,7 +1351,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 </div>
             {:else}
                 <Bookshelf
-                    books={displayedBooks}
+                    books={displayedBooksLocalized}
                     currentUserId={data.currentUserId}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -1187,7 +1373,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             <!-- Render My Books if user has any books -->
             {#if myBooksList && myBooksList.length > 0}
                 <Bookshelf
-                    books={myBooksList}
+                    books={myBooksListLocalized}
                     currentUserId={data.currentUserId}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -1212,7 +1398,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     <div class="golden-plate no-pointer">Sample Books</div>
                 </div>
                 <Bookshelf
-                    books={sampleBooksList}
+                    books={sampleBooksListLocalized}
                     currentUserId={data.currentUserId}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -1248,7 +1434,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     </div>
                 </div>
                 <Bookshelf
-                    books={publicBooksList}
+                    books={publicBooksListLocalized}
                     currentUserId={data.currentUserId}
                     showActions={true}
                     isPublicShelf={true}
@@ -1395,6 +1581,34 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     <button class="btn-publish" onclick={executeStackUnpublish}>
                         Make Private
                     </button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    {#if showOnboardingModal}
+        <div class="modal-overlay">
+            <div class="settings-modal-card onboarding-card" onclick={(e) => e.stopPropagation()} role="presentation">
+                <div class="modal-header">
+                    <h2>Welcome to HyperCardBook</h2>
+                </div>
+                <div class="modal-body">
+                    <p class="onboarding-desc" style="color: #cbd5e1; margin-bottom: 20px; font-size: 14px;">Please set up your pen name and default reading language to get started.</p>
+                    <div class="form-group">
+                        <label for="onboarding-nickname" style="display: block; margin-bottom: 8px; font-size: 13px; color: #9ca3af;">Pen Name (Nickname)</label>
+                        <input id="onboarding-nickname" type="text" bind:value={onboardingNickname} placeholder="e.g., Quark" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #fff; font-size: 14px; outline: none; box-sizing: border-box;" />
+                    </div>
+                    <div class="form-group" style="margin-top: 16px;">
+                        <label for="onboarding-language" style="display: block; margin-bottom: 8px; font-size: 13px; color: #9ca3af;">Default Reading Language</label>
+                        <select id="onboarding-language" bind:value={onboardingLanguage} style="width: 100%; padding: 10px; background: #1f2937; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #fff; font-size: 14px; outline: none; box-sizing: border-box;">
+                            {#each languages as lang}
+                                <option value={lang.code}>{lang.flag} {lang.label}</option>
+                            {/each}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: flex-end;">
+                    <button class="save-btn" onclick={saveOnboarding} style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); border: none; color: #fff; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: filter 0.2s;">Get Started</button>
                 </div>
             </div>
         </div>
@@ -3301,5 +3515,76 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         display: flex;
         justify-content: flex-end;
         gap: 8px;
+    }
+
+    /* Language Selector Flag Dropdown */
+    .lang-selector-container {
+        position: relative;
+        display: inline-block;
+    }
+    .lang-btn {
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 10px;
+    }
+    .lang-dropdown {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        background: rgba(15, 23, 42, 0.95);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(12px);
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        padding: 6px;
+        z-index: 1001;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 120px;
+    }
+    .landing-container[data-theme="light"] .lang-dropdown {
+        background: rgba(255, 255, 255, 0.95);
+        border-color: rgba(0, 0, 0, 0.1);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    }
+    .lang-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: transparent;
+        border: none;
+        color: #f1f5f9;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 13px;
+        cursor: pointer;
+        text-align: left;
+        width: 100%;
+        transition: background 0.15s;
+    }
+    .landing-container[data-theme="light"] .lang-option {
+        color: #1e293b;
+    }
+    .lang-option:hover {
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .landing-container[data-theme="light"] .lang-option:hover {
+        background: rgba(0, 0, 0, 0.05);
+    }
+    .lang-option.active {
+        background: rgba(139, 92, 246, 0.15);
+        color: #a78bfa;
+        font-weight: 600;
+    }
+    .landing-container[data-theme="light"] .lang-option.active {
+        background: rgba(139, 92, 246, 0.1);
+        color: #7c3aed;
+    }
+    .flag-icon {
+        font-size: 16px;
     }
 </style>
