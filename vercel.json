@@ -1,8 +1,0 @@
-{
-  "rewrites": [
-    {
-      "source": "/paperobo/:path*",
-      "destination": "https://paperobo.vercel.app/:path*"
-    }
-  ]
-}
