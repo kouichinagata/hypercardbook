@@ -1262,7 +1262,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 
     <!-- Prompt input box repositioned slightly higher -->
     <div class="landing-panel">
-        <h1 class="title">HyperCardBook</h1>
+        <h1 class="title">
+            <img src="/favicon.png" alt="HyperCardBook Logo" class="title-logo" />
+            HyperCardBook
+        </h1>
         <p class="subtitle">HyperCardBook is an AI for generating Markdown ebooks.</p>
 
         <form bind:this={formEl} onsubmit={handleSubmit} class="prompt-form">
@@ -2173,6 +2176,18 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         letter-spacing: -0.02em;
         margin: 0 0 8px 0;
         color: var(--text-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+    }
+
+    .title-logo {
+        width: 36px;
+        height: 36px;
+        object-fit: cover;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
     .subtitle {
