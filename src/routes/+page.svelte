@@ -755,7 +755,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         {
             id: 'reading-aloud',
             name: 'Reading aloud',
-            kinds: 'Skills',
+            kinds: 'Plugin',
             owner: 'HyperCardBook',
             description: 'Enable native vocal read-aloud option for pages using browser SpeechSynthesis.',
             skill: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
@@ -990,7 +990,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         profileHypercardbookMd = metadata.hypercardbook_md || DEFAULT_HYPERCARDBOOK_MD;
         
         userPlugins = metadata.user_plugins || [];
-        activePluginIds = metadata.active_plugin_ids || ['reading-aloud'];
+        activePluginIds = metadata.active_plugin_ids || [];
         selectedPluginId = '';
         selectedPluginName = '';
         selectedPluginDescription = '';
