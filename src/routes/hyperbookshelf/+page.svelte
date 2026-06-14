@@ -102,6 +102,9 @@
     .theme-switch-container {
         position: absolute; top: 20px; right: 20px;
         z-index: 1000;
+        display: flex;
+        gap: 8px;
+        align-items: center;
     }
 
     .theme-switch {
@@ -111,6 +114,16 @@
         cursor: pointer; font-size: 12px; transition: 0.3s;
         backdrop-filter: blur(10px);
         font-family: system-ui, sans-serif;
+    }
+    .theme-switch-container .theme-switch {
+        height: 34px;
+        padding: 0 16px;
+        box-sizing: border-box;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--card-border);
+        background: var(--card-bg);
     }
     .theme-switch:hover {
         opacity: 0.8; transform: scale(1.05);

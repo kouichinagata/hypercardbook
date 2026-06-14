@@ -923,6 +923,8 @@
         --page-color: #ffffff;
         --edge-color: #bbb;
         --link-blue: #2a5ca8;
+        --card-bg: rgba(0, 0, 0, 0.03);
+        --card-border: rgba(0, 0, 0, 0.08);
 
         margin: 0; padding: 0;
         background: var(--bg-color);
@@ -941,6 +943,8 @@
         --page-color: #2d2d2e;
         --edge-color: #444;
         --link-blue: #66a3ff;
+        --card-bg: rgba(255, 255, 255, 0.05);
+        --card-border: rgba(255, 255, 255, 0.1);
     }
 
     /* --- 上部エリア --- */
@@ -953,6 +957,7 @@
     .theme-switch-container {
         position: absolute; top: 20px; right: 10px;
         display: flex; gap: 8px; z-index: 1000;
+        align-items: center;
     }
     .theme-switch {
         padding: 8px 12px; border-radius: 20px;
@@ -960,6 +965,16 @@
         background: var(--page-color); color: var(--text-color);
         cursor: pointer; font-size: 11px;
         transition: 0.3s;
+    }
+    .theme-switch-container .theme-switch {
+        height: 34px;
+        padding: 0 12px;
+        box-sizing: border-box;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--card-border);
+        background: var(--card-bg);
     }
 
     .instruction-text {

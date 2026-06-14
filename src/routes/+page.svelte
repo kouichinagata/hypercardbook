@@ -2110,7 +2110,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         gap: 8px;
         background: var(--card-bg);
         border: 1px solid var(--card-border);
-        padding: 4px 12px 4px 4px;
+        padding: 0 12px 0 4px;
+        height: 34px;
+        box-sizing: border-box;
         border-radius: 20px;
         backdrop-filter: blur(10px);
     }
@@ -2140,6 +2142,16 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         cursor: pointer; font-size: 12px; transition: 0.3s;
         backdrop-filter: blur(10px);
         font-family: system-ui, sans-serif;
+    }
+    .theme-switch-container .theme-switch {
+        height: 34px;
+        padding: 0 16px;
+        box-sizing: border-box;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--card-border);
+        background: var(--card-bg);
     }
     .theme-switch:hover {
         opacity: 0.8; transform: scale(1.05);
