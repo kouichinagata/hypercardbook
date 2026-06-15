@@ -2,7 +2,7 @@
     import Card from '$lib/components/Card.svelte';
 
     let { data } = $props();
-    let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || []);
+    let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || ['ai-summarizer-hook']);
 </script>
 
 <Card 

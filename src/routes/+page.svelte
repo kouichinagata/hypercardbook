@@ -336,7 +336,7 @@
 
         const hasPending = attachedFiles.some(f => f.status === 'uploading' || f.status === 'loading');
         if (hasPending) {
-            alert('ファイルの処理が完了するまでお待ちください。');
+            alert('Please wait for files to finish.');
             return;
         }
 
@@ -755,15 +755,47 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         {
             id: 'reading-aloud',
             name: 'Reading aloud',
-            kinds: 'Plugin',
+            kinds: 'HyperPlugin',
             owner: 'HyperCardBook',
             description: 'Enable native vocal read-aloud option for pages using browser SpeechSynthesis.',
             skill: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
+        },
+        {
+            id: 'bookmark-postit',
+            name: 'Bookmark (Post-it style)',
+            kinds: 'Skill',
+            owner: 'HyperCardBook',
+            description: 'Add a sticky bookmark to save and restore your reading position.',
+            skill: 'Generate bookmark_html (sticky design) and on_open_stack / on_close_card hooks in YAML frontmatter to auto-save and restore the reading position.'
+        },
+        {
+            id: 'ai-summarizer-hook',
+            name: 'AI Summarizer Hook',
+            kinds: 'HyperHook',
+            owner: 'HyperCardBook',
+            description: 'Show an AI summary in chat when a page is opened (on_open_card).',
+            skill: 'Generate on_open_card: "[AI] Summarize this page in 3 lines" hook in YAML frontmatter.'
+        },
+        {
+            id: 'gdrive-mcp',
+            name: 'Google Drive MCP',
+            kinds: 'Plugin',
+            owner: 'HyperCardBook',
+            description: 'Connect to Google Drive MCP server using JSON-RPC 2.0 to search and read files.',
+            skill: 'Use gdrive_search_files and gdrive_read_file tools to fetch content from Google Drive.'
+        },
+        {
+            id: 'ai-validator-hook',
+            name: 'AI Content Validator Hook',
+            kinds: 'Hook',
+            owner: 'HyperCardBook',
+            description: '[PreToolUse] Check if each page is under 400 characters and auto-correct if needed.',
+            skill: 'Verify that the character count of each page or card is strictly within 400 characters. Re-generate automatically if it fails.'
         }
     ];
 
     let userPlugins = $state<Plugin[]>([]);
-    let activePluginIds = $state<string[]>([]);
+    let activePluginIds = $state<string[]>(['ai-summarizer-hook']);
     let selectedPluginId = $state<string>('');
     let selectedPluginName = $state<string>('');
     let selectedPluginDescription = $state<string>('');
@@ -906,7 +938,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             id: newId,
             name: selectedPluginName.trim(),
             description: selectedPluginDescription.trim(),
-            kinds: 'Skills',
+            kinds: 'Skill',
             owner: 'My plugin',
             skill: selectedPluginSkill.trim()
         };
@@ -990,7 +1022,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         profileHypercardbookMd = metadata.hypercardbook_md || DEFAULT_HYPERCARDBOOK_MD;
         
         userPlugins = metadata.user_plugins || [];
-        activePluginIds = metadata.active_plugin_ids || [];
+        activePluginIds = metadata.active_plugin_ids || ['ai-summarizer-hook'];
         selectedPluginId = '';
         selectedPluginName = '';
         selectedPluginDescription = '';
@@ -1020,11 +1052,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     async function executePasswordChange() {
         if (!newPassword || !confirmNewPassword) return;
         if (newPassword !== confirmNewPassword) {
-            passwordChangeError = 'パスワードが一致しません。';
+            passwordChangeError = 'Passwords do not match.';
             return;
         }
         if (newPassword.length < 6) {
-            passwordChangeError = 'パスワードは6文字以上で入力してください。';
+            passwordChangeError = 'Password must be at least 6 characters.';
             return;
         }
 
@@ -1035,7 +1067,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         try {
             const { error } = await supabase.auth.updateUser({ password: newPassword });
             if (error) throw error;
-            passwordChangeSuccess = 'パスワードを正常に更新しました。';
+            passwordChangeSuccess = 'Password updated.';
             newPassword = '';
             confirmNewPassword = '';
             setTimeout(() => {
@@ -1043,7 +1075,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             }, 2000);
         } catch (err: any) {
             console.error('Password change failed:', err);
-            passwordChangeError = err.message || 'パスワードの変更に失敗しました。';
+            passwordChangeError = err.message || 'Failed to change password.';
             passwordChangeStep = 'edit';
         }
     }
@@ -1074,10 +1106,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             
             showSettingsModal = false;
             await invalidateAll();
-            alert('環境設定を保存しました。');
+            alert('Settings saved.');
         } catch (err: any) {
             console.error('Failed to save settings:', err);
-            alert(`設定の保存に失敗しました: ${err.message || err}`);
+            alert(`Failed to save settings: ${err.message || err}`);
         } finally {
             isSavingSettings = false;
         }
@@ -1111,7 +1143,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             profileAvatarUrl = urlData.publicUrl;
         } catch (err: any) {
             console.error('Avatar upload failed:', err);
-            alert(`アバター画像のアップロードに失敗しました: ${err.message || err}`);
+            alert(`Failed to upload avatar: ${err.message || err}`);
         } finally {
             isUploadingAvatar = false;
             input.value = '';
@@ -1149,7 +1181,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             const resData = await response.json();
             
             if (response.ok) {
-                alert('アカウントが正常に削除されました。ご利用ありがとうございました。');
+                alert('Account deleted. Thank you.');
                 showSettingsModal = false;
                 window.location.href = '/';
             } else {
@@ -1202,6 +1234,15 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 </script>
 
 <div class="landing-container" data-theme={uiTheme}>
+    <!-- Brand Logo and slogan at top left -->
+    <div class="header-logo-container">
+        <img src="/markdownai_logo.png" alt="MarkdownAI Logo" class="header-logo-img" />
+        <div class="header-logo-text-group">
+            <span class="header-company-name">MarkdownAI</span>
+            <span class="header-sub-slogan">Markdown is all you need!</span>
+        </div>
+    </div>
+
     <!-- Theme switch and login/logout buttons at top right -->
     <div class="theme-switch-container">
         {#if data.session?.user}
@@ -1266,7 +1307,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             <img src="/favicon.png" alt="HyperCardBook Logo" class="title-logo" />
             HyperCardBook
         </h1>
-        <p class="subtitle">HyperCardBook is an AI for generating Markdown ebooks.</p>
+        <p class="subtitle">Write once. Publish AI interactive books in 80 languages.</p>
 
         <form bind:this={formEl} onsubmit={handleSubmit} class="prompt-form">
             <div class="prompt-textarea-wrapper">
@@ -1365,7 +1406,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         {#if activeStack}
             {#if !displayedBooks || displayedBooks.length === 0}
                 <div class="empty-shelf">
-                    <p>このスタックには本やカードがありません。</p>
+                    <p>There are no books or cards in this stack.</p>
                 </div>
             {:else}
                 <Bookshelf
@@ -1774,7 +1815,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                     </div>
                                 {:else if deleteStep === 'credentials' || deleteStep === 'loading'}
                                     <div class="delete-credentials-box">
-                                        <p>再認証のため、現在のメールアドレスとパスワードを入力してください。</p>
+                                        <p>Enter email and password to confirm.</p>
                                         {#if deleteErrorMsg}
                                             <p class="error-msg">{deleteErrorMsg}</p>
                                         {/if}
@@ -1782,7 +1823,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                             <input 
                                                 type="email" 
                                                 bind:value={deleteConfirmEmail} 
-                                                placeholder="メールアドレス (Email)" 
+                                                placeholder="Email" 
                                                 disabled={deleteStep === 'loading'} 
                                             />
                                         </div>
@@ -1790,7 +1831,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                             <input 
                                                 type="password" 
                                                 bind:value={deleteConfirmPassword} 
-                                                placeholder="パスワード (Password)" 
+                                                placeholder="Password" 
                                                 disabled={deleteStep === 'loading'} 
                                             />
                                         </div>
@@ -1809,7 +1850,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                                 onclick={executeAccountDelete}
                                                 disabled={!deleteConfirmEmail.trim() || !deleteConfirmPassword.trim() || deleteStep === 'loading'}
                                             >
-                                                {deleteStep === 'loading' ? 'Deleting...' : 'アカウントを完全に削除'}
+                                                {deleteStep === 'loading' ? 'Deleting...' : 'Delete Account'}
                                             </button>
                                         </div>
                                     </div>
@@ -1885,7 +1926,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                                 oninput={handleNameInput} 
                                                 placeholder="e.g. ですます切り替え"
                                                 style="width: 100%; box-sizing: border-box;"
-                                                disabled={selectedPlugin && selectedPlugin.kinds !== 'Skills'}
+                                                disabled={selectedPlugin && selectedPlugin.owner !== 'My plugin'}
                                             />
                                         </div>
 
@@ -1898,7 +1939,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                                 oninput={handleDescriptionInput} 
                                                 placeholder="e.g. 文章の敬体を変換する"
                                                 style="width: 100%; box-sizing: border-box;"
-                                                disabled={selectedPlugin && selectedPlugin.kinds !== 'Skills'}
+                                                disabled={selectedPlugin && selectedPlugin.owner !== 'My plugin'}
                                             />
                                         </div>
 
@@ -1911,11 +1952,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                                 rows="6"
                                                 placeholder="Enter skill instructions/directives..."
                                                 style="width: 100%; box-sizing: border-box; resize: vertical;"
-                                                disabled={selectedPlugin && selectedPlugin.kinds !== 'Skills'}
+                                                disabled={selectedPlugin && selectedPlugin.owner !== 'My plugin'}
                                             ></textarea>
                                         </div>
 
-                                        {#if isCreatingNewSkill || (selectedPlugin && selectedPlugin.kinds === 'Skills')}
+                                        {#if isCreatingNewSkill || (selectedPlugin && selectedPlugin.owner === 'My plugin')}
                                             <div class="ai-assistant-pane" style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
                                                 <div style="display: flex; justify-content: space-between; align-items: center;">
                                                     <span style="font-size: 12px; font-weight: 600; color: #c084fc;">AI Skill Generator / Refiner</span>
@@ -2054,6 +2095,21 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             </div>
         </div>
     {/if}
+
+    <footer class="app-footer">
+        <div class="footer-content">
+            <span>Open-source project by Koichi Nagata.</span>
+            <span class="footer-separator">&bull;</span>
+            <span>MIT License</span>
+            <span class="footer-separator">&bull;</span>
+            <a href="https://github.com/kouichinagata/hypercardbook" target="_blank" rel="noopener noreferrer" class="footer-link">
+                <svg class="github-icon" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+                GitHub Repository
+            </a>
+        </div>
+    </footer>
 </div>
 
 <style>
@@ -3687,5 +3743,93 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     }
     .flag-icon {
         font-size: 16px;
+    }
+
+    /* Header Logo Styles */
+    .header-logo-container {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        z-index: 1000;
+    }
+    .header-logo-img {
+        height: 32px;
+        width: 32px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    .header-logo-text-group {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .header-company-name {
+        font-family: 'Outfit', sans-serif;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-color);
+        line-height: 1.1;
+    }
+    .header-sub-slogan {
+        font-family: inherit;
+        font-size: 10px;
+        color: var(--text-color);
+        opacity: 0.6;
+        font-weight: 400;
+    }
+
+    /* App Footer Styles */
+    .app-footer {
+        width: 100%;
+        padding: 12px 0;
+        margin-top: 20px;
+        border-top: 1px solid var(--card-border);
+        background: rgba(15, 23, 42, 0.15);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10;
+    }
+    .landing-container[data-theme="light"] .app-footer {
+        background: rgba(0, 0, 0, 0.02);
+    }
+    .footer-content {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        color: var(--text-color);
+        font-size: 12px;
+        font-style: italic;
+        opacity: 0.75;
+        text-align: center;
+    }
+    .footer-separator {
+        opacity: 0.5;
+    }
+    .footer-link {
+        color: #8b5cf6;
+        text-decoration: none;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        transition: color 0.2s;
+    }
+    .github-icon {
+        width: 14px;
+        height: 14px;
+        margin-right: 4px;
+        vertical-align: middle;
+    }
+    .landing-container[data-theme="light"] .footer-link {
+        color: #7c3aed;
+    }
+    .footer-link:hover {
+        text-decoration: underline;
     }
 </style>

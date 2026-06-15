@@ -59,15 +59,61 @@
         {
             id: 'reading-aloud',
             name: 'Reading aloud',
-            kinds: 'Plugin',
+            kinds: 'HyperPlugin',
             owner: 'HyperCardBook',
             description: 'Enable native vocal read-aloud option for pages using browser SpeechSynthesis.',
             skill: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
+        },
+        {
+            id: 'bookmark-postit',
+            name: 'Bookmark (Post-it style)',
+            kinds: 'Skill',
+            owner: 'HyperCardBook',
+            description: '本の右上にポストイット風のしおりを表示し、読書位置を自動保存・復帰します。',
+            skill: '本のYAMLフロントマターに bookmark_html（黄色のポストイット風デザイン）を追加し、しおりから読書を再開するための on_open_stack フック（例: let p = getData("bookmark_" + stackId); if(p!==null) goCard(p);）としおりを自動で挟む on_close_card フック（例: saveData("bookmark_" + stackId, currentCard);）を自動生成しなさい。'
+        },
+        {
+            id: 'ai-summarizer-hook',
+            name: 'AI Summarizer Hook',
+            kinds: 'HyperHook',
+            owner: 'HyperCardBook',
+            description: 'ページを開いた時（openCard）に、AIがそのページを自動で要約してチャットに表示するフックを適用します。',
+            skill: '本のYAMLフロントマターに、ページが開いた時にAIに要約させるためのフック（on_open_card: "[AI] このページの内容を3行で要約してチャットに流してください。") を自動生成しなさい。'
+        },
+        {
+            id: 'gdrive-mcp',
+            name: 'Google Drive MCP',
+            kinds: 'Plugin',
+            owner: 'HyperCardBook',
+            description: 'JSON-RPC 2.0 に準拠した Google Drive MCP サーバーと通信し、ファイルを検索・読み込みます。',
+            skill: 'Google Driveからファイルを検索（gdrive_search_files）またはファイル読み込み（gdrive_read_file）を実行するツールを利用できます。'
+        },
+        {
+            id: 'ai-validator-hook',
+            name: 'AI Content Validator Hook',
+            kinds: 'Hook',
+            owner: 'HyperCardBook',
+            description: '[PreToolUse] 生成されたMarkdownコンテンツが「各ページ400字以内」であるかを検証し、超えている場合は自動で再生成を促します。',
+            skill: '生成するコンテンツの各ページ（またはカード）が、厳密に400文字以内に収まっていることを自動検証します。制限を超えている場合は自動でエラーフィードバックが行われ、再生成されます。'
         }
     ];
 
     let userPlugins = $state<Plugin[]>([]);
-    let activePluginIds = $state<string[]>([]);
+    let activePluginIds = $state<string[]>(['ai-summarizer-hook']);
+    let currentCardIndex = $state(-1);
+
+    function handleHookAiResult(event: { eventName: string; result: string; command?: string }) {
+        chatHistory = [
+            ...chatHistory,
+            {
+                role: 'model',
+                text: `🤖 **[HyperHooks: ${event.eventName}]**\n${event.result}`
+            }
+        ];
+        tick().then(() => {
+            scrollToBottom();
+        });
+    }
 
     let allPlugins = $derived.by(() => {
         const activeSystem = SYSTEM_PLUGINS.filter(sp => activePluginIds.includes(sp.id));
@@ -754,7 +800,7 @@ ${markdown}
 
         const hasPending = attachedFiles.some(f => f.status === 'uploading' || f.status === 'loading');
         if (hasPending) {
-            alert('ファイルの処理が完了するまでお待ちください。');
+            alert('Please wait for files to finish.');
             return;
         }
 
@@ -803,7 +849,9 @@ ${markdown}
                     history: chatHistory.slice(0, -1), // Send previous history
                     currentMarkdown: markdown,
                     bookId: bookUuid,
-                    mode: mode
+                    mode: mode,
+                    currentCardIndex: currentCardIndex,
+                    activePluginIds: $state.snapshot(activePluginIds)
                 })
             });
 
@@ -867,7 +915,7 @@ ${markdown}
                     id: newId,
                     name: skillName,
                     description: '',
-                    kinds: 'Skills',
+                    kinds: 'Skill',
                     owner: 'My plugin',
                     skill: skillPrompt
                 };
@@ -896,7 +944,7 @@ ${markdown}
             }
         } catch (err: any) {
             console.error('Generation failed:', err);
-            errorMsg = err.message || '接続エラーが発生しました。GEMINI_API_KEYが正しく設定されているかご確認ください。';
+            errorMsg = err.message || 'API Key error. Check GEMINI_API_KEY.';
         } finally {
             isGenerating = false;
             scrollToBottom();
@@ -917,9 +965,7 @@ ${markdown}
 
         const metadata = data.session?.user?.user_metadata || {};
         userPlugins = metadata.user_plugins || [];
-        activePluginIds = metadata.active_plugin_ids || [];
-
-        // Populate state from Page Loader Data
+        activePluginIds = metadata.active_plugin_ids || ['ai-summarizer-hook'];
         markdown = data.markdown || '';
         bookUuid = data.bookId || '';
         chatHistory = data.initialChatHistory || [];
@@ -948,7 +994,7 @@ ${markdown}
             if (initPrompt) {
                 await sendPrompt(initPrompt);
             } else if (!data.bookId) {
-                errorMsg = 'プロンプトが指定されていません。トップページからプロンプトを入力してください。';
+                errorMsg = 'Please enter a prompt first.';
             }
         })();
 
@@ -1049,7 +1095,7 @@ ${markdown}
                 replaceImageUrl(url);
             }
         } else {
-            insertImageAtCursor(url, altText || '画像');
+            insertImageAtCursor(url, altText || 'Image');
         }
         showMediaPanel = false;
     }
@@ -1366,7 +1412,7 @@ ${markdown}
                                     </div>
                                 {/if}
                             {:else}
-                                {@html (marked.parse(message.text.replace(/```(?:markdown)?[\s\S]*?```/gi, mode === 'card' ? '[カードを生成・更新しました]' : '[本を生成・更新しました]').trim()))}
+                                {@html (marked.parse(message.text.replace(/```(?:markdown)?[\s\S]*?```/gi, mode === 'card' ? '[Card generated/updated]' : '[Book generated/updated]').trim()))}
                             {/if}
                         </div>
                     </div>
@@ -1485,7 +1531,7 @@ ${markdown}
                         onclick={toggleMonaco} 
                         disabled={!data.session?.user}
                         style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: #ffffff; padding: 5px 12px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; height: 32px; font-family: system-ui, sans-serif;"
-                        title={useMonaco ? "通常のテキストボックスに戻る" : "Monacoエディタに切り替える"}
+                        title={useMonaco ? "Switch to Plain Text" : "Switch to Monaco Editor"}
                     >
                         {useMonaco ? '🔠' : '🆎'}
                     </button>
@@ -1504,7 +1550,7 @@ ${markdown}
                     <button 
                         class="card-action-btn tabs-action-btn" 
                         onclick={handleDownloadHtml} 
-                        title="HTMLダウンロード (💾)"
+                        title="Download HTML"
                     >
                         💾
                     </button>
@@ -1512,7 +1558,7 @@ ${markdown}
                         class="card-action-btn tabs-action-btn" 
                         onclick={handleExportHtmlLink} 
                         disabled={isExportingHtml}
-                        title="HTMLとして公開 (🌐)"
+                        title="Publish HTML"
                     >
                         🌐
                     </button>
@@ -1538,12 +1584,18 @@ ${markdown}
                 {:else}
                     {#if markdown}
                         <div onclick={handleWebViewClick} role="presentation" class="preview-scroll-wrapper" style="width: 100%; height: 100%; overflow-y: auto;">
-                            <Book {markdown} id={bookUuid} activePluginIds={activePluginIds} />
+                            <Book 
+                                {markdown} 
+                                id={bookUuid} 
+                                activePluginIds={activePluginIds} 
+                                bind:currentIndex={currentCardIndex} 
+                                onHookAiResult={handleHookAiResult} 
+                            />
                         </div>
                     {:else}
                         <div class="empty-preview">
                             <div class="spinner"></div>
-                            <p>本を生成しています。しばらくお待ちください...</p>
+                            <p>Generating book...</p>
                         </div>
                     {/if}
                 {/if}

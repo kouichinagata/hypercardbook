@@ -6,7 +6,15 @@
 
     import { LANGUAGES } from '$lib/languages';
 
-    let { markdown = '', backUrl = '', id = '', activePluginIds = [], language = 'ja' } = $props();
+    let { 
+        markdown = '', 
+        backUrl = '', 
+        id = '', 
+        activePluginIds = [], 
+        language = 'ja',
+        onHookAiResult = null,
+        currentIndex = $bindable(-1)
+    } = $props();
 
     // Text to Speech states & methods
     let isSpeaking = $state(false);
@@ -99,8 +107,145 @@
     let parsedId = $state('');
     let bookId = $derived(id || parsedId);
     let spreads = $state<Array<{ title: string; leftMarkdown: string; rightMarkdown: string }>>([]);
+    let bookmarkHtml = $state('');
+    let hooks = $state<{ [key: string]: string }>({});
 
-    let currentIndex = $state(-1); // -1 = Cover
+    // HyperHooks Execution Engine
+    function getCardText(index: number): string {
+        if (index === -1) return "Cover: " + title;
+        if (hasBio && index === total) return authorBio;
+        if (hasToc && index === 0) return "Contents";
+        const dataIndex = hasToc ? index - 1 : index;
+        const spread = spreads[dataIndex];
+        if (!spread) return "";
+        return (spread.leftMarkdown || "") + "\n" + (spread.rightMarkdown || "");
+    }
+
+    function executeLocalHook(scriptText: string, payload: any = {}) {
+        try {
+            const context = {
+                goCard: (index: number) => {
+                    currentIndex = index;
+                    currentSubPage = 0;
+                },
+                saveData: (key: string, value: any) => {
+                    if (browser) localStorage.setItem(key, JSON.stringify(value));
+                },
+                getData: (key: string) => {
+                    if (!browser) return null;
+                    const item = localStorage.getItem(key);
+                    try { return item ? JSON.parse(item) : null; } catch { return item; }
+                },
+                alert: (msg: string) => {
+                    if (browser) window.alert(msg);
+                },
+                stackId: bookId,
+                currentCard: currentIndex,
+                cardText: getCardText(currentIndex),
+                ...payload
+            };
+
+            const fn = new Function('context', `
+                with(context) {
+                    ${scriptText}
+                }
+            `);
+            fn(context);
+        } catch (e) {
+            console.error(`[HyperHooks] Local execution error:`, e);
+        }
+    }
+
+    async function executeAiHook(eventName: string, instruction: string, payload: any) {
+        try {
+            const cardText = getCardText(currentIndex);
+            const res = await fetch('/api/hook-ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    eventName,
+                    instruction,
+                    cardText,
+                    stackId: bookId,
+                    currentCard: currentIndex
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                if (data.result && onHookAiResult) {
+                    onHookAiResult({
+                        eventName,
+                        result: data.result,
+                        command: data.command
+                    });
+                }
+                if (data.command) {
+                    executeLocalHook(data.command, payload);
+                }
+            } else {
+                console.error(`[HyperHooks] AI execution failed:`, res.statusText);
+            }
+        } catch (err) {
+            console.error(`[HyperHooks] Error executing AI hook:`, err);
+        }
+    }
+
+    async function executeHook(eventName: string, eventPayload: any = {}) {
+        const hookContent = hooks[eventName];
+        if (!hookContent) return;
+
+        console.log(`[HyperHooks] Triggered event: ${eventName}`);
+
+        // [AI]タグが含まれているか、またはプログラム的でない（自然言語）場合にAI実行
+        const isAiRequired = hookContent.includes('[AI]') || 
+                             (!hookContent.includes(';') && !hookContent.includes('(') && !/^[a-zA-Z0-9_\s\.\(\)\;\{\}\[\]\'\"]+$/.test(hookContent));
+
+        if (isAiRequired) {
+            console.log(`[HyperHooks] Dynamic AI execution required for event: ${eventName}`);
+            await executeAiHook(eventName, hookContent, eventPayload);
+        } else {
+            console.log(`[HyperHooks] Local execution for event: ${eventName}`);
+            executeLocalHook(hookContent, eventPayload);
+        }
+    }
+
+    // Monitor HyperHooks lifecycle events
+    let prevOpened = false;
+    $effect(() => {
+        const opened = isOpened;
+        untrack(() => {
+            if (opened && !prevOpened) {
+                executeHook('openStack');
+            } else if (!opened && prevOpened) {
+                executeHook('closeStack');
+            }
+            prevOpened = opened;
+        });
+    });
+
+    let prevIndex = -1;
+    let prevSubPage = 0;
+    $effect(() => {
+        const currentIdx = currentIndex;
+        const currentSub = currentSubPage;
+        untrack(() => {
+            if (currentIdx !== prevIndex || currentSub !== prevSubPage) {
+                // closeCard
+                if (prevIndex !== -1) {
+                    executeHook('closeCard', { prevCard: prevIndex, prevSub: prevSubPage });
+                }
+                // openCard
+                if (currentIdx !== -1) {
+                    executeHook('openCard', { currentCard: currentIdx, currentSub: currentSub });
+                }
+            }
+            prevIndex = currentIdx;
+            prevSubPage = currentSub;
+        });
+    });
+
+
     let currentSubPage = $state(0); // 0 = Left page, 1 = Right page (for vertical smartphone mode)
     let isOpened = $state(false);
     let viewMode = $state('spread'); // 'spread' or 'vertical'
@@ -241,7 +386,7 @@
         
         if (hasBio) {
             items.push({
-                title: "著者紹介",
+                title: "Author",
                 pageStr: (spreads.length * 2 + 1).toString(),
                 jumpIndex: total
             });
@@ -300,6 +445,9 @@
         let parsedSpreads: typeof spreads = [];
 
         // Extract frontmatter
+        let parsedBookmarkHtml = '';
+        let parsedHooks: typeof hooks = {};
+
         const fmMatch = trimmedMd.match(/^---\s*([\s\S]*?)\s*---/);
         if (fmMatch) {
             const fmLines = fmMatch[1].split('\n');
@@ -314,12 +462,38 @@
                     if (k === 'cover_image') parsedCoverImage = normalizePath(v);
                     if (k === 'author_image') parsedAuthorImage = normalizePath(v);
                     if (k === 'theme_color') parsedThemeColor = v;
+                    
+                    // Single-line hooks extraction (e.g. on_open_card: goCard(3))
+                    if (k.startsWith('on_') && !v.startsWith('|')) {
+                        // Convert snake_case to camelCase (e.g. on_open_card -> openCard)
+                        const camelKey = k.substring(3).replace(/_([a-z])/g, (_, char) => char.toUpperCase());
+                        parsedHooks[camelKey] = v;
+                    }
                 }
             });
             
             const bioMatch = fmMatch[1].match(/author_bio:\s*\|\s*\n([\s\S]*)/);
             if (bioMatch) {
                 parsedAuthorBio = bioMatch[1].trim();
+            }
+
+            // Multi-line bookmark_html extraction
+            const bookmarkMatch = fmMatch[1].match(/bookmark_html:\s*\|\s*\n([\s\S]*?)(?=\n[a-zA-Z0-9_\-]+\s*:|\n---|\n$)/);
+            if (bookmarkMatch) {
+                parsedBookmarkHtml = bookmarkMatch[1].trim();
+            } else {
+                const bookmarkSingleMatch = fmMatch[1].match(/bookmark_html:\s*(.+)/);
+                if (bookmarkSingleMatch && !bookmarkSingleMatch[1].trim().startsWith('|')) {
+                    parsedBookmarkHtml = bookmarkSingleMatch[1].trim();
+                }
+            }
+
+            // Multi-line hooks extraction
+            const hookMatches = fmMatch[1].matchAll(/(on_[a-zA-Z0-9_\-]+):\s*\|\s*\n([\s\S]*?)(?=\n[a-zA-Z0-9_\-]+\s*:|\n---|\n$)/g);
+            for (const match of hookMatches) {
+                const camelKey = match[1].substring(3).replace(/_([a-z])/g, (_, char) => char.toUpperCase()).trim();
+                const content = match[2].trim();
+                parsedHooks[camelKey] = content;
             }
         }
 
@@ -330,7 +504,7 @@
             const rightPart = pagesRaw[i+1] || "";
             
             const titleMatch = rightPart.match(/##\s*(.*)/);
-            const pageTitle = titleMatch ? titleMatch[1] : `見開き ${parsedSpreads.length + 1}`;
+            const pageTitle = titleMatch ? titleMatch[1] : `Spread ${parsedSpreads.length + 1}`;
 
             let cleanLeft = leftPart.trim();
             if (cleanLeft.endsWith('---')) {
@@ -356,6 +530,8 @@
         themeColor = parsedThemeColor;
         spreads = parsedSpreads;
         parsedId = parsedIdLocal;
+        bookmarkHtml = parsedBookmarkHtml;
+        hooks = parsedHooks;
     }
 
     function getEmbedUrl(url: string): string {
@@ -436,15 +612,15 @@
     }
 
     function getProgressText() {
-        if (currentIndex === -1) return "表紙";
-        if (hasBio && currentIndex === total) return "裏表紙";
-        if (hasToc && currentIndex === 0) return "目次";
+        if (currentIndex === -1) return "Cover";
+        if (hasBio && currentIndex === total) return "Back Cover";
+        if (hasToc && currentIndex === 0) return "Contents";
         const dataIndex = hasToc ? currentIndex - 1 : currentIndex;
         return `${dataIndex + 1} / ${spreads.length}`;
     }
 
     function getPageNumberStr(contentIndex: number) {
-        if (contentIndex === -1) return "表紙";
+        if (contentIndex === -1) return "Cover";
         if (contentIndex < spreads.length) {
             return `${contentIndex * 2 + 1}`;
         }
@@ -597,6 +773,8 @@
             return;
         }
         
+        executeHook('mouseUp', { clickEvent: e });
+        
         const isVertical = viewMode === 'vertical';
         
         if (currentIndex === -1) {
@@ -737,7 +915,7 @@
             style="position: fixed; top: 20px; left: 20px; z-index: 9999; padding: 8px 14px; font-size: 12px; border-radius: 20px;" 
             onclick={() => goto(backUrl)}
         >
-            戻る
+            Back
         </button>
     {/if}
 
@@ -748,7 +926,7 @@
                     {isSpeaking ? '⏸️' : '🔊'}
                 </button>
             {/if}
-            <button class="theme-switch" onclick={toggleViewMode} title="見開き/縦並び切替">
+            <button class="theme-switch" onclick={toggleViewMode} title="Switch View">
                 {viewMode === 'vertical' ? '📖' : '📃'}
             </button>
             <button class="theme-switch" onclick={toggleTheme}>
@@ -756,7 +934,7 @@
             </button>
         </div>
         <div class="instruction-text">
-            {currentIndex === -1 ? '表紙をクリックして読む' : ''}
+            {currentIndex === -1 ? 'Click to read' : ''}
         </div>
     </div>
 
@@ -782,6 +960,13 @@
             bind:this={bookEl}
             id="book"
         >
+            <!-- はみ出ししおり用のスロット -->
+            {#if bookmarkHtml}
+                <div class="bookmark-slot" id="bookmarkSlot">
+                    {@html bookmarkHtml}
+                </div>
+            {/if}
+
             <!-- 表紙エリア -->
             <div class="cover-overlay" id="cover" style:transform={isOpened ? 'rotateY(-110deg)' : 'none'} style:opacity={isOpened ? 0 : 1} style:pointer-events={isOpened ? 'none' : 'auto'}>
                 {#if coverImage}
@@ -825,7 +1010,7 @@
                     {:else if hasToc && currentIndex === 0}
                         <div class="markdown-body" id="textArea" style:display="block">
                             <div class="book-toc-container">
-                                <h2>目次</h2>
+                                <h2>Contents</h2>
                                 <ul class="book-toc-list">
                                     {#each tocItems as item}
                                         <li>
@@ -857,8 +1042,8 @@
 
     <!-- コントロールパネル -->
     <div class="control-panel">
-        <button class="control-btn" onclick={goFirst} title="最初のページへ">⇤</button>
-        <button class="control-btn" onclick={goPrev} title="前のページへ">◀</button>
+        <button class="control-btn" onclick={goFirst} title="First Page">⇤</button>
+        <button class="control-btn" onclick={goPrev} title="Previous Page">◀</button>
         <input 
             type="range" 
             bind:this={pageSliderEl}
@@ -868,9 +1053,9 @@
             oninput={handleSliderInput} 
             class="page-slider"
         >
-        <button class="control-btn" onclick={goNext} title="次のページへ">▶</button>
-        <button class="control-btn" onclick={goLast} title="最後のページへ">⇥</button>
-        <button class="control-btn" onclick={toggleFullscreen} title="全画面表示">
+        <button class="control-btn" onclick={goNext} title="Next Page">▶</button>
+        <button class="control-btn" onclick={goLast} title="Last Page">⇥</button>
+        <button class="control-btn" onclick={toggleFullscreen} title="Fullscreen">
             {isFullscreen ? '↩︎' : '⛶'}
         </button>
     </div>
@@ -885,7 +1070,7 @@
                     style="padding: 8px 16px; font-size: 0.95rem; border-radius: 20px; cursor: pointer;"
                     onclick={() => handleInsertTocChange(false)}
                 >
-                    目次を戻す
+                    Close
                 </button>
             </div>
         </div>
@@ -893,9 +1078,9 @@
         <div class="footer-box">
             <div class="book-toc-container" style="max-width: 494px; margin: 0 auto; text-align: left; position: relative;">
                 <div class="toc-header-wrapper" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid var(--text-color); padding-bottom: 6px;">
-                    <h2 style="margin: 0; font-size: 1.3rem;">目次</h2>
+                    <h2 style="margin: 0; font-size: 1.3rem;">Contents</h2>
                     <label class="toc-checkbox-label" style="font-size: 0.9rem; opacity: 0.8; margin-left: auto;">
-                        <input type="checkbox" checked={insertToc} onchange={(e) => handleInsertTocChange((e.target as HTMLInputElement).checked)} id="insertTocCheckbox" /> 目次を本に含める
+                        <input type="checkbox" checked={insertToc} onchange={(e) => handleInsertTocChange((e.target as HTMLInputElement).checked)} id="insertTocCheckbox" /> Add Contents page
                     </label>
                 </div>
                 <ul class="book-toc-list" style:display="block">
@@ -987,6 +1172,14 @@
     .book-viewport {
         width: 100%; display: flex; justify-content: center;
         perspective: 2000px; padding-bottom: 20px;
+    }
+
+    .bookmark-slot {
+        position: absolute;
+        top: 0;
+        right: 30px;
+        z-index: 150;
+        pointer-events: auto;
     }
 
     .book-body {

@@ -6,7 +6,7 @@
     let { data } = $props();
 
     let isCard = $derived(data.markdown.includes('play_mode: card') || !/Page\s+\d+:/i.test(data.markdown));
-    let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || []);
+    let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || ['ai-summarizer-hook']);
     
     let currentLanguage = $state('ja');
 

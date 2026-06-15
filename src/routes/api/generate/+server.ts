@@ -65,6 +65,22 @@ CRITICAL RULES:
      [/CREATE_SKILL]
    - The SkillName should be a short, descriptive name (in English or Japanese) for the skill.
    - The Prompt text should be the detailed instructions/rules to guide the AI to generate/modify content in that specific style or way.
+
+9. HYPERHOOKS AND BOOKMARK SKILLS (しおり・フック):
+   - If the user asks to add bookmark features (e.g., "しおりを挟んで", "ポストイット風にして") or transition hooks, you must write them inside the YAML frontmatter block.
+   - Fields to generate:
+     - \`bookmark_html\`: A multiline HTML/CSS block (using YAML "|") defining the visual design of the bookmark. It will be rendered at the top-right of the book.
+       Example:
+       bookmark_html: |
+         <div class="post-it-tab">📌</div>
+         <style>
+           .post-it-tab { position: absolute; top: -15px; right: 10px; background: yellow; padding: 4px; border: 1px solid #ccc; font-size: 12px; }
+         </style>
+     - \`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`:
+       Rules to execute on event. For local script execution, use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg).
+       Example: \`on_open_card: goCard(3)\`
+       For AI instructions, start with "[AI]".
+       Example: \`on_open_card: "[AI] このページを要約して"\`
 `;
 
 const cardSystemInstruction = `
@@ -119,18 +135,122 @@ CRITICAL RULES:
    - Images will be provided as Markdown links in the prompt, e.g., \`![filename](URL)\`. You must use these exact image URLs in your generated Markdown card if you decide to include them.
    - Text contents will be provided in a code block under "### 添付テキスト". Use the information inside these files to enrich the content, structure, or style of the generated card as requested.
 
-7. CREATE SKILLS COMMAND:
+ 7. CREATE SKILLS COMMAND:
    - If the user asks you to save a rule, prompt, style, or instruction as a Skill, or says "Skills化して" / "Skillsにしといて", you must output a special block at the very end of your response (outside of the markdown code block) in this exact format:
      [CREATE_SKILL: SkillName]
      Prompt text...
      [/CREATE_SKILL]
    - The SkillName should be a short, descriptive name (in English or Japanese) for the skill.
    - The Prompt text should be the detailed instructions/rules to guide the AI to generate/modify content in that specific style or way.
+
+ 8. HYPERHOOKS AND BOOKMARK SKILLS (しおり・フック):
+   - If the user asks to add bookmark features (e.g., "しおりを挟んで", "ポストイット風にして") or transition hooks, you must write them inside the YAML frontmatter block.
+   - Fields to generate:
+     - \`bookmark_html\`: A multiline HTML/CSS block (using YAML "|") defining the visual design of the bookmark. It will be rendered at the top-right of the card.
+       Example:
+       bookmark_html: |
+         <div class="post-it-tab">📌</div>
+         <style>
+           .post-it-tab { position: absolute; top: -15px; right: 10px; background: yellow; padding: 4px; border: 1px solid #ccc; font-size: 12px; }
+         </style>
+     - \`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`:
+       Rules to execute on event. For local script execution, use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg).
+       Example: \`on_open_card: goCard(3)\`
+       For AI instructions, start with "[AI]".
+       Example: \`on_open_card: "[AI] このページを要約して"\`
 `;
+
+// JSON-RPC 2.0 Google Drive MCP Server Mock
+function handleGdriveMcpRequest(req: { jsonrpc: string; method: string; params: any; id: any }) {
+    const { name, arguments: args } = req.params;
+    
+    if (name === 'gdrive_search_files') {
+        const query = (args?.query || '').toLowerCase();
+        const mockFiles = [
+            { id: 'gfile-1', name: 'HyperCard Guide.md', type: 'file', content: '# HyperCard Guide\n\nThis is a guide for HyperCardBook, retrieved securely from your Google Drive via MCP.' },
+            { id: 'gfile-2', name: 'Idea Sketchbook.md', type: 'file', content: '# Idea Sketchbook\n\nContains various ideas for vertical layout card books including retro styling, quiz cards, and audio tours.' },
+            { id: 'gfile-3', name: 'Project Timeline.pdf', type: 'file', content: 'Project Timeline: Phase 1 starts in June, Phase 2 in July.' }
+        ];
+
+        const filtered = mockFiles.filter(f => f.name.toLowerCase().includes(query) || f.content.toLowerCase().includes(query));
+        
+        return {
+            jsonrpc: "2.0",
+            result: {
+                content: [
+                    {
+                        type: "text",
+                        text: `Found ${filtered.length} files in Google Drive matching query "${args?.query || ''}":\n` + 
+                              filtered.map(f => `- '${f.name}' (ID: ${f.id}, Type: ${f.type})`).join('\n')
+                    }
+                ]
+            },
+            id: req.id
+        };
+    }
+
+    if (name === 'gdrive_read_file') {
+        const fileId = args?.fileId;
+        const mockFiles: Record<string, string> = {
+            'gfile-1': '# HyperCard Guide\n\nThis is a guide for HyperCardBook, retrieved securely from your Google Drive via MCP.',
+            'gfile-2': '# Idea Sketchbook\n\nContains various ideas for vertical layout card books including retro styling, quiz cards, and audio tours.',
+            'gfile-3': 'Project Timeline: Phase 1 starts in June, Phase 2 in July.'
+        };
+
+        const content = mockFiles[fileId] || `Error: File with ID ${fileId} not found in Google Drive.`;
+        
+        return {
+            jsonrpc: "2.0",
+            result: {
+                content: [
+                    {
+                        type: "text",
+                        text: content
+                    }
+                ]
+            },
+            id: req.id
+        };
+    }
+
+    return {
+        jsonrpc: "2.0",
+        error: {
+            code: -32601,
+            message: "Method not found"
+        },
+        id: req.id
+    };
+}
+
+// Validation logic for AI Content Validator Hook
+function validatePageLength(markdownText: string, mode: string): { isValid: boolean; errorMessage?: string } {
+    if (mode === 'card') {
+        const cleanContent = markdownText.replace(/---[\s\S]*?---/, '').trim();
+        if (cleanContent.length > 400) {
+            return {
+                isValid: false,
+                errorMessage: `The card content length is ${cleanContent.length} characters, which exceeds the 400-character limit.`
+            };
+        }
+    } else {
+        const pages = markdownText.split(/Page\s+\d+:/i);
+        for (let i = 1; i < pages.length; i++) {
+            const pageContent = pages[i].trim();
+            if (pageContent.length > 400) {
+                return {
+                    isValid: false,
+                    errorMessage: `Page ${i} content length is ${pageContent.length} characters, which exceeds the 400-character limit. Please shorten it.`
+                };
+            }
+        }
+    }
+    return { isValid: true };
+}
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
-        const { prompt, history = [], currentMarkdown = '', bookId, mode = 'book' } = await request.json();
+        const { prompt, history = [], currentMarkdown = '', bookId, mode = 'book', currentCardIndex = -1, activePluginIds = [] } = await request.json();
         const session = locals.session;
         const supabase = locals.supabase;
 
@@ -146,6 +266,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const ai = new GoogleGenAI({ apiKey });
 
         let query = '';
+        if (currentCardIndex !== -1) {
+            query += `Current active card/page index (読者が現在開いているページ番号): ${currentCardIndex}\n\n`;
+        }
         if (currentMarkdown) {
             query += `Current book markdown:\n\`\`\`markdown\n${currentMarkdown}\n\`\`\`\n\n`;
         }
@@ -193,52 +316,190 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             activeSystemInstruction += `\n\nCUSTOM PROMPT GUIDELINES:\nFollow these custom prompt guidelines for style, formatting, and content creation:\n"""\n${custompromptMd.trim()}\n"""`;
         }
 
-        const responseStream = await ai.models.generateContentStream({
-            model: 'gemini-3.5-flash',
-            contents: contents,
-            config: {
-                systemInstruction: activeSystemInstruction,
-                temperature: 0.7,
-                maxOutputTokens: 65536,
+        // Helper to perform Gemini content generation with multi-turn tool (MCP) resolution
+        async function generateWithMcpResolution(currentContents: any[], activeSystemInstruction: string, activePluginIds: string[], ai: any): Promise<string> {
+            let localContents = [...currentContents];
+            
+            for (let turn = 0; turn < 10; turn++) {
+                const tools = activePluginIds.includes('gdrive-mcp') ? [
+                    {
+                        functionDeclarations: [
+                            {
+                                name: 'gdrive_search_files',
+                                description: 'Search for files in Google Drive. Returns a list of matching files.',
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        query: {
+                                            type: 'STRING',
+                                            description: 'Search query to filter files.'
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                name: 'gdrive_read_file',
+                                description: 'Read the contents of a specific file from Google Drive by its fileId.',
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        fileId: {
+                                            type: 'STRING',
+                                            description: 'The unique ID of the file to read.'
+                                        }
+                                    },
+                                    required: ['fileId']
+                                }
+                            }
+                        ]
+                    }
+                ] : undefined;
+
+                const response = await ai.models.generateContent({
+                    model: 'gemini-3.5-flash',
+                    contents: localContents,
+                    config: {
+                        systemInstruction: activeSystemInstruction,
+                        temperature: 0.7,
+                        maxOutputTokens: 65536,
+                        tools: tools
+                    }
+                });
+
+                const candidate = response.candidates?.[0];
+                const functionCalls = candidate?.content?.parts?.filter((p: any) => p.functionCall);
+
+                if (functionCalls && functionCalls.length > 0) {
+                    // Save model's function calls to content history
+                    localContents.push({
+                        role: 'model',
+                        parts: candidate.content.parts
+                    });
+
+                    const functionResponses = [];
+                    for (const call of functionCalls) {
+                        const fc = call.functionCall;
+                        if (!fc) continue;
+
+                        let resultData = null;
+                        if (fc.name === 'gdrive_search_files') {
+                            const queryArg = fc.args?.query || '';
+                            const jsonRpcRequest = {
+                                jsonrpc: '2.0',
+                                method: 'tools/call',
+                                params: {
+                                    name: 'gdrive_search_files',
+                                    arguments: { query: queryArg }
+                                },
+                                id: Date.now()
+                            };
+                            const jsonRpcResponse = handleGdriveMcpRequest(jsonRpcRequest);
+                            resultData = jsonRpcResponse.result;
+                        } else if (fc.name === 'gdrive_read_file') {
+                            const fileIdArg = fc.args?.fileId || '';
+                            const jsonRpcRequest = {
+                                jsonrpc: '2.0',
+                                method: 'tools/call',
+                                params: {
+                                    name: 'gdrive_read_file',
+                                    arguments: { fileId: fileIdArg }
+                                },
+                                id: Date.now()
+                            };
+                            const jsonRpcResponse = handleGdriveMcpRequest(jsonRpcRequest);
+                            resultData = jsonRpcResponse.result;
+                        }
+
+                        functionResponses.push({
+                            functionResponse: {
+                                name: fc.name,
+                                response: { result: resultData }
+                            }
+                        });
+                    }
+
+                    // Push tool results to history for next model turn
+                    localContents.push({
+                        role: 'user',
+                        parts: functionResponses
+                    });
+
+                } else {
+                    // No function call, return final generated text
+                    return response.text || '';
+                }
             }
-        });
+            throw new Error('MCP loop exceeded maximum turns.');
+        }
+
+        let responseText = '';
+        let currentContents = [...contents];
+        let attempts = 0;
+        const maxAttempts = 3;
+
+        while (attempts < maxAttempts) {
+            const generatedText = await generateWithMcpResolution(currentContents, activeSystemInstruction, activePluginIds, ai);
+
+            if (activePluginIds.includes('ai-validator-hook')) {
+                const validation = validatePageLength(generatedText, mode);
+                if (!validation.isValid) {
+                    console.warn(`Validation failed (Attempt ${attempts + 1}): ${validation.errorMessage}`);
+                    currentContents.push({
+                        role: 'model',
+                        parts: [{ text: generatedText }]
+                    });
+                    currentContents.push({
+                        role: 'user',
+                        parts: [{ text: `[AI Hook: PreToolUse Validation Error]\n${validation.errorMessage}\nPlease rewrite the content to ensure every page or card is strictly within 400 characters limit. Keep the narrative concise and complete.` }]
+                    });
+                    attempts++;
+                    continue;
+                }
+            }
+
+            responseText = generatedText;
+            break;
+        }
+
+        if (attempts >= maxAttempts && !responseText) {
+            throw new Error('Failed to generate content that satisfies the page length limit validation after 3 attempts.');
+        }
 
         const encoder = new TextEncoder();
-        let completeText = '';
+        
+        // Persist chat history if bookId is available
+        if (bookId && responseText) {
+            const { data: bookCheck } = await supabase
+                .from('books')
+                .select('id')
+                .eq('id', bookId)
+                .eq('user_id', session.user.id)
+                .single();
+
+            if (bookCheck) {
+                await supabase.from('chat_messages').insert({
+                    book_id: bookId,
+                    role: 'user',
+                    text: prompt
+                });
+
+                await supabase.from('chat_messages').insert({
+                    book_id: bookId,
+                    role: 'model',
+                    text: responseText
+                });
+            }
+        }
 
         const stream = new ReadableStream({
             async start(controller) {
                 try {
-                    for await (const chunk of responseStream) {
-                        const text = chunk.text || '';
-                        completeText += text;
-                        controller.enqueue(encoder.encode(text));
+                    const chunkSize = 20; // Send 20 chars at a time
+                    for (let i = 0; i < responseText.length; i += chunkSize) {
+                        const chunk = responseText.slice(i, i + chunkSize);
+                        controller.enqueue(encoder.encode(chunk));
+                        await new Promise(resolve => setTimeout(resolve, 15)); // Simulates typing effect
                     }
-
-                    // Persist chat history if bookId is available
-                    if (bookId && completeText) {
-                        const { data: bookCheck } = await supabase
-                            .from('books')
-                            .select('id')
-                            .eq('id', bookId)
-                            .eq('user_id', session.user.id)
-                            .single();
-
-                        if (bookCheck) {
-                            await supabase.from('chat_messages').insert({
-                                book_id: bookId,
-                                role: 'user',
-                                text: prompt
-                            });
-
-                            await supabase.from('chat_messages').insert({
-                                book_id: bookId,
-                                role: 'model',
-                                text: completeText
-                            });
-                        }
-                    }
-
                     controller.close();
                 } catch (err: any) {
                     console.error('Stream processing error:', err);
@@ -255,6 +516,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                 'Connection': 'keep-alive'
             }
         });
+
     } catch (err: any) {
         console.error('Gemini API Error:', err);
         return json({ error: err.message || 'Failed to generate content.' }, { status: 500 });
