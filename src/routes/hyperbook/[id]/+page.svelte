@@ -35,7 +35,7 @@
         activePluginIds={activePluginIds}
     />
 {:else}
-    <Book markdown={data.markdown} id={data.id} backUrl={data.backUrl} activePluginIds={activePluginIds} language={currentLanguage} />
+    <Book markdown={data.markdown} id={data.id} backUrl={data.isEmbed ? '' : data.backUrl} activePluginIds={activePluginIds} language={currentLanguage} />
 {/if}
 
 
