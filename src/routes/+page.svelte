@@ -779,7 +779,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         {
             id: 'gdrive-mcp',
             name: 'Google Drive MCP',
-            kinds: 'Plugin',
+            kinds: 'MCP',
             owner: 'HyperCardBook',
             description: 'Connect to Google Drive MCP server using JSON-RPC 2.0 to search and read files.',
             skill: 'Use gdrive_search_files and gdrive_read_file tools to fetch content from Google Drive.'

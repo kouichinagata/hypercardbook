@@ -83,7 +83,7 @@
         {
             id: 'gdrive-mcp',
             name: 'Google Drive MCP',
-            kinds: 'Plugin',
+            kinds: 'MCP',
             owner: 'HyperCardBook',
             description: 'JSON-RPC 2.0 に準拠した Google Drive MCP サーバーと通信し、ファイルを検索・読み込みます。',
             skill: 'Google Driveからファイルを検索（gdrive_search_files）またはファイル読み込み（gdrive_read_file）を実行するツールを利用できます。'
