@@ -1418,9 +1418,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                             class="split-view-trigger-btn"
                             onclick={toggleSplitView}
                             title="Open Split View with PapeRobo"
-                            style="background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 4px 8px; margin-left: 8px; transition: transform 0.2s;"
-                            onmouseover="this.style.transform='scale(1.1)'"
-                            onmouseout="this.style.transform='scale(1)'"
                         >
                             📲
                         </button>
@@ -4088,5 +4085,20 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         width: 100%;
         height: 100%;
         border: none;
+    }
+    .split-view-trigger-btn {
+        background: transparent;
+        border: none;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 4px 8px;
+        margin-left: 8px;
+        transition: transform 0.2s ease-in-out;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .split-view-trigger-btn:hover {
+        transform: scale(1.2);
     }
 </style>
