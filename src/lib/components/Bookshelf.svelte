@@ -112,9 +112,50 @@
             handleBookClick(book.id);
         }
     }
+
+    // Initialize Supabase browser client for authentication sharing
+    import { createBrowserClient } from '@supabase/ssr';
+    import { env } from '$env/dynamic/public';
+
+    const supabase = createBrowserClient(
+        env.PUBLIC_SUPABASE_URL || '',
+        env.PUBLIC_SUPABASE_ANON_KEY || ''
+    );
+
+    async function handlePapeRoboLaunch() {
+        const { data: { session } } = await supabase.auth.getSession();
+        let targetUrl = 'http://localhost:5180/ai'; // Local development URL
+
+        if (typeof window !== 'undefined') {
+            if (window.location.hostname === 'hypercardbook.org') {
+                targetUrl = 'https://hypercardbook.org/paperobo/ai';
+            }
+        }
+
+        if (session) {
+            const accessToken = session.access_token;
+            const refreshToken = session.refresh_token;
+            // Append token in hash fragment to securely pass it to PapeRobo
+            window.location.href = `${targetUrl}#access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
+        } else {
+            window.location.href = targetUrl;
+        }
+    }
 </script>
 
+
 <div class="shelf-container" id="shelfContainer">
+    {#if currentUserId}
+        <button 
+            type="button" 
+            class="top-shelf-paperobo-btn" 
+            class:has-stack-btn={showStackBtn}
+            onclick={handlePapeRoboLaunch}
+        >
+            🤖 PapeRobo
+        </button>
+    {/if}
+
     {#if currentUserId && showStackBtn}
         <button 
             type="button" 
@@ -758,6 +799,7 @@
         }
     }
 
+
     /* --- Stack Specific Styles --- */
     .top-shelf-stack-btn {
         position: absolute;
@@ -779,6 +821,47 @@
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         backdrop-filter: blur(10px);
         font-family: system-ui, sans-serif;
+    }
+
+    .top-shelf-paperobo-btn {
+        position: absolute;
+        top: -45px;
+        right: 0;
+        z-index: 100;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--text-color, #f5ebe0);
+        color: var(--text-color, #f5ebe0);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease-in-out;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(10px);
+        font-family: system-ui, sans-serif;
+    }
+
+    .top-shelf-paperobo-btn.has-stack-btn {
+        right: 110px; /* Offset to stack nicely next to the stack button */
+    }
+
+    .top-shelf-paperobo-btn:hover {
+        background: rgba(255, 255, 255, 0.18);
+        transform: scale(1.05);
+    }
+
+    :global([data-theme="light"]) .top-shelf-paperobo-btn {
+        background: rgba(61, 37, 22, 0.06);
+        border-color: var(--text-color, #3d2516);
+        color: var(--text-color, #3d2516);
+    }
+
+    :global([data-theme="light"]) .top-shelf-paperobo-btn:hover {
+        background: rgba(61, 37, 22, 0.12);
     }
 
     .top-shelf-stack-btn:hover {
