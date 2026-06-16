@@ -124,13 +124,7 @@
 
     async function handlePapeRoboLaunch() {
         const { data: { session } } = await supabase.auth.getSession();
-        let targetUrl = 'https://hypercardbook.org/paperobo/ai'; // Production URL as default
-
-        if (typeof window !== 'undefined') {
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                targetUrl = 'http://localhost:5180/ai'; // Local development URL
-            }
-        }
+        let targetUrl = '/paperobo/ai';
 
         if (session) {
             const accessToken = session.access_token;
