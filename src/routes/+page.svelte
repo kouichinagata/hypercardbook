@@ -2174,12 +2174,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     <!-- 左右分割ビュー（実験用） -->
     {#if isSplitViewOpen}
         <div class="split-view-container">
-            <div class="split-view-toolbar">
-                <span class="toolbar-title">📲 PapeRobo × HyperCardBook コパイロット実験</span>
-                <button type="button" class="toolbar-close-btn" onclick={toggleSplitView}>
-                    ✕ 閉じる
-                </button>
-            </div>
             <div class="split-view-panes">
                 <!-- 左側：PapeRobo (モバイルアスペクト比で中央寄せ) -->
                 <div class="split-pane left-pane">
@@ -4026,40 +4020,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         flex-direction: column;
         z-index: 3000;
     }
-    .split-view-toolbar {
-        height: 48px;
-        background: #1e130c;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 16px;
-        color: #f5ebe0;
-        font-family: system-ui, sans-serif;
-    }
-    .toolbar-title {
-        font-weight: 700;
-        font-size: 14px;
-        letter-spacing: 0.5px;
-    }
-    .toolbar-close-btn {
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        color: #f5ebe0;
-        padding: 6px 12px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 12px;
-        transition: background-color 0.2s;
-    }
-    .toolbar-close-btn:hover {
-        background: rgba(255, 255, 255, 0.2);
-    }
     .split-view-panes {
         flex: 1;
         display: flex;
         width: 100%;
-        height: calc(100% - 48px);
+        height: 100%;
     }
     .split-pane {
         flex: 1;
