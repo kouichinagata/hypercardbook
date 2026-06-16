@@ -24,7 +24,8 @@
         onToggleStackSelectionMode = null,
         showMoreBtn = false,
         onMoreClick = null,
-        isPublicShelf = false
+        isPublicShelf = false,
+        showPapeRoboBtn = false
     } = $props();
 
     let displayBooks = $derived(showMoreBtn ? [...books, { id: 'more-btn-virtual', isMoreBtn: true, title: 'more…' }] : books);
@@ -145,7 +146,7 @@
 
 
 <div class="shelf-container" id="shelfContainer">
-    {#if currentUserId}
+    {#if currentUserId && showPapeRoboBtn}
         <button 
             type="button" 
             class="top-shelf-paperobo-btn" 

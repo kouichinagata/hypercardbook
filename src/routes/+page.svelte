@@ -1243,6 +1243,21 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         }
         return `${base}/?public=hVSMUWrz69&iframe=1`;
     }
+
+    let isSplitViewOpen = $state(false);
+
+    function toggleSplitView() {
+        isSplitViewOpen = !isSplitViewOpen;
+    }
+
+    async function getHyperCardBookUrl() {
+        const { data: { session } } = await supabase.auth.getSession();
+        const path = '/hypercard/hypercard-history-perfect';
+        if (session) {
+            return `${path}#access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`;
+        }
+        return path;
+    }
 </script>
 
 <div class="landing-container" data-theme={uiTheme}>
@@ -1397,6 +1412,18 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                 <span>Book</span>
                             </label>
                         </div>
+                        <!-- 📲 ボタンを追加 -->
+                        <button
+                            type="button"
+                            class="split-view-trigger-btn"
+                            onclick={toggleSplitView}
+                            title="Open Split View with PapeRobo"
+                            style="background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 4px 8px; margin-left: 8px; transition: transform 0.2s;"
+                            onmouseover="this.style.transform='scale(1.1)'"
+                            onmouseout="this.style.transform='scale(1)'"
+                        >
+                            📲
+                        </button>
                     </div>
 
                     <button type="submit" class="submit-btn" disabled={!data.currentUserId || isSubmitting || (!prompt.trim() && attachedFiles.length === 0)}>
@@ -1432,6 +1459,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
                     showStackBtn={true}
+                    showPapeRoboBtn={true}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
                     onToggleSelection={handleToggleSelection}
@@ -1454,6 +1482,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
                     showStackBtn={true}
+                    showPapeRoboBtn={true}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
                     onToggleSelection={handleToggleSelection}
@@ -2138,6 +2167,39 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                         class="free-call-iframe"
                         allow="microphone; camera; autoplay"
                     ></iframe>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- 左右分割ビュー（実験用） -->
+    {#if isSplitViewOpen}
+        <div class="split-view-container">
+            <div class="split-view-toolbar">
+                <span class="toolbar-title">📲 PapeRobo × HyperCardBook コパイロット実験</span>
+                <button type="button" class="toolbar-close-btn" onclick={toggleSplitView}>
+                    ✕ 閉じる
+                </button>
+            </div>
+            <div class="split-view-panes">
+                <!-- 左側：PapeRobo (モバイルアスペクト比で中央寄せ) -->
+                <div class="split-pane left-pane">
+                    <iframe 
+                        src={getFreeCallUrl()} 
+                        title="PapeRobo" 
+                        class="split-iframe"
+                        allow="microphone; camera; autoplay"
+                    ></iframe>
+                </div>
+                <!-- 右側：HyperCardBook (id: hypercard-history-perfect) -->
+                <div class="split-pane right-pane">
+                    {#await getHyperCardBookUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="HyperCardBook" 
+                            class="split-iframe"
+                        ></iframe>
+                    {/await}
                 </div>
             </div>
         </div>
@@ -3951,5 +4013,80 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         height: 100%;
         border: none;
         background: #0f1517;
+    }
+
+    /* 左右分割ビュー（実験用）のスタイル */
+    .split-view-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: #0b0c10;
+        display: flex;
+        flex-direction: column;
+        z-index: 3000;
+    }
+    .split-view-toolbar {
+        height: 48px;
+        background: #1e130c;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        color: #f5ebe0;
+        font-family: system-ui, sans-serif;
+    }
+    .toolbar-title {
+        font-weight: 700;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+    }
+    .toolbar-close-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #f5ebe0;
+        padding: 6px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: background-color 0.2s;
+    }
+    .toolbar-close-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+    .split-view-panes {
+        flex: 1;
+        display: flex;
+        width: 100%;
+        height: calc(100% - 48px);
+    }
+    .split-pane {
+        flex: 1;
+        height: 100%;
+        position: relative;
+    }
+    .left-pane {
+        border-right: 2px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        justify-content: center;
+        background: #0f1517;
+    }
+    .left-pane .split-iframe {
+        width: 100%;
+        max-width: 420px; /* 携帯の縦長比率を維持 */
+        height: 100%;
+        border: none;
+        background: #0f1517;
+        box-shadow: 0 0 30px rgba(0,0,0,0.5);
+    }
+    .right-pane {
+        background: #1e130c;
+    }
+    .right-pane .split-iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
     }
 </style>
