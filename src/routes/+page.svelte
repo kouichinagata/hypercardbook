@@ -2177,28 +2177,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             <div class="split-view-header">
                 <!-- 左側ヘッダー -->
                 <div class="header-left-pane">
-                    <button type="button" class="header-back-btn" onclick={toggleSplitView}>
+                    <button type="button" class="back-home-btn" onclick={toggleSplitView}>
                         back
                     </button>
-                    <span class="header-title-chat">Chat</span>
-                    <span class="header-status-badge">Synced</span>
                 </div>
                 <!-- 右側ヘッダー -->
                 <div class="header-right-pane">
-                    <div class="header-tabs">
-                        <span class="header-tab active">Preview</span>
-                        <span class="header-tab">Code (Markdown)</span>
-                    </div>
-                    <div class="header-actions">
-                        {#if data.session?.user?.user_metadata?.avatar_url}
-                            <img src={data.session.user.user_metadata.avatar_url} alt="User Avatar" class="header-action-avatar" />
-                        {:else}
-                            <span class="header-action-avatar-placeholder">👤</span>
-                        {/if}
-                        <button type="button" class="header-action-icon-btn" onclick={toggleSplitView} title="Exit">🚪</button>
-                        <span class="header-action-icon">🌐</span>
-                        <span class="header-action-icon">🔗</span>
-                    </div>
                 </div>
             </div>
             <div class="split-view-panes">
@@ -4051,122 +4035,52 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         height: 48px;
         display: flex;
         width: 100%;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background-color: #12131c;
         box-sizing: border-box;
+    }
+    :global([data-theme="light"]) .split-view-header {
+        background-color: #ebdcd0;
+        border-bottom: 1px solid rgba(61, 37, 22, 0.1);
     }
     .header-left-pane {
         width: 390px;
         flex: 0 0 390px;
-        background: #ece0d1;
-        border-right: 2px solid rgba(0, 0, 0, 0.08);
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
         display: flex;
         align-items: center;
         padding: 0 16px;
         box-sizing: border-box;
     }
-    .header-back-btn {
-        background: #e4d7c5;
-        border: 1px solid #d3c5b2;
-        color: #5c4f3c;
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        font-family: 'Outfit', sans-serif;
-        transition: background-color 0.2s;
-    }
-    .header-back-btn:hover {
-        background: #dad0be;
-    }
-    .header-title-chat {
-        font-weight: 700;
-        font-size: 16px;
-        color: #1e130c;
-        font-family: 'Outfit', sans-serif;
-        margin-left: 12px;
-    }
-    .header-status-badge {
-        background: #d1fae5;
-        color: #065f46;
-        font-size: 10px;
-        font-weight: 600;
-        padding: 2px 6px;
-        border-radius: 10px;
-        font-family: system-ui, sans-serif;
-        margin-left: 8px;
+    :global([data-theme="light"]) .header-left-pane {
+        border-right: 1px solid rgba(61, 37, 22, 0.1);
     }
     .header-right-pane {
         flex: 1;
-        background: #f5ebe0;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 16px;
         box-sizing: border-box;
     }
-    .header-tabs {
-        display: flex;
-        align-items: center;
-        height: 100%;
-    }
-    .header-tab {
-        font-size: 14px;
-        color: #6b7280;
-        padding: 12px 16px;
-        font-family: 'Outfit', sans-serif;
-        display: flex;
-        align-items: center;
-        height: 100%;
-        box-sizing: border-box;
-    }
-    .header-tab.active {
-        font-weight: 700;
-        color: #8b5cf6;
-        border-bottom: 2px solid #8b5cf6;
-    }
-    .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .header-action-avatar {
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        object-fit: cover;
-    }
-    .header-action-avatar-placeholder {
-        font-size: 16px;
-        width: 24px;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .header-action-icon-btn {
-        background: transparent;
-        border: none;
-        font-size: 16px;
+    .back-home-btn {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #ffffff;
+        padding: 4px 10px;
+        border-radius: 4px;
         cursor: pointer;
-        padding: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
+        font-size: 12px;
+        transition: all 0.2s;
+        font-family: system-ui, sans-serif;
     }
-    .header-action-icon {
-        font-size: 16px;
-        padding: 4px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 0, 0, 0.05);
-        width: 24px;
-        height: 24px;
-        box-sizing: border-box;
+    .back-home-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        transform: scale(1.02);
+    }
+    :global([data-theme="light"]) .back-home-btn {
+        background: rgba(61, 37, 22, 0.05);
+        border: 1px solid rgba(61, 37, 22, 0.1);
+        color: #3d2516;
+    }
+    :global([data-theme="light"]) .back-home-btn:hover {
+        background: rgba(61, 37, 22, 0.12);
     }
     .split-view-panes {
         flex: 1;
@@ -4182,24 +4096,29 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     .left-pane {
         flex: 0 0 390px;
         width: 390px;
-        border-right: 2px solid rgba(0, 0, 0, 0.08);
-        background: #ece0d1;
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        background-color: #12131c;
         padding: 20px;
         box-sizing: border-box;
         display: flex;
         align-items: center;
         justify-content: center;
     }
+    :global([data-theme="light"]) .left-pane {
+        background-color: #ebdcd0;
+        border-right: 1px solid rgba(61, 37, 22, 0.1);
+    }
     .left-pane .split-iframe {
         width: 100%;
         height: 100%;
         border: none;
         background: #0f1517;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-        border-radius: 36px;
     }
     .right-pane {
-        background: #f5ebe0;
+        background-color: #12131c;
+    }
+    :global([data-theme="light"]) .right-pane {
+        background-color: #ebdcd0;
     }
     .right-pane .split-iframe {
         width: 100%;
