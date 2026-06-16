@@ -1231,6 +1231,18 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             img.onerror = () => reject(new Error('Failed to load image for compression'));
         });
     }
+
+    let isFreeCallOpen = $state(false);
+
+    function getFreeCallUrl() {
+        let base = 'https://paperobo.hypercardbook.org'; // Production URL
+        if (typeof window !== 'undefined') {
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                base = 'http://localhost:5180'; // Local development URL
+            }
+        }
+        return `${base}/?public=hVSMUWrz69&iframe=1`;
+    }
 </script>
 
 <div class="landing-container" data-theme={uiTheme}>
@@ -2108,8 +2120,28 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 </svg>
                 GitHub Repository
             </a>
+            <span class="footer-separator">&bull;</span>
+            <button type="button" class="footer-link footer-button" onclick={() => isFreeCallOpen = true}>
+                📞Free call
+            </button>
         </div>
     </footer>
+
+    {#if isFreeCallOpen}
+        <div class="free-call-overlay" onclick={() => isFreeCallOpen = false} onkeydown={(e) => { if (e.key === 'Escape') isFreeCallOpen = false }}>
+            <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
+                <button type="button" class="free-call-close-btn" onclick={() => isFreeCallOpen = false}>✕</button>
+                <div class="free-call-iframe-container">
+                    <iframe 
+                        src={getFreeCallUrl()} 
+                        title="Free Call" 
+                        class="free-call-iframe"
+                        allow="microphone; camera; autoplay"
+                    ></iframe>
+                </div>
+            </div>
+        </div>
+    {/if}
 </div>
 
 <style>
@@ -3831,5 +3863,93 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     }
     .footer-link:hover {
         text-decoration: underline;
+    }
+    .footer-button {
+        background: transparent;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: inherit;
+    }
+    .free-call-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.75);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        backdrop-filter: blur(4px);
+    }
+    .free-call-dialog {
+        position: relative;
+        background: #0f1517;
+        width: 100%;
+        max-width: 400px;
+        height: 100%;
+        max-height: 850px;
+        border-radius: 24px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+        animation: dialShow 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes dialShow {
+        from {
+            transform: scale(0.9) translateY(20px);
+            opacity: 0;
+        }
+        to {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+        }
+    }
+    @media (max-width: 480px), (max-height: 850px) {
+        .free-call-dialog {
+            width: 100vw;
+            height: 100vh;
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 0;
+            border: none;
+        }
+    }
+    .free-call-close-btn {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: rgba(0, 0, 0, 0.5);
+        border: none;
+        color: #fff;
+        font-size: 18px;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2010;
+        transition: background-color 0.2s;
+    }
+    .free-call-close-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+    .free-call-iframe-container {
+        flex: 1;
+        width: 100%;
+        height: 100%;
+    }
+    .free-call-iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        background: #0f1517;
     }
 </style>
