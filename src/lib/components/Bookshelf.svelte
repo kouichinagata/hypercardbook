@@ -146,25 +146,28 @@
 
 
 <div class="shelf-container" id="shelfContainer">
-    {#if currentUserId && showPapeRoboBtn}
-        <button 
-            type="button" 
-            class="top-shelf-paperobo-btn" 
-            class:has-stack-btn={showStackBtn}
-            onclick={handlePapeRoboLaunch}
-        >
-            🤖 PapeRobo
-        </button>
-    {/if}
+    {#if currentUserId && (showPapeRoboBtn || showStackBtn)}
+        <div class="top-shelf-actions">
+            {#if showPapeRoboBtn}
+                <button 
+                    type="button" 
+                    class="top-shelf-paperobo-btn" 
+                    onclick={handlePapeRoboLaunch}
+                >
+                    🤖 PapeRobo
+                </button>
+            {/if}
 
-    {#if currentUserId && showStackBtn}
-        <button 
-            type="button" 
-            class="top-shelf-stack-btn" 
-            onclick={() => onToggleStackSelectionMode?.()}
-        >
-            {isStackSelection ? 'Cancel' : '🗒️ Stack'}
-        </button>
+            {#if showStackBtn}
+                <button 
+                    type="button" 
+                    class="top-shelf-stack-btn" 
+                    onclick={() => onToggleStackSelectionMode?.()}
+                >
+                    {isStackSelection ? 'Cancel' : '🗒️ Stack'}
+                </button>
+            {/if}
+        </div>
     {/if}
 
     {#each shelfRows as rowBooks, rowIndex}
@@ -802,11 +805,17 @@
 
 
     /* --- Stack Specific Styles --- */
-    .top-shelf-stack-btn {
+    .top-shelf-actions {
         position: absolute;
         top: -45px;
         right: 0;
         z-index: 100;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .top-shelf-stack-btn {
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid var(--text-color, #f5ebe0);
         color: var(--text-color, #f5ebe0);
@@ -825,10 +834,6 @@
     }
 
     .top-shelf-paperobo-btn {
-        position: absolute;
-        top: -45px;
-        right: 0;
-        z-index: 100;
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid var(--text-color, #f5ebe0);
         color: var(--text-color, #f5ebe0);
@@ -844,10 +849,6 @@
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         backdrop-filter: blur(10px);
         font-family: system-ui, sans-serif;
-    }
-
-    .top-shelf-paperobo-btn.has-stack-btn {
-        right: 110px; /* Offset to stack nicely next to the stack button */
     }
 
     .top-shelf-paperobo-btn:hover {

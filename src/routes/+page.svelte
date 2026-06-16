@@ -1252,7 +1252,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 
     async function getHyperCardBookUrl() {
         const { data: { session } } = await supabase.auth.getSession();
-        const path = '/hypercard/hypercard-history-perfect';
+        const path = '/hypercard/hypercard-history-perfect?embed=true';
         if (session) {
             return `${path}#access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`;
         }
@@ -1402,25 +1402,27 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                         >
                             ➕
                         </button>
-                        <div class="mode-toggle-container">
-                            <label class="mode-toggle-label">
-                                <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
-                                <span>Card</span>
-                            </label>
-                            <label class="mode-toggle-label">
-                                <input type="radio" name="mode" value="book" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
-                                <span>Book</span>
-                            </label>
+                        <div class="toggle-and-split-wrapper">
+                            <div class="mode-toggle-container">
+                                <label class="mode-toggle-label">
+                                    <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
+                                    <span>Card</span>
+                                </label>
+                                <label class="mode-toggle-label">
+                                    <input type="radio" name="mode" value="book" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
+                                    <span>Book</span>
+                                </label>
+                            </div>
+                            <!-- 📲 ボタンを追加 -->
+                            <button
+                                type="button"
+                                class="split-view-trigger-btn"
+                                onclick={toggleSplitView}
+                                title="Open Split View with PapeRobo"
+                            >
+                                📲
+                            </button>
                         </div>
-                        <!-- 📲 ボタンを追加 -->
-                        <button
-                            type="button"
-                            class="split-view-trigger-btn"
-                            onclick={toggleSplitView}
-                            title="Open Split View with PapeRobo"
-                        >
-                            📲
-                        </button>
                     </div>
 
                     <button type="submit" class="submit-btn" disabled={!data.currentUserId || isSubmitting || (!prompt.trim() && attachedFiles.length === 0)}>
@@ -4065,18 +4067,16 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         position: relative;
     }
     .left-pane {
+        flex: 0 0 390px;
+        width: 390px;
         border-right: 2px solid rgba(255, 255, 255, 0.1);
-        display: flex;
-        justify-content: center;
         background: #0f1517;
     }
     .left-pane .split-iframe {
         width: 100%;
-        max-width: 420px; /* 携帯の縦長比率を維持 */
         height: 100%;
         border: none;
         background: #0f1517;
-        box-shadow: 0 0 30px rgba(0,0,0,0.5);
     }
     .right-pane {
         background: #1e130c;
@@ -4086,13 +4086,19 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         height: 100%;
         border: none;
     }
+    .toggle-and-split-wrapper {
+        display: inline-flex;
+        align-items: center;
+        gap: 0;
+        z-index: 10;
+    }
     .split-view-trigger-btn {
         background: transparent;
         border: none;
         font-size: 18px;
         cursor: pointer;
         padding: 4px 8px;
-        margin-left: 8px;
+        margin-left: 0;
         transition: transform 0.2s ease-in-out;
         display: inline-flex;
         align-items: center;
