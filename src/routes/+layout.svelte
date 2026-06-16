@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { invalidate } from '$app/navigation';
+	import { invalidate, invalidateAll } from '$app/navigation';
 	import { createBrowserClient } from '@supabase/ssr';
 	import { env } from '$env/dynamic/public';
 	import '../app.css';
@@ -30,6 +30,7 @@
 						// 履歴からハッシュを取り除いてURLをクリーンにする
 						const newUrl = window.location.pathname + window.location.search;
 						window.history.replaceState(null, '', newUrl);
+						invalidateAll(); // SvelteKitのデータを再読込してUIを更新
 					} else {
 						console.error('Failed to set session from hash:', error);
 					}
