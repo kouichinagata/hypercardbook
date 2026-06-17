@@ -46,7 +46,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
     const pathname = event.url.pathname;
     const isProtectedRoute = pathname.startsWith('/workspace');
-    const isApiRoute = pathname.startsWith('/api/');
+    const isApiRoute = pathname.startsWith('/api/') && !pathname.startsWith('/api/paperobo/published-notification');
 
     if ((isProtectedRoute || isApiRoute) && !session) {
         if (isApiRoute) {

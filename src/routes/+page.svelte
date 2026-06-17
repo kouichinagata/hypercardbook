@@ -170,7 +170,7 @@
 
     const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-    onMount(async () => {
+    onMount(() => {
         const savedTheme = localStorage.getItem('shelf-theme');
         if (savedTheme) {
             uiTheme = savedTheme;
@@ -199,7 +199,23 @@
         }
 
         // Auto translate bookshelf covers on mount
-        await translateBookshelfCovers();
+        translateBookshelfCovers();
+
+        // Subscribe to realtime changes on the books table to auto-refresh bookshelf
+        const channel = supabase
+            .channel('bookshelf-realtime')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'books' },
+                () => {
+                    invalidateAll();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     });
 
     async function saveOnboarding() {
