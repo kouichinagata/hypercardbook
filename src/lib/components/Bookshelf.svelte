@@ -195,7 +195,7 @@
                         {:else}
                             {#if showActions && !isStackSelection}
                                 <div class="book-action-bar">
-                                    {#if book.isSample || (currentUserId && book.userId === currentUserId) || book.isStack}
+                                    {#if book.isSample || book.isPublic || (currentUserId && book.userId === currentUserId) || book.isStack}
                                         <button 
                                             class="action-btn prompt-btn" 
                                             class:selected={selectedBookId === book.id}
