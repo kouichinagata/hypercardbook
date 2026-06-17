@@ -1,8 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
+import { createClient } from '@supabase/supabase-js';
 
-export const POST: RequestHandler = async ({ request, locals }) => {
+export const POST: RequestHandler = async ({ request }) => {
     try {
         const authHeader = request.headers.get('Authorization') || '';
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
@@ -24,8 +26,21 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Missing required parameters: agentId and userId.' }, { status: 400 });
         }
 
-        const supabase = locals.supabase;
-        const bookId = `paperobo-${agentId}`;
+        const supabaseUrl = publicEnv.PUBLIC_SUPABASE_URL || env.PUBLIC_SUPABASE_URL || '';
+        const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+        if (!supabaseUrl || !serviceRoleKey) {
+            console.error('Integration Error: Supabase service role client is not configured.');
+            return json({ error: 'Server integration is misconfigured.' }, { status: 500 });
+        }
+
+        const supabase = createClient(supabaseUrl, serviceRoleKey, {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false
+            }
+        });
+        const bookSlug = `paperobo-${agentId}`;
 
         if (action === 'publish') {
             if (!title) {
@@ -43,9 +58,8 @@ This character is integrated from PapeRobo.
 `;
 
             const bookData = {
-                id: bookId,
                 user_id: userId,
-                slug: bookId,
+                slug: bookSlug,
                 title,
                 author: 'PapeRobo',
                 cover_image: coverImage || null,
@@ -57,7 +71,7 @@ This character is integrated from PapeRobo.
 
             const { error: dbError } = await supabase
                 .from('books')
-                .upsert(bookData, { onConflict: 'id' });
+                .upsert(bookData, { onConflict: 'slug' });
 
             if (dbError) {
                 console.error('Failed to upsert agent into books table:', dbError);
@@ -69,7 +83,7 @@ This character is integrated from PapeRobo.
             const { error: dbError } = await supabase
                 .from('books')
                 .delete()
-                .eq('id', bookId);
+                .eq('slug', bookSlug);
 
             if (dbError) {
                 console.error('Failed to delete agent from books table:', dbError);
