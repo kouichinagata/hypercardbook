@@ -22,6 +22,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 let playMode = 'book';
                 let subTitle = '';
                 let launchUrl = '';
+                let paperoboSlug = '';
+                let hyperbookId = '';
 
                 const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
                 if (fmMatch) {
@@ -34,6 +36,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                             if (k === 'play_mode') playMode = v;
                             if (k === 'sub_title') subTitle = v;
                             if (k === 'launch_url') launchUrl = v;
+                            if (k === 'paperobo_slug') paperoboSlug = v;
+                            if (k === 'hyperbook_id') hyperbookId = v;
                         }
                     });
                 }
@@ -53,6 +57,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                     isStack,
                     playMode,
                     launchUrl,
+                    paperoboSlug,
+                    hyperbookId,
                     subTitle,
                     markdownContent: markdown
                 };
@@ -141,6 +147,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
             let playMode = 'book';
             let subTitle = '';
             let launchUrl = '';
+            let paperoboSlug = '';
+            let hyperbookId = '';
 
             const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
             if (fmMatch) {
@@ -153,6 +161,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                         if (k === 'play_mode') playMode = v;
                         if (k === 'sub_title') subTitle = v;
                         if (k === 'launch_url') launchUrl = v;
+                        if (k === 'paperobo_slug') paperoboSlug = v;
+                        if (k === 'hyperbook_id') hyperbookId = v;
                     }
                 });
             }
@@ -172,6 +182,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 isStack,
                 playMode,
                 launchUrl,
+                paperoboSlug,
+                hyperbookId,
                 subTitle,
                 markdownContent: markdown,
                 createdAt: b.created_at,

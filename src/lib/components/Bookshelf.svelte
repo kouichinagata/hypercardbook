@@ -25,7 +25,12 @@
         showMoreBtn = false,
         onMoreClick = null,
         isPublicShelf = false,
-        showPapeRoboBtn = false
+        showPapeRoboBtn = false,
+        showHyperRoboBtn = false,
+        isHyperRoboSelection = false,
+        selectedHyperRoboBookIds = [],
+        onToggleHyperRoboSelectionMode = null,
+        onHyperRoboClick = null
     } = $props();
 
     let displayBooks = $derived(showMoreBtn ? [...books, { id: 'more-btn-virtual', isMoreBtn: true, title: 'more…' }] : books);
@@ -107,8 +112,16 @@
             }
             return;
         }
+        if (isHyperRoboSelection) {
+            if (!book.isStack) {
+                onToggleSelection?.(book);
+            }
+            return;
+        }
         if (book.isStack) {
             onStackClick?.(book);
+        } else if (book.playMode === 'hyperrobo') {
+            onHyperRoboClick?.(book);
         } else if (book.playMode === 'paperobo' && book.launchUrl) {
             window.location.href = book.launchUrl;
         } else {
@@ -148,7 +161,7 @@
 
 
 <div class="shelf-container" id="shelfContainer">
-    {#if currentUserId && (showPapeRoboBtn || showStackBtn)}
+    {#if currentUserId && (showPapeRoboBtn || showHyperRoboBtn || showStackBtn)}
         <div class="top-shelf-actions">
             {#if showPapeRoboBtn}
                 <button 
@@ -156,7 +169,17 @@
                     class="top-shelf-paperobo-btn" 
                     onclick={handlePapeRoboLaunch}
                 >
-                    🤖 PapeRobo
+                    🧸 PapeRobo
+                </button>
+            {/if}
+
+            {#if showHyperRoboBtn}
+                <button 
+                    type="button" 
+                    class="top-shelf-hyperrobo-btn" 
+                    onclick={() => onToggleHyperRoboSelectionMode?.()}
+                >
+                    {isHyperRoboSelection ? 'Cancel' : '🤖 HyperRobo'}
                 </button>
             {/if}
 
@@ -195,11 +218,11 @@
                                 </div>
                             </div>
                         {:else}
-                            {#if showActions && !isStackSelection}
+                            {#if showActions && !isStackSelection && !isHyperRoboSelection}
                                 <div class="book-action-bar">
                                     {#if book.isSample || book.isPublic || (currentUserId && book.userId === currentUserId) || book.isStack}
                                         <button 
-                                            class={book.playMode === 'paperobo' ? 'paperobo-action-btn prompt-btn' : 'action-btn prompt-btn'} 
+                                            class={(book.playMode === 'paperobo' || book.playMode === 'hyperrobo') ? 'paperobo-action-btn prompt-btn' : 'action-btn prompt-btn'} 
                                             class:selected={selectedBookId === book.id}
                                             onclick={() => {
                                                 if (book.isStack) {
@@ -208,14 +231,14 @@
                                                     onPromptSelect?.(book);
                                                 }
                                             }}
-                                            disabled={(!currentUserId && !book.isStack) || book.playMode === 'paperobo'}
+                                            disabled={(!currentUserId && !book.isStack) || book.playMode === 'paperobo' || book.playMode === 'hyperrobo'}
                                         >
                                             {book.isStack ? 'Duplicate' : 'Prompt'}
                                         </button>
                                     {/if}
                                     {#if !book.isSample && currentUserId && book.userId === currentUserId && !isPublicShelf}
                                         <button 
-                                            class={book.playMode === 'paperobo' ? 'paperobo-action-btn edit-btn icon-btn' : 'action-btn edit-btn icon-btn'} 
+                                            class={(book.playMode === 'paperobo' || book.playMode === 'hyperrobo') ? 'paperobo-action-btn edit-btn icon-btn' : 'action-btn edit-btn icon-btn'} 
                                             onclick={() => onEditBook?.(book)}
                                             title={book.isStack ? 'Edit Stack' : 'Edit'}
                                             disabled={book.playMode === 'paperobo'}
@@ -223,7 +246,7 @@
                                             ✍️
                                         </button>
                                         <button 
-                                            class={book.playMode === 'paperobo' ? 'paperobo-action-btn delete-btn icon-btn' : 'action-btn delete-btn icon-btn'} 
+                                            class={(book.playMode === 'paperobo' || book.playMode === 'hyperrobo') ? 'paperobo-action-btn delete-btn icon-btn' : 'action-btn delete-btn icon-btn'} 
                                             onclick={() => onDeleteBook?.(book)}
                                             title="Delete"
                                             disabled={book.playMode === 'paperobo'}
@@ -233,10 +256,10 @@
                                     {/if}
                                     {#if !book.isSample && currentUserId && book.userId === currentUserId && !isPublicShelf}
                                         <button 
-                                            class={book.playMode === 'paperobo' ? 'paperobo-action-btn download-btn icon-btn' : 'action-btn download-btn icon-btn'} 
+                                            class={(book.playMode === 'paperobo' || book.playMode === 'hyperrobo') ? 'paperobo-action-btn download-btn icon-btn' : 'action-btn download-btn icon-btn'} 
                                             onclick={() => onDownloadBook?.(book)}
                                             title="Download"
-                                            disabled={book.playMode === 'paperobo'}
+                                            disabled={book.playMode === 'paperobo' || book.playMode === 'hyperrobo'}
                                         >
                                             💾
                                         </button>
@@ -249,8 +272,8 @@
                                 class:is-card={book.isCard}
                                 class:is-stack={book.isStack}
                                 class:is-phone={book.playMode === 'paperobo'}
-                                class:selected-in-selection={isStackSelection && selectedStackBookIds.includes(book.id)}
-                                class:unselectable-in-selection={isStackSelection && book.isStack}
+                                class:selected-in-selection={(isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
+                                class:unselectable-in-selection={(isStackSelection && book.isStack) || (isHyperRoboSelection && book.isStack)}
                                 onclick={() => handleItemClick(book)}
                                 onkeydown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
@@ -298,6 +321,30 @@
                                             </div>
                                         </div>
                                     </div>
+                                {:else if book.playMode === 'hyperrobo'}
+                                    <div class="book-cover hyperrobo-cover" data-theme-color="black">
+                                        {#if book.coverImage}
+                                            <img 
+                                                src={normalizePath(book.coverImage)} 
+                                                alt={book.title} 
+                                                class="hyperrobo-phone-icon" 
+                                                onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+                                            />
+                                        {:else}
+                                            <div class="hyperrobo-phone-icon hyperrobo-phone-icon-fallback" aria-hidden="true">📱</div>
+                                        {/if}
+                                        <div class="book-cover-title">{book.title}</div>
+                                        {#if book.author}
+                                            <div class="book-cover-author">
+                                                {book.author}
+                                            </div>
+                                        {/if}
+                                        {#if (isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
+                                            <div class="stack-select-check-overlay">
+                                                <div class="check-circle">✓</div>
+                                            </div>
+                                        {/if}
+                                    </div>
                                 {:else if book.isCard}
                                     <div class="book-cover card-cover" data-theme-color={book.themeColor || 'white'}>
                                         <div class="card-cover-title">{book.title}</div>
@@ -314,7 +361,7 @@
                                         {#if book.subTitle}
                                             <div class="card-cover-subtitle">{book.subTitle}</div>
                                         {/if}
-                                        {#if isStackSelection && selectedStackBookIds.includes(book.id)}
+                                        {#if (isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
                                             <div class="stack-select-check-overlay">
                                                 <div class="check-circle">✓</div>
                                             </div>
@@ -324,7 +371,7 @@
                                     <div class="book-cover" data-theme-color="white">
                                         <div class="book-cover-title">{book.title}</div>
                                         <div class="stack-indicator">🗒️ Stack</div>
-                                        {#if isStackSelection && selectedStackBookIds.includes(book.id)}
+                                        {#if (isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
                                             <div class="stack-select-check-overlay">
                                                 <div class="check-circle">✓</div>
                                             </div>
@@ -346,7 +393,7 @@
                                                 {book.author}
                                             </div>
                                         {/if}
-                                        {#if isStackSelection && selectedStackBookIds.includes(book.id)}
+                                        {#if (isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
                                             <div class="stack-select-check-overlay">
                                                 <div class="check-circle">✓</div>
                                             </div>
@@ -1287,4 +1334,60 @@
     :global([data-theme="light"]) .paperobo-action-btn:hover {
         background: rgba(0, 0, 0, 0.08);
     }
+
+    /* --- HyperRobo ボタン & カバー スタイル --- */
+    .top-shelf-hyperrobo-btn {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--text-color, #f5ebe0);
+        color: var(--text-color, #f5ebe0);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease-in-out;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(10px);
+        font-family: system-ui, sans-serif;
+    }
+    .top-shelf-hyperrobo-btn:hover {
+        background: rgba(255, 255, 255, 0.18);
+        transform: scale(1.05);
+    }
+    :global([data-theme="light"]) .top-shelf-hyperrobo-btn {
+        background: rgba(61, 37, 22, 0.06);
+        border-color: var(--text-color, #3d2516);
+        color: var(--text-color, #3d2516);
+    }
+    :global([data-theme="light"]) .top-shelf-hyperrobo-btn:hover {
+        background: rgba(61, 37, 22, 0.12);
+    }
+
+    .book-cover.hyperrobo-cover {
+        position: relative;
+    }
+
+    .hyperrobo-phone-icon {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 2;
+        width: 48px;
+        height: 48px;
+        margin: 0;
+        object-fit: contain;
+        object-position: 0 0;
+        pointer-events: none;
+    }
+
+    .hyperrobo-phone-icon-fallback {
+        display: grid;
+        place-items: center;
+        font-size: 34px;
+        line-height: 1;
+    }
+
 </style>

@@ -389,6 +389,8 @@
     function handleEditBook(book: any) {
         if (book.isStack) {
             openStackEditMode(book);
+        } else if (book.playMode === 'hyperrobo') {
+            openHyperRoboEditMode(book);
         } else {
             goto(`/workspace?id=${book.id}`);
         }
@@ -401,6 +403,40 @@
     let stackTitle = $state('HyperStack001');
     let selectedStackBooks = $state<any[]>([]); // Array of { id, title, isCard }
     let editingStackId = $state(''); // Empty if creating a new stack
+
+    let isHyperRoboSelectionMode = $state(false);
+    let selectedHyperRoboBooks = $state<any[]>([]); // Array of { id, title, playMode }
+    let selectedHyperRoboBookIds = $derived(selectedHyperRoboBooks.map(b => b.id));
+    let hyperRoboTitle = $state('HyperRobo001');
+    let showHyperRoboModal = $state(false);
+    let editingHyperRoboId = $state('');
+    let isHyperRoboPublic = $state(false);
+    let hyperRoboPublishedAt = $state<string | null>(null);
+    let isSavingHyperRobo = $state(false);
+
+    let showHyperRoboPublishModal = $state(false);
+    let showHyperRoboUnpublishModal = $state(false);
+    let hyperRoboConfirmLegal = $state(false);
+
+    function getNextHyperRoboDefaultTitle() {
+        let maxNum = 0;
+        if (data.books) {
+            data.books.forEach((b: any) => {
+                if (b.playMode === 'hyperrobo' && b.title) {
+                    const match = b.title.match(/^HyperRobo(\d+)$/);
+                    if (match) {
+                        const num = parseInt(match[1], 10);
+                        if (num > maxNum) {
+                            maxNum = num;
+                        }
+                    }
+                }
+            });
+        }
+        const nextNum = maxNum + 1;
+        const padded = String(nextNum).padStart(3, '0');
+        return `HyperRobo${padded}`;
+    }
 
     function getNextStackDefaultTitle() {
         let maxNum = 0;
@@ -504,6 +540,207 @@
         editingStackId = '';
         isStackPublic = false;
         stackPublishedAt = null;
+    }
+
+    function toggleHyperRoboSelectionMode() {
+        isHyperRoboSelectionMode = !isHyperRoboSelectionMode;
+        if (isHyperRoboSelectionMode) {
+            selectedHyperRoboBooks = [];
+            hyperRoboTitle = getNextHyperRoboDefaultTitle();
+            editingHyperRoboId = '';
+            isHyperRoboPublic = false;
+            hyperRoboPublishedAt = null;
+            showHyperRoboModal = true;
+        } else {
+            showHyperRoboModal = false;
+        }
+    }
+
+    function cancelHyperRoboSelection() {
+        isHyperRoboSelectionMode = false;
+        showHyperRoboModal = false;
+        selectedHyperRoboBooks = [];
+        editingHyperRoboId = '';
+        isHyperRoboPublic = false;
+        hyperRoboPublishedAt = null;
+        isSavingHyperRobo = false;
+    }
+
+    function handleToggleHyperRoboSelection(book: any) {
+        const isPape = book.playMode === 'paperobo';
+        const exists = selectedHyperRoboBooks.find(b => b.id === book.id);
+
+        if (exists) {
+            selectedHyperRoboBooks = selectedHyperRoboBooks.filter(b => b.id !== book.id);
+        } else {
+            if (isPape) {
+                selectedHyperRoboBooks = [
+                    ...selectedHyperRoboBooks.filter(b => b.playMode !== 'paperobo'),
+                    { id: book.id, title: book.title, playMode: book.playMode, coverImage: book.coverImage }
+                ];
+            } else {
+                selectedHyperRoboBooks = [
+                    ...selectedHyperRoboBooks.filter(b => b.playMode === 'paperobo'),
+                    { id: book.id, title: book.title, playMode: book.playMode, coverImage: book.coverImage }
+                ];
+            }
+        }
+    }
+
+    async function saveHyperRobo() {
+        if (isSavingHyperRobo) return;
+
+        if (selectedHyperRoboBooks.length !== 2) {
+            alert('Please select one PapeRobo character and one HyperBook/Card.');
+            return;
+        }
+
+        const papeBook = selectedHyperRoboBooks.find(b => b.playMode === 'paperobo');
+        const hyperBook = selectedHyperRoboBooks.find(b => b.playMode !== 'paperobo');
+
+        if (!papeBook || !hyperBook) {
+            alert('Selection must include one PapeRobo character and one HyperBook/Card.');
+            return;
+        }
+
+        isSavingHyperRobo = true;
+        const titleText = hyperRoboTitle.trim() || getNextHyperRoboDefaultTitle();
+        const hyperRoboId = editingHyperRoboId || `hyperrobo-${Date.now()}`;
+        const coverImageUrl = papeBook.coverImage || '';
+
+        const markdown = `---
+title: ${titleText}
+author: HyperRobo
+theme_color: black
+play_mode: hyperrobo
+id: ${hyperRoboId}
+cover_image: ${coverImageUrl}
+is_public: ${isHyperRoboPublic}
+${hyperRoboPublishedAt ? `published_at: ${hyperRoboPublishedAt}` : ''}
+paperobo_slug: ${papeBook.id}
+hyperbook_id: ${hyperBook.id}
+---
+
+# ${titleText}
+PapeRobo: ${papeBook.title}
+HyperBook: ${hyperBook.title}
+`;
+
+        try {
+            const response = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    markdown, 
+                    id: editingHyperRoboId ? hyperRoboId : undefined,
+                    is_public: isHyperRoboPublic,
+                    published_at: hyperRoboPublishedAt
+                })
+            });
+
+            if (response.ok) {
+                isHyperRoboSelectionMode = false;
+                showHyperRoboModal = false;
+                selectedHyperRoboBooks = [];
+                editingHyperRoboId = '';
+                isHyperRoboPublic = false;
+                hyperRoboPublishedAt = null;
+                await invalidateAll();
+            } else {
+                const errData = await response.json();
+                alert(`Failed to save HyperRobo: ${errData.error}`);
+            }
+        } catch (err) {
+            console.error('Save HyperRobo error:', err);
+            alert('An error occurred during save.');
+        } finally {
+            isSavingHyperRobo = false;
+        }
+    }
+
+    function openHyperRoboEditMode(book: any) {
+        editingHyperRoboId = book.id;
+        hyperRoboTitle = book.title;
+        isHyperRoboPublic = book.is_public || false;
+        hyperRoboPublishedAt = book.published_at || null;
+
+        const paperoboSlug = book.paperoboSlug || '';
+        const hyperbookId = book.hyperbookId || '';
+
+        const papeBook = data.books.find((b: any) => b.id === paperoboSlug || b.slug === paperoboSlug);
+        const hyperBook = data.books.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
+
+        selectedHyperRoboBooks = [];
+        if (papeBook) {
+            selectedHyperRoboBooks.push({ id: papeBook.id, title: papeBook.title, playMode: papeBook.playMode, coverImage: papeBook.coverImage });
+        }
+        if (hyperBook) {
+            selectedHyperRoboBooks.push({ id: hyperBook.id, title: hyperBook.title, playMode: hyperBook.playMode, coverImage: hyperBook.coverImage });
+        }
+
+        isHyperRoboSelectionMode = true;
+        showHyperRoboModal = true;
+    }
+
+    function handleHyperRoboPublishBtnClick() {
+        if (isHyperRoboPublic) {
+            showHyperRoboUnpublishModal = true;
+        } else {
+            hyperRoboConfirmLegal = false;
+            showHyperRoboPublishModal = true;
+        }
+    }
+
+    function executeHyperRoboPublish() {
+        if (!hyperRoboConfirmLegal) return;
+        isHyperRoboPublic = true;
+        if (!hyperRoboPublishedAt) {
+            hyperRoboPublishedAt = new Date().toISOString();
+        }
+        showHyperRoboPublishModal = false;
+    }
+
+    function executeHyperRoboUnpublish() {
+        isHyperRoboPublic = false;
+        showHyperRoboUnpublishModal = false;
+    }
+
+    async function publishActiveHyperRobo() {
+        if (!activeHyperRobo) return;
+        
+        let newMarkdown = activeHyperRobo.markdownContent || '';
+        if (newMarkdown.includes('is_public: false')) {
+            newMarkdown = newMarkdown.replace('is_public: false', 'is_public: true');
+        } else if (!newMarkdown.includes('is_public:')) {
+            newMarkdown = newMarkdown.replace('---\n', '---\nis_public: true\n');
+        }
+
+        try {
+            const response = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    markdown: newMarkdown, 
+                    id: activeHyperRobo.id,
+                    is_public: true,
+                    published_at: new Date().toISOString()
+                })
+            });
+
+            if (response.ok) {
+                activeHyperRobo.isPublic = true;
+                activeHyperRobo.markdownContent = newMarkdown;
+                activeHyperRobo = { ...activeHyperRobo };
+                await invalidateAll();
+                alert('HyperRobo has been published successfully.');
+            } else {
+                const errData = await response.json();
+                alert(`Failed to publish: ${errData.error}`);
+            }
+        } catch (err) {
+            console.error('Publish HyperRobo error:', err);
+            alert('An error occurred during publishing.');
+        }
     }
 
     function handleToggleSelection(book: any) {
@@ -1261,14 +1498,49 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     }
 
     let isSplitViewOpen = $state(false);
+    let activeHyperRobo = $state<any>(null);
 
     function toggleSplitView() {
         isSplitViewOpen = !isSplitViewOpen;
+        if (!isSplitViewOpen) {
+            activeHyperRobo = null;
+        }
     }
 
-    async function getHyperCardBookUrl() {
+    function openHyperRoboView(book: any) {
+        activeHyperRobo = book;
+        isSplitViewOpen = true;
+    }
+
+    function getLeftPaneUrl() {
+        if (activeHyperRobo) {
+            const paperoboSlug = activeHyperRobo.paperoboSlug || '';
+            const paperoboBook = data.books.find((b: any) => b.slug === paperoboSlug || b.id === paperoboSlug);
+            let launchUrl = paperoboBook ? paperoboBook.launchUrl : '';
+            if (!launchUrl) {
+                return getFreeCallUrl();
+            }
+            if (launchUrl.includes('?')) {
+                launchUrl += '&iframe=1';
+            } else {
+                launchUrl += '?iframe=1';
+            }
+            return launchUrl;
+        }
+        return getFreeCallUrl();
+    }
+
+    async function getRightPaneUrl() {
         const { data: { session } } = await supabase.auth.getSession();
-        const path = '/hypercard/hypercard-history-perfect?embed=true';
+        let path = '/hypercard/hypercard-history-perfect?embed=true';
+
+        if (activeHyperRobo) {
+            const hyperbookId = activeHyperRobo.hyperbookId || '';
+            const targetBook = data.books.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
+            const isCard = targetBook ? targetBook.isCard : false;
+            path = isCard ? `/hypercard/${hyperbookId}?embed=true` : `/hyperbook/${hyperbookId}?embed=true`;
+        }
+
         if (session) {
             return `${path}#access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`;
         }
@@ -1475,12 +1747,17 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     fromPage="home"
                     showStackBtn={true}
                     showPapeRoboBtn={true}
+                    showHyperRoboBtn={true}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
-                    onToggleSelection={handleToggleSelection}
+                    isHyperRoboSelection={isHyperRoboSelectionMode}
+                    selectedHyperRoboBookIds={selectedHyperRoboBookIds}
+                    onToggleSelection={isHyperRoboSelectionMode ? handleToggleHyperRoboSelection : handleToggleSelection}
                     onStackClick={handleStackClick}
                     onDuplicateStack={handleDuplicateStack}
                     onToggleStackSelectionMode={toggleStackSelectionMode}
+                    onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
+                    onHyperRoboClick={openHyperRoboView}
                 />
             {/if}
         {:else}
@@ -1498,12 +1775,17 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     fromPage="home"
                     showStackBtn={true}
                     showPapeRoboBtn={true}
+                    showHyperRoboBtn={true}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
-                    onToggleSelection={handleToggleSelection}
+                    isHyperRoboSelection={isHyperRoboSelectionMode}
+                    selectedHyperRoboBookIds={selectedHyperRoboBookIds}
+                    onToggleSelection={isHyperRoboSelectionMode ? handleToggleHyperRoboSelection : handleToggleSelection}
                     onStackClick={handleStackClick}
                     onDuplicateStack={handleDuplicateStack}
                     onToggleStackSelectionMode={toggleStackSelectionMode}
+                    onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
+                    onHyperRoboClick={openHyperRoboView}
                 />
             {/if}
 
@@ -1525,10 +1807,14 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     showStackBtn={myBooksList.length === 0}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
-                    onToggleSelection={handleToggleSelection}
+                    isHyperRoboSelection={isHyperRoboSelectionMode}
+                    selectedHyperRoboBookIds={selectedHyperRoboBookIds}
+                    onToggleSelection={isHyperRoboSelectionMode ? handleToggleHyperRoboSelection : handleToggleSelection}
                     onStackClick={handleStackClick}
                     onDuplicateStack={handleDuplicateStack}
                     onToggleStackSelectionMode={toggleStackSelectionMode}
+                    onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
+                    onHyperRoboClick={openHyperRoboView}
                     showMoreBtn={data.publicBooks && data.publicBooks.length > 0 && !showPublicSection}
                     onMoreClick={handleLoadPublicBooks}
                 />
@@ -1562,10 +1848,14 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     showStackBtn={false}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
-                    onToggleSelection={handleToggleSelection}
+                    isHyperRoboSelection={isHyperRoboSelectionMode}
+                    selectedHyperRoboBookIds={selectedHyperRoboBookIds}
+                    onToggleSelection={isHyperRoboSelectionMode ? handleToggleHyperRoboSelection : handleToggleSelection}
                     onStackClick={handleStackClick}
                     onDuplicateStack={handleDuplicateStack}
                     onToggleStackSelectionMode={toggleStackSelectionMode}
+                    onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
+                    onHyperRoboClick={openHyperRoboView}
                     showMoreBtn={hasMorePublic}
                     onMoreClick={loadMorePublicBooks}
                 />
@@ -1660,6 +1950,66 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         </div>
     {/if}
 
+    <!-- HyperRobo Save Popup Panel -->
+    {#if showHyperRoboModal}
+        <div class="stack-popup-panel">
+            <div class="stack-popup-header">
+                <h3>🤖 HyperRobo</h3>
+                <div class="stack-header-actions" style="display: flex; gap: 8px; align-items: center;">
+                    <button 
+                        class="stack-publish-btn" 
+                        class:is-public={isHyperRoboPublic}
+                        onclick={handleHyperRoboPublishBtnClick} 
+                        title={isHyperRoboPublic ? 'Unpublish' : 'Publish'}
+                        style="background: none; border: none; color: #a0aec0; font-size: 1.1rem; cursor: pointer; padding: 4px;"
+                    >
+                        {isHyperRoboPublic ? '👤' : '👥'}
+                    </button>
+                    <button class="close-popup-btn" onclick={cancelHyperRoboSelection} disabled={isSavingHyperRobo}>✕</button>
+                </div>
+            </div>
+            <div class="stack-popup-body">
+                <p class="select-hint">Select one PapeRobo character and one HyperBook/Card from the shelf.</p>
+                
+                <div class="form-group-stack">
+                    <label for="hyperrobo-title">HyperRobo Name</label>
+                    <input 
+                        id="hyperrobo-title"
+                        type="text" 
+                        bind:value={hyperRoboTitle} 
+                        placeholder="HyperRobo001" 
+                        class="stack-title-input-field"
+                        disabled={isSavingHyperRobo}
+                    />
+                </div>
+
+                <div class="stack-listbox-container">
+                    <label class="listbox-label">Selected Items</label>
+                    <div class="stack-listbox">
+                        {#if selectedHyperRoboBooks.length === 0}
+                            <div class="empty-listbox">No items selected</div>
+                        {:else}
+                            <div class="listbox-items">
+                                {#each selectedHyperRoboBooks as item}
+                                    <div class="listbox-item">
+                                        <span class="item-title" title={item.title}>{item.title}</span>
+                                        <span class="item-badge">{item.playMode === 'paperobo' ? 'PapeRobo' : 'Book'}</span>
+                                    </div>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                </div>
+            </div>
+            <div class="stack-popup-footer">
+                <button class="btn-popup btn-popup-secondary" onclick={cancelHyperRoboSelection} disabled={isSavingHyperRobo}>Cancel</button>
+                <button class="btn-popup btn-popup-primary" onclick={saveHyperRobo} disabled={selectedHyperRoboBooks.length !== 2 || isSavingHyperRobo}>
+                    {isSavingHyperRobo ? 'Saving...' : 'Save'}
+                </button>
+            </div>
+        </div>
+    {/if}
+
     <!-- Stack Publish confirmation modal -->
     {#if showStackPublishModal}
         <div class="modal-overlay" onclick={() => showStackPublishModal = false} role="presentation">
@@ -1694,6 +2044,47 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 <div class="publish-modal-footer">
                     <button class="btn-cancel" onclick={() => showStackUnpublishModal = false}>Cancel</button>
                     <button class="btn-publish" onclick={executeStackUnpublish}>
+                        Make Private
+                    </button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- HyperRobo Publish confirmation modal -->
+    {#if showHyperRoboPublishModal}
+        <div class="modal-overlay" onclick={() => showHyperRoboPublishModal = false} role="presentation">
+            <div class="publish-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
+                <div class="publish-modal-body">
+                    <p>Published content is visible to everyone.</p>
+                    <p>It may be searchable on Google.</p>
+                    <p>Other users can reuse and build upon your work.</p>
+                    
+                    <label class="publish-confirm-label">
+                        <input type="checkbox" bind:checked={hyperRoboConfirmLegal} />
+                        <span>I confirm that my data is legal and follows the rules.</span>
+                    </label>
+                </div>
+                <div class="publish-modal-footer">
+                    <button class="btn-cancel" onclick={() => showHyperRoboPublishModal = false}>Cancel</button>
+                    <button class="btn-publish" onclick={executeHyperRoboPublish} disabled={!hyperRoboConfirmLegal}>
+                        Publish
+                    </button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- HyperRobo Unpublish confirmation modal -->
+    {#if showHyperRoboUnpublishModal}
+        <div class="modal-overlay" onclick={() => showHyperRoboUnpublishModal = false} role="presentation">
+            <div class="publish-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
+                <div class="publish-modal-body">
+                    <p>Make this private?</p>
+                </div>
+                <div class="publish-modal-footer">
+                    <button class="btn-cancel" onclick={() => showHyperRoboUnpublishModal = false}>Cancel</button>
+                    <button class="btn-publish" onclick={executeHyperRoboUnpublish}>
                         Make Private
                     </button>
                 </div>
@@ -2205,15 +2596,15 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 <!-- 左側：PapeRobo (モバイルアスペクト比で中央寄せ) -->
                 <div class="split-pane left-pane">
                     <iframe 
-                        src={getFreeCallUrl()} 
+                        src={getLeftPaneUrl()} 
                         title="PapeRobo" 
                         class="split-iframe"
                         allow="microphone; camera; autoplay"
                     ></iframe>
                 </div>
-                <!-- 右側：HyperCardBook (id: hypercard-history-perfect) -->
+                <!-- 右側：HyperCardBook -->
                 <div class="split-pane right-pane">
-                    {#await getHyperCardBookUrl() then src}
+                    {#await getRightPaneUrl() then src}
                         <iframe 
                             {src} 
                             title="HyperCardBook" 
@@ -4161,5 +4552,34 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     }
     .split-view-trigger-btn:hover {
         transform: scale(1.2);
+    }
+    .header-right-pane {
+        flex: 1;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        padding: 0 16px;
+    }
+    .publish-btn {
+        background: #0070f3;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #ffffff;
+        padding: 4px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+        transition: all 0.2s;
+        font-family: system-ui, sans-serif;
+    }
+    .publish-btn:hover {
+        background: #0060d3;
+        transform: scale(1.02);
+    }
+    :global([data-theme="light"]) .publish-btn {
+        background: #0070f3;
+        border: 1px solid rgba(61, 37, 22, 0.1);
+        color: #ffffff;
     }
 </style>

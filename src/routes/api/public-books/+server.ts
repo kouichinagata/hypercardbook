@@ -29,6 +29,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
             let isStack = false;
             let playMode = 'book';
             let launchUrl = '';
+            let paperoboSlug = '';
+            let hyperbookId = '';
             
             const fmMatch = b.markdown_content?.match(/^---\s*([\s\S]*?)\s*---/);
             if (fmMatch) {
@@ -40,6 +42,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
                         const v = parts.slice(1).join(':').trim();
                         if (k === 'play_mode') playMode = v;
                         if (k === 'launch_url') launchUrl = v;
+                        if (k === 'paperobo_slug') paperoboSlug = v;
+                        if (k === 'hyperbook_id') hyperbookId = v;
                     }
                 });
             }
@@ -63,7 +67,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
                 isCard,
                 isStack,
                 playMode,
-                launchUrl
+                launchUrl,
+                paperoboSlug,
+                hyperbookId
             };
         });
 
