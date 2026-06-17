@@ -1486,6 +1486,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     }
 
     let isFreeCallOpen = $state(false);
+    let isPromptCallOpen = $state(false);
 
     function getFreeCallUrl() {
         let base = 'https://paperobo.hypercardbook.org'; // Production URL
@@ -1705,7 +1706,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                             <button
                                 type="button"
                                 class="split-view-trigger-btn"
-                                onclick={toggleSplitView}
+                                onclick={() => isPromptCallOpen = true}
                                 title="Open Split View with PapeRobo"
                             >
                                 📱
@@ -2578,39 +2579,20 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         </div>
     {/if}
 
-    <!-- 左右分割ビュー（実験用） -->
-    {#if isSplitViewOpen}
-        <div class="split-view-container">
-            <div class="split-view-header">
-                <!-- 左側ヘッダー -->
-                <div class="header-left-pane">
-                    <button type="button" class="back-home-btn" onclick={toggleSplitView}>
-                        back
-                    </button>
-                </div>
-                <!-- 右側ヘッダー -->
-                <div class="header-right-pane">
-                </div>
-            </div>
-            <div class="split-view-panes">
-                <!-- 左側：PapeRobo (モバイルアスペクト比で中央寄せ) -->
-                <div class="split-pane left-pane">
+    {#if isPromptCallOpen}
+        <div 
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; z-index: 2000;" 
+            onclick={() => isPromptCallOpen = false}
+        >
+            <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
+                <button type="button" class="free-call-close-btn" onclick={() => isPromptCallOpen = false}>✕</button>
+                <div class="free-call-iframe-container">
                     <iframe 
-                        src={getLeftPaneUrl()} 
-                        title="PapeRobo" 
-                        class="split-iframe"
+                        src={getFreeCallUrl()} 
+                        title="Free Call" 
+                        class="free-call-iframe"
                         allow="microphone; camera; autoplay"
                     ></iframe>
-                </div>
-                <!-- 右側：HyperCardBook -->
-                <div class="split-pane right-pane">
-                    {#await getRightPaneUrl() then src}
-                        <iframe 
-                            {src} 
-                            title="HyperCardBook" 
-                            class="split-iframe"
-                        ></iframe>
-                    {/await}
                 </div>
             </div>
         </div>
