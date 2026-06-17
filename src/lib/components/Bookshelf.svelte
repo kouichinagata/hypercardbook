@@ -109,6 +109,8 @@
         }
         if (book.isStack) {
             onStackClick?.(book);
+        } else if (book.playMode === 'paperobo' && book.launchUrl) {
+            window.location.href = book.launchUrl;
         } else {
             handleBookClick(book.id);
         }
@@ -197,7 +199,7 @@
                                 <div class="book-action-bar">
                                     {#if book.isSample || book.isPublic || (currentUserId && book.userId === currentUserId) || book.isStack}
                                         <button 
-                                            class="action-btn prompt-btn" 
+                                            class={book.playMode === 'paperobo' ? 'paperobo-action-btn prompt-btn' : 'action-btn prompt-btn'} 
                                             class:selected={selectedBookId === book.id}
                                             onclick={() => {
                                                 if (book.isStack) {
@@ -206,32 +208,35 @@
                                                     onPromptSelect?.(book);
                                                 }
                                             }}
-                                            disabled={!currentUserId && !book.isStack}
+                                            disabled={(!currentUserId && !book.isStack) || book.playMode === 'paperobo'}
                                         >
                                             {book.isStack ? 'Duplicate' : 'Prompt'}
                                         </button>
                                     {/if}
                                     {#if !book.isSample && currentUserId && book.userId === currentUserId && !isPublicShelf}
                                         <button 
-                                            class="action-btn edit-btn icon-btn" 
+                                            class={book.playMode === 'paperobo' ? 'paperobo-action-btn edit-btn icon-btn' : 'action-btn edit-btn icon-btn'} 
                                             onclick={() => onEditBook?.(book)}
                                             title={book.isStack ? 'Edit Stack' : 'Edit'}
+                                            disabled={book.playMode === 'paperobo'}
                                         >
                                             ✍️
                                         </button>
                                         <button 
-                                            class="action-btn delete-btn icon-btn" 
+                                            class={book.playMode === 'paperobo' ? 'paperobo-action-btn delete-btn icon-btn' : 'action-btn delete-btn icon-btn'} 
                                             onclick={() => onDeleteBook?.(book)}
                                             title="Delete"
+                                            disabled={book.playMode === 'paperobo'}
                                         >
                                             🗑️
                                         </button>
                                     {/if}
                                     {#if !book.isSample && currentUserId && book.userId === currentUserId && !isPublicShelf}
                                         <button 
-                                            class="action-btn download-btn icon-btn" 
+                                            class={book.playMode === 'paperobo' ? 'paperobo-action-btn download-btn icon-btn' : 'action-btn download-btn icon-btn'} 
                                             onclick={() => onDownloadBook?.(book)}
                                             title="Download"
+                                            disabled={book.playMode === 'paperobo'}
                                         >
                                             💾
                                         </button>
@@ -243,6 +248,7 @@
                                 class="book-item" 
                                 class:is-card={book.isCard}
                                 class:is-stack={book.isStack}
+                                class:is-phone={book.playMode === 'paperobo'}
                                 class:selected-in-selection={isStackSelection && selectedStackBookIds.includes(book.id)}
                                 class:unselectable-in-selection={isStackSelection && book.isStack}
                                 onclick={() => handleItemClick(book)}
@@ -254,7 +260,45 @@
                                 role="button"
                                 tabindex="0"
                             >
-                                {#if book.isCard}
+                                {#if book.playMode === 'paperobo'}
+                                    <div class="book-cover paperobo-phone-cover">
+                                        <div class="phone-bezel">
+                                            <!-- スマホステータスバー -->
+                                            <div class="phone-status-bar">
+                                                <span class="phone-time">17:37</span>
+                                                <div class="phone-notch"></div>
+                                                <span class="phone-network">5G 100%</span>
+                                            </div>
+
+                                            {#if book.coverImage}
+                                                <img 
+                                                    src={normalizePath(book.coverImage)} 
+                                                    alt={book.title} 
+                                                    class="phone-screen-img" 
+                                                    onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+                                                />
+                                            {/if}
+
+                                            <!-- 通話中ステータス -->
+                                            <div class="phone-call-status">
+                                                <div class="phone-avatar-name">
+                                                    <span class="phone-username">{book.title}</span>
+                                                </div>
+                                                <div class="phone-call-duration">通話中 ・ 00:02</div>
+                                            </div>
+
+                                            <!-- 右下のアクションボタン (緑・赤) -->
+                                            <div class="phone-action-buttons">
+                                                <div class="phone-icon-btn phone-btn-green">
+                                                    <span class="btn-icon">📹</span>
+                                                </div>
+                                                <div class="phone-icon-btn phone-btn-red">
+                                                    <span class="btn-icon">✕</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {:else if book.isCard}
                                     <div class="book-cover card-cover" data-theme-color={book.themeColor || 'white'}>
                                         <div class="card-cover-title">{book.title}</div>
                                         {#if book.coverImage}
@@ -1034,5 +1078,213 @@
         .more-text {
             font-size: 0.7rem;
         }
+    }
+
+    /* --- PapeRobo スマホ枠スタイル --- */
+    .book-item.is-phone {
+        width: 75px !important; /* 現代のスマートな縦長比率 */
+        height: 160px !important; /* 高さは他の本と完全に揃える */
+        transform-style: flat !important;
+    }
+    .book-item.is-phone::before {
+        display: none !important;
+    }
+    .book-item.is-phone:hover {
+        transform: translateY(-12px) !important;
+    }
+    .book-item.is-phone:hover .paperobo-phone-cover {
+        box-shadow: 0 12px 24px rgba(0,0,0,0.5) !important;
+    }
+
+    @media (max-width: 600px) {
+        .book-item.is-phone {
+            width: 56px !important;
+            height: 120px !important; /* モバイル表示時の本の高さに揃える */
+        }
+    }
+
+    .paperobo-phone-cover {
+        padding: 0 !important;
+        border: 3px solid #1a1a1a !important; /* 黒枠をスリムに */
+        border-radius: 12px !important;
+        background: #0f1c15 !important;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.4) !important;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: 100%;
+        position: relative;
+        box-sizing: border-box;
+    }
+    
+    .phone-bezel {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .phone-screen-img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 1;
+    }
+
+    /* スマホヘッダー (ステータスバー) */
+    .phone-status-bar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 2px 4px 0;
+        z-index: 10;
+        background: rgba(15, 28, 21, 0.65);
+        color: #ffffff;
+        font-size: 5px; /* 75px幅に合わせてフォントを縮小 */
+        font-weight: 600;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .phone-notch {
+        width: 20px;
+        height: 5px;
+        background: #000000;
+        border-radius: 3px;
+    }
+
+    .phone-time, .phone-network {
+        letter-spacing: 0.05px;
+    }
+
+    /* 左上：通話中・名前UI */
+    .phone-call-status {
+        position: absolute;
+        top: 18px;
+        left: 4px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .phone-avatar-name {
+        display: flex;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.55);
+        padding: 1px 4px;
+        border-radius: 6px;
+        border: 0.5px solid rgba(255, 255, 255, 0.25);
+    }
+    .phone-username {
+        color: #ffffff;
+        font-size: 5px; /* 縮小 */
+        font-weight: bold;
+        max-width: 45px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-family: system-ui, sans-serif;
+    }
+    .phone-call-duration {
+        color: #ffffff;
+        font-size: 4px; /* 縮小 */
+        background: rgba(0, 0, 0, 0.55);
+        padding: 1px 4px;
+        border-radius: 6px;
+        width: fit-content;
+        border: 0.5px solid rgba(255, 255, 255, 0.25);
+        font-family: system-ui, sans-serif;
+    }
+
+    /* 右下：緑と赤の通話ボタン */
+    .phone-action-buttons {
+        position: absolute;
+        bottom: 8px;
+        right: 4px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+    .phone-icon-btn {
+        width: 14px; /* 18pxから縮小 */
+        height: 14px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    }
+    .phone-btn-green {
+        background: #ffffff;
+    }
+    .phone-btn-green .btn-icon {
+        font-size: 6px;
+        color: #22c55e;
+    }
+    .phone-btn-red {
+        background: #ef4444;
+    }
+    .phone-btn-red .btn-icon {
+        font-size: 5px;
+        color: #ffffff;
+        font-weight: bold;
+    }
+
+    /* PapeRobo専用 アクションボタン無効化用スタイル */
+    .paperobo-action-btn {
+        height: 24px;
+        padding: 0 4px;
+        font-size: 9px;
+        border-radius: 4px;
+        cursor: pointer;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.05);
+        color: #f5ebe0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        box-sizing: border-box;
+        font-family: system-ui, sans-serif;
+    }
+    .paperobo-action-btn.icon-btn {
+        width: 22px;
+        height: 24px;
+        font-size: 11px;
+        flex-shrink: 0;
+        padding: 0;
+    }
+    .paperobo-action-btn.prompt-btn {
+        padding: 0 6px;
+        font-weight: 500;
+        flex-shrink: 0;
+    }
+    .paperobo-action-btn:disabled {
+        opacity: 0.55; /* 他のボタンに影響を与えずに、ここでだけ無効化時の見た目を自然に薄くする */
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+    .paperobo-action-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+    }
+    :global([data-theme="light"]) .paperobo-action-btn {
+        border-color: rgba(0, 0, 0, 0.15);
+        background: rgba(0, 0, 0, 0.05);
+        color: #3d2516;
+    }
+    :global([data-theme="light"]) .paperobo-action-btn:hover {
+        background: rgba(0, 0, 0, 0.08);
     }
 </style>

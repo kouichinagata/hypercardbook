@@ -21,6 +21,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 const markdown = b.markdown_content || '';
                 let playMode = 'book';
                 let subTitle = '';
+                let launchUrl = '';
 
                 const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
                 if (fmMatch) {
@@ -32,6 +33,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                             const v = parts.slice(1).join(':').trim();
                             if (k === 'play_mode') playMode = v;
                             if (k === 'sub_title') subTitle = v;
+                            if (k === 'launch_url') launchUrl = v;
                         }
                     });
                 }
@@ -49,6 +51,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                     userId: b.user_id,
                     isCard,
                     isStack,
+                    playMode,
+                    launchUrl,
                     subTitle,
                     markdownContent: markdown
                 };
@@ -136,6 +140,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
             const markdown = b.markdown_content || '';
             let playMode = 'book';
             let subTitle = '';
+            let launchUrl = '';
 
             const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
             if (fmMatch) {
@@ -147,6 +152,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                         const v = parts.slice(1).join(':').trim();
                         if (k === 'play_mode') playMode = v;
                         if (k === 'sub_title') subTitle = v;
+                        if (k === 'launch_url') launchUrl = v;
                     }
                 });
             }
@@ -164,6 +170,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 userId: b.user_id,
                 isCard,
                 isStack,
+                playMode,
+                launchUrl,
                 subTitle,
                 markdownContent: markdown,
                 createdAt: b.created_at,

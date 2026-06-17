@@ -28,6 +28,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
         const formattedBooks = booksToReturn.map((b: any) => {
             let isStack = false;
             let playMode = 'book';
+            let launchUrl = '';
             
             const fmMatch = b.markdown_content?.match(/^---\s*([\s\S]*?)\s*---/);
             if (fmMatch) {
@@ -38,6 +39,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
                         const k = parts[0].trim();
                         const v = parts.slice(1).join(':').trim();
                         if (k === 'play_mode') playMode = v;
+                        if (k === 'launch_url') launchUrl = v;
                     }
                 });
             }
@@ -59,7 +61,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
                 isPublic: b.is_public,
                 publishedAt: b.published_at,
                 isCard,
-                isStack
+                isStack,
+                playMode,
+                launchUrl
             };
         });
 
