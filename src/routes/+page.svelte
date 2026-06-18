@@ -4,6 +4,7 @@
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
     import Bookshelf from '$lib/components/Bookshelf.svelte';
+    import Book from '$lib/components/Book.svelte';
     import { LANGUAGES } from '$lib/languages';
 
     let { data } = $props();
@@ -1488,18 +1489,33 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     let isFreeCallOpen = $state(false);
     let isPromptCallOpen = $state(false);
 
-    function getFreeCallUrl() {
+    async function getFreeCallUrl() {
         let base = 'https://paperobo.hypercardbook.org'; // Production URL
         if (typeof window !== 'undefined') {
             if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
                 base = 'http://localhost:5180'; // Local development URL
             }
         }
-        return `${base}/?public=hVSMUWrz69&iframe=1`;
+        let url = `${base}/?public=hVSMUWrz69&iframe=1`;
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            url += `#access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`;
+        }
+        return url;
     }
 
     let isSplitViewOpen = $state(false);
     let activeHyperRobo = $state<any>(null);
+
+    let activeHyperBook = $derived.by(() => {
+        if (!activeHyperRobo) return null;
+        const hyperbookId = activeHyperRobo.hyperbookId || '';
+        let book = data.books.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
+        if (!book && data.publicBooks) {
+            book = data.publicBooks.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
+        }
+        return book;
+    });
 
     function toggleSplitView() {
         isSplitViewOpen = !isSplitViewOpen;
@@ -1513,22 +1529,26 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         isSplitViewOpen = true;
     }
 
-    function getLeftPaneUrl() {
+    async function getLeftPaneUrl() {
         if (activeHyperRobo) {
             const paperoboSlug = activeHyperRobo.paperoboSlug || '';
             const paperoboBook = data.books.find((b: any) => b.slug === paperoboSlug || b.id === paperoboSlug);
             let launchUrl = paperoboBook ? paperoboBook.launchUrl : '';
             if (!launchUrl) {
-                return getFreeCallUrl();
+                return await getFreeCallUrl();
             }
             if (launchUrl.includes('?')) {
                 launchUrl += '&iframe=1';
             } else {
                 launchUrl += '?iframe=1';
             }
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                launchUrl += `#access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`;
+            }
             return launchUrl;
         }
-        return getFreeCallUrl();
+        return await getFreeCallUrl();
     }
 
     async function getRightPaneUrl() {
@@ -2568,12 +2588,14 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
                 <button type="button" class="free-call-close-btn" onclick={() => isFreeCallOpen = false}>✕</button>
                 <div class="free-call-iframe-container">
-                    <iframe 
-                        src={getFreeCallUrl()} 
-                        title="Free Call" 
-                        class="free-call-iframe"
-                        allow="microphone; camera; autoplay"
-                    ></iframe>
+                    {#await getFreeCallUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="Free Call" 
+                            class="free-call-iframe"
+                            allow="microphone; camera; autoplay"
+                        ></iframe>
+                    {/await}
                 </div>
             </div>
         </div>
@@ -2587,12 +2609,56 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
                 <button type="button" class="free-call-close-btn" onclick={() => isPromptCallOpen = false}>✕</button>
                 <div class="free-call-iframe-container">
-                    <iframe 
-                        src={getFreeCallUrl()} 
-                        title="Free Call" 
-                        class="free-call-iframe"
-                        allow="microphone; camera; autoplay"
-                    ></iframe>
+                    {#await getFreeCallUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="Free Call" 
+                            class="free-call-iframe"
+                            allow="microphone; camera; autoplay"
+                        ></iframe>
+                    {/await}
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- 左右分割ビュー（実験用） -->
+    {#if isSplitViewOpen}
+        <div class="split-view-container">
+            <div class="split-view-header">
+                <!-- 左側ヘッダー -->
+                <div class="header-left-pane">
+                    <button type="button" class="back-home-btn" onclick={toggleSplitView}>
+                        back
+                    </button>
+                </div>
+                <!-- 右側ヘッダー -->
+                <div class="header-right-pane">
+                </div>
+            </div>
+            <div class="split-view-panes">
+                <!-- 左側：PapeRobo (モバイルアスペクト比で中央寄せ) -->
+                <div class="split-pane left-pane">
+                    {#await getLeftPaneUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="PapeRobo" 
+                            class="split-iframe"
+                            allow="microphone; camera; autoplay"
+                        ></iframe>
+                    {/await}
+                </div>
+                <!-- 右側：HyperCardBook -->
+                <div class="split-pane right-pane">
+                    {#if activeHyperBook}
+                        <Book 
+                            markdown={activeHyperBook.markdownContent} 
+                            id={activeHyperBook.id} 
+                            backUrl="" 
+                            activePluginIds={[]} 
+                            language="ja"
+                        />
+                    {/if}
                 </div>
             </div>
         </div>

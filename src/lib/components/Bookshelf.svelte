@@ -322,14 +322,16 @@
                                         </div>
                                     </div>
                                 {:else if book.playMode === 'hyperrobo'}
-                                    <div class="book-cover hyperrobo-cover" data-theme-color="black">
+                                    <div class="book-cover hyperrobo-cover" data-theme-color="blue">
                                         {#if book.coverImage}
-                                            <img 
-                                                src={normalizePath(book.coverImage)} 
-                                                alt={book.title} 
-                                                class="hyperrobo-phone-icon" 
-                                                onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
-                                            />
+                                            <div class="hyperrobo-phone-wrapper">
+                                                <img 
+                                                    src={normalizePath(book.coverImage)} 
+                                                    alt={book.title} 
+                                                    class="hyperrobo-phone-img" 
+                                                    onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+                                                />
+                                            </div>
                                         {:else}
                                             <div class="hyperrobo-phone-icon hyperrobo-phone-icon-fallback" aria-hidden="true">📱</div>
                                         {/if}
@@ -972,9 +974,9 @@
         background: rgba(61, 37, 22, 0.12);
     }
 
-    /* Stack Book Cover (White, double thickness) */
+    /* Stack Book Cover (Yellow, double thickness) */
     .book-item.is-stack .book-cover {
-        background: linear-gradient(135deg, #ffffff 0%, #f9f9f9 50%, #f1f1f1 100%) !important;
+        background: #FFF1AB !important;
         color: #1a1a1a !important;
         border: 1px solid rgba(0, 0, 0, 0.15) !important;
         border-radius: 2px 5px 5px 2px !important;
@@ -1368,6 +1370,29 @@
 
     .book-cover.hyperrobo-cover {
         position: relative;
+    }
+
+    .hyperrobo-phone-wrapper {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 2;
+        width: 30px;
+        height: 48px;
+        margin: 0;
+        box-sizing: content-box;
+        border: 2px solid #1a1a1a;
+        border-radius: 6px;
+        overflow: hidden;
+        background-color: #1a1a1a;
+        pointer-events: none;
+    }
+
+    .hyperrobo-phone-img {
+        height: 100%;
+        width: auto;
+        max-width: none;
+        display: block;
     }
 
     .hyperrobo-phone-icon {

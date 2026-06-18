@@ -16,6 +16,11 @@
         currentIndex = $bindable(-1)
     } = $props();
 
+    // Iframe postMessage connection states
+    let iframeSource: MessageEventSource | null = null;
+    let iframeOrigin = '*';
+    let pages = $state<string[]>([]);
+
     // Text to Speech states & methods
     let isSpeaking = $state(false);
 
@@ -93,6 +98,25 @@
             if (browser && window.speechSynthesis && isSpeaking) {
                 window.speechSynthesis.cancel();
                 isSpeaking = false;
+            }
+        });
+    });
+
+    // Reactive sync for page change
+    $effect(() => {
+        const currentIdx = currentIndex;
+        const currentSub = currentSubPage;
+        
+        untrack(() => {
+            if (iframeSource) {
+                iframeSource.postMessage({
+                    type: 'HCB_PAGE_CHANGED',
+                    payload: {
+                        currentPageIndex: currentIdx,
+                        currentSubPage: currentSub
+                    }
+                }, iframeOrigin);
+                console.log('[HyperCardBook] Sent HCB_PAGE_CHANGED to iframe:', currentIdx);
             }
         });
     });
@@ -498,12 +522,27 @@
         }
 
         // Split pages
-        const pagesRaw = trimmedMd.split(/Page\s*\d+:/g).slice(1);
+        let pagesRaw = trimmedMd.split(/Page\s*\d+:/g).slice(1);
+        if (pagesRaw.length === 0) {
+            // Card fallback: if no Page X: tags are present, treat the entire content (excluding frontmatter) as a single page
+            const contentWithoutFm = trimmedMd.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+            pagesRaw = [contentWithoutFm];
+        }
+
+        // Save parsed plain pages array for iframe AI context
+        pages = pagesRaw.map(p => {
+            let clean = p.trim();
+            if (clean.endsWith('---')) {
+                clean = clean.substring(0, clean.length - 3).trim();
+            }
+            return clean;
+        });
+
         for (let i = 0; i < pagesRaw.length; i += 2) {
             const leftPart = pagesRaw[i] || "";
             const rightPart = pagesRaw[i+1] || "";
             
-            const titleMatch = rightPart.match(/##\s*(.*)/);
+            const titleMatch = rightPart.match(/##\s*(.*)/) || leftPart.match(/##\s*(.*)/);
             const pageTitle = titleMatch ? titleMatch[1] : `Spread ${parsedSpreads.length + 1}`;
 
             let cleanLeft = leftPart.trim();
@@ -890,10 +929,45 @@
         };
         document.addEventListener('fullscreenchange', handleFullscreenChange);
 
+        // Iframe PostMessage communication support
+        const handleMessage = (event: MessageEvent) => {
+            if (!event.data || typeof event.data !== 'object') return;
+
+            const { type, payload } = event.data;
+
+            if (type === 'PAPE_READY') {
+                console.log('[HyperCardBook] Received PAPE_READY from iframe');
+                iframeSource = event.source;
+                iframeOrigin = event.origin;
+
+                // Send HCB_INIT_BOOK to iframe
+                if (iframeSource) {
+                    iframeSource.postMessage({
+                        type: 'HCB_INIT_BOOK',
+                        payload: {
+                            title: title,
+                            totalPages: pages.length,
+                            pages: $state.snapshot(pages),
+                            currentPageIndex: currentIndex
+                        }
+                    }, iframeOrigin);
+                    console.log(`[HyperCardBook] Sent HCB_INIT_BOOK to iframe with ${pages.length} pages`);
+                }
+            } else if (type === 'PAPE_ACTION') {
+                console.log('[HyperCardBook] Received PAPE_ACTION:', payload);
+                if (payload && payload.action === 'next_page') {
+                    goNext();
+                }
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+
         return () => {
             window.removeEventListener('resize', adjustBookScale);
             document.removeEventListener('fullscreenchange', handleFullscreenChange);
             document.removeEventListener('error', handleImageError, true);
+            window.removeEventListener('message', handleMessage);
             if (browser && window.speechSynthesis) {
                 window.speechSynthesis.cancel();
             }
