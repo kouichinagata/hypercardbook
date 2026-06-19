@@ -44,7 +44,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         if (playMode === 'book') {
             // Generate HyperBook HTML template using shared CDN assets
             standaloneHtml = `<!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -102,7 +102,7 @@ ${markdown}
 
             // Assemble standalone HTML template
             standaloneHtml = `<!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">

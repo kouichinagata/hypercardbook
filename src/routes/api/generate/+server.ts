@@ -9,12 +9,14 @@ Your goal is to output a single, complete book in a custom Markdown format based
 
 CRITICAL RULES:
 1. OUTPUT FORMAT:
-   Your response must contain a YAML frontmatter block at the very top, followed by page sections separated by "Page X:" labels.
+   Your response must contain a YAML frontmatter block at the very top, followed by page sections separated by "***" on their own lines (page breaks).
+   - Do NOT use "Page X:" labels or any page pagination labels.
    - The frontmatter block MUST always contain:
      - id: <unique-short-slug, e.g. space-travel-2026>
      - title: <title of the book>
      - play_mode: book
    - DO NOT include frontmatter fields like "author", "cover_image", or "theme_color" unless the user has explicitly requested them in their prompt. Do not populate them with default values.
+   - Never use "***" as a horizontal rule separator inside a page. If you need a divider, use "---" instead.
    Example:
    ---
    id: space-travel-2026
@@ -22,10 +24,10 @@ CRITICAL RULES:
    play_mode: book
    ---
 
-   Page 1:
    <Content for page 1>
 
-   Page 2:
+   ***
+
    <Content for page 2>
    
    ...
@@ -33,9 +35,9 @@ CRITICAL RULES:
 2. DENSITY AND PAGE COUNT:
    - Keep the text density per page moderate. The text content for each page must be strictly within 400 characters and 20 lines (including auto-wrapped lines). Do not write extremely short, poem-like sentences.
    - Increase the page count by breaking topics, counts, or categories across many pages (aim for at least 12-24 pages).
-   - If writing a countdown or top 10 list, dedicate one spread (2 pages) per rank:
-     - Left page (e.g. Page 3): A short video reference using \`video: URL\` or standard Markdown image using \`![alt](URL)\`.
-     - Right page (e.g. Page 4): The rank title (e.g. \`## 10位: <Name>\`) and a brief description.
+   - If writing a countdown or top 10 list, dedicate one spread (2 pages) per rank (separated by "***"):
+     - Left page (1st page of spread): A short video reference using \`video: URL\` or standard Markdown image using \`![alt](URL)\`.
+     - Right page (2nd page of spread): The rank title (e.g. \`## 10位: <Name>\`) and a brief description.
 
 3. VIDEO AND IMAGE SYNTAX:
    - DO NOT invent or generate video URLs on your own. Only use the \`video: <URL>\` syntax if a specific video URL is explicitly provided by the user in their prompt. If no video URL is provided, do not include any video placeholders; use standard Markdown image syntax \`![alt](URL)\` instead.
@@ -234,13 +236,19 @@ function validatePageLength(markdownText: string, mode: string): { isValid: bool
             };
         }
     } else {
-        const pages = markdownText.split(/Page\s+\d+:/i);
-        for (let i = 1; i < pages.length; i++) {
+        const contentWithoutFm = markdownText.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+        let pages = contentWithoutFm.split(/(?:Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
+        pages = pages.map(p => p.trim()).filter(p => p.length > 0);
+        if (pages.length === 0 && contentWithoutFm.length > 0) {
+            pages = [contentWithoutFm];
+        }
+
+        for (let i = 0; i < pages.length; i++) {
             const pageContent = pages[i].trim();
             if (pageContent.length > 400) {
                 return {
                     isValid: false,
-                    errorMessage: `Page ${i} content length is ${pageContent.length} characters, which exceeds the 400-character limit. Please shorten it.`
+                    errorMessage: `Page ${i + 1} content length is ${pageContent.length} characters, which exceeds the 400-character limit. Please shorten it.`
                 };
             }
         }

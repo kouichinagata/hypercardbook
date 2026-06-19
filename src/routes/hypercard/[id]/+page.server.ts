@@ -60,7 +60,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
     }
 
     // Check if markdown is actually a "Book" instead of a "Card"
-    const isCard = markdownContent.includes('play_mode: card') || !/Page\s+\d+:/i.test(markdownContent);
+    const isCard = markdownContent.includes('play_mode: card') || (!markdownContent.includes('play_mode: book') && !/Page\s*\d+:/i.test(markdownContent) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(markdownContent));
     if (!isCard) {
         const redirectParams = new URLSearchParams(url.searchParams);
         throw redirect(302, `/hyperbook/${id}?${redirectParams.toString()}`);

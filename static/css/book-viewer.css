@@ -199,6 +199,9 @@ body[data-theme="dark"] .image-container {
     transition: all 0.3s;
     z-index: 999;
 }
+.control-panel.opened {
+    max-width: 1040px;
+}
 body[data-theme="dark"] .control-panel {
     background: rgba(0, 0, 0, 0.4);
     border: 1px solid rgba(255, 255, 255, 0.08);

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { marked } from 'marked';
-    import { onDestroy } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { browser } from '$app/environment';
 
     let {
@@ -11,6 +11,52 @@
         backUrl = '/',
         activePluginIds = []
     } = $props();
+
+    // Iframe postMessage connection states
+    let iframeSource: MessageEventSource | null = null;
+    let iframeOrigin = '';
+
+    // Extract frontmatter-free raw markdown text
+    let cleanMarkdownText = $derived.by(() => {
+        if (!markdown) return '';
+        return markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
+    });
+
+    onMount(() => {
+        if (!browser) return;
+
+        const handleMessage = (event: MessageEvent) => {
+            if (!event.data || typeof event.data !== 'object') return;
+
+            const { type, payload } = event.data;
+
+            if (type === 'PAPE_READY') {
+                console.log('[HyperCard] Received PAPE_READY from iframe');
+                iframeSource = event.source;
+                iframeOrigin = event.origin;
+
+                // Send HCB_INIT_BOOK to iframe (treating this card as a single-page book)
+                if (iframeSource) {
+                    iframeSource.postMessage({
+                        type: 'HCB_INIT_BOOK',
+                        payload: {
+                            title: cardTitle,
+                            totalPages: 1,
+                            pages: [cleanMarkdownText],
+                            currentPageIndex: 0
+                        }
+                    }, iframeOrigin);
+                    console.log(`[HyperCard] Sent HCB_INIT_BOOK to iframe as a single-page card`);
+                }
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+        
+        return () => {
+            window.removeEventListener('message', handleMessage);
+        };
+    });
 
     // Text to Speech states & methods
     let isSpeaking = $state(false);

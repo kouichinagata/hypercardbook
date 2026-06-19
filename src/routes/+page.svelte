@@ -5,6 +5,7 @@
     import { env } from '$env/dynamic/public';
     import Bookshelf from '$lib/components/Bookshelf.svelte';
     import Book from '$lib/components/Book.svelte';
+    import Card from '$lib/components/Card.svelte';
     import { LANGUAGES } from '$lib/languages';
 
     let { data } = $props();
@@ -2651,13 +2652,26 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 <!-- 右側：HyperCardBook -->
                 <div class="split-pane right-pane">
                     {#if activeHyperBook}
-                        <Book 
-                            markdown={activeHyperBook.markdownContent} 
-                            id={activeHyperBook.id} 
-                            backUrl="" 
-                            activePluginIds={[]} 
-                            language="ja"
-                        />
+                        {#if activeHyperBook.isCard}
+                            <div class="right-pane-card-wrapper">
+                                <Card 
+                                    markdown={activeHyperBook.markdownContent} 
+                                    id={activeHyperBook.id} 
+                                    backUrl="" 
+                                    isEmbed={true} 
+                                    showNewTab={false}
+                                    activePluginIds={activePluginIds}
+                                />
+                            </div>
+                        {:else}
+                            <Book 
+                                markdown={activeHyperBook.markdownContent} 
+                                id={activeHyperBook.id} 
+                                backUrl="" 
+                                activePluginIds={[]} 
+                                language="ja"
+                            />
+                        {/if}
                     {/if}
                 </div>
             </div>
@@ -4629,5 +4643,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         background: #0070f3;
         border: 1px solid rgba(61, 37, 22, 0.1);
         color: #ffffff;
+    }
+    .right-pane-card-wrapper {
+        width: 100%;
+        height: 100%;
+        overflow-y: auto;
+        box-sizing: border-box;
     }
 </style>

@@ -522,12 +522,13 @@
         }
 
         // Split pages
-        let pagesRaw = trimmedMd.split(/Page\s*\d+:/g).slice(1);
-        if (pagesRaw.length === 0) {
-            // Card fallback: if no Page X: tags are present, treat the entire content (excluding frontmatter) as a single page
-            const contentWithoutFm = trimmedMd.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+        const contentWithoutFm = trimmedMd.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+        let pagesRaw = contentWithoutFm.split(/(?:Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
+        pagesRaw = pagesRaw.map(p => p.trim()).filter(p => p.length > 0);
+        if (pagesRaw.length === 0 && contentWithoutFm.length > 0) {
             pagesRaw = [contentWithoutFm];
         }
+
 
         // Save parsed plain pages array for iframe AI context
         pages = pagesRaw.map(p => {
@@ -1058,7 +1059,7 @@
                 <div class="page-side" style:display={(currentIndex !== -1 && (viewMode === 'spread' || currentSubPage === 0)) ? 'flex' : 'none'}>
                     {#if hasBio && currentIndex === total}
                         <div class="image-container" id="imageArea" style:display="flex">
-                            <img src={normalizePath(authorImage || 'author_avatar.png')} alt="著者近影" style="width: auto !important; height: auto !important; max-width: 100% !important; max-height: 100% !important; border-radius: 50%; object-fit: cover; box-shadow: 0 6px 15px rgba(0,0,0,0.15);" />
+                            <img src={normalizePath(authorImage || 'author_avatar.png')} alt="Photo" style="width: auto !important; height: auto !important; max-width: 100% !important; max-height: 100% !important; border-radius: 50%; object-fit: cover; box-shadow: 0 6px 15px rgba(0,0,0,0.15);" />
                         </div>
                     {:else if hasToc && currentIndex === 0}
                         <div class="markdown-body left-markdown" id="leftTextArea" style:display="block"></div>
@@ -1115,7 +1116,7 @@
     </div>
 
     <!-- コントロールパネル -->
-    <div class="control-panel">
+    <div class="control-panel" class:opened={isOpened}>
         <button class="control-btn" onclick={goFirst} title="First Page">⇤</button>
         <button class="control-btn" onclick={goPrev} title="Previous Page">◀</button>
         <input 
@@ -1379,6 +1380,9 @@
         max-width: 494px; width: 90%; box-sizing: border-box;
         transition: all 0.3s;
         z-index: 999;
+    }
+    .control-panel.opened {
+        max-width: 1040px;
     }
     .book-workspace[data-theme="dark"] .control-panel {
         background: rgba(0, 0, 0, 0.4);

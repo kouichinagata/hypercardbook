@@ -4,7 +4,7 @@
     class HyperBookViewer {
         constructor() {
             this.markdown = '';
-            this.title = '無題の書籍';
+            this.title = 'Untitled Book';
             this.author = '';
             this.coverImage = '';
             this.authorImage = '';
@@ -74,8 +74,14 @@
                 }
             }
 
-            // Split pages by "Page X:"
-            const pagesRaw = trimmed.split(/Page\s*\d+:/g).slice(1);
+            // Split pages by "Page X:" or "***"
+            const contentWithoutFm = trimmed.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+            let pagesRaw = contentWithoutFm.split(/(?:Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
+            pagesRaw = pagesRaw.map(p => p.trim()).filter(p => p.length > 0);
+            if (pagesRaw.length === 0 && contentWithoutFm.length > 0) {
+                pagesRaw = [contentWithoutFm];
+            }
+
             for (let i = 0; i < pagesRaw.length; i += 2) {
                 const leftPart = pagesRaw[i] || "";
                 const rightPart = pagesRaw[i+1] || "";
@@ -91,7 +97,7 @@
 
                 // Title extraction for TOC
                 const titleMatch = cleanRight.match(/##\s*(.*)/);
-                const pageTitle = titleMatch ? titleMatch[1].replace(/[\*_`]/g, '').trim() : `見開き ${this.spreads.length + 1}`;
+                const pageTitle = titleMatch ? titleMatch[1].replace(/[\*_`]/g, '').trim() : `Spread ${this.spreads.length + 1}`;
 
                 this.spreads.push({
                     title: pageTitle,
@@ -130,7 +136,7 @@
 
             if (this.authorBio) {
                 this.tocItems.push({
-                    title: "著者紹介",
+                    title: "Author",
                     pageStr: (this.spreads.length * 2 + 1).toString(),
                     jumpIndex: this.getTotalPages()
                 });
@@ -185,15 +191,25 @@
             document.body.setAttribute('data-theme', this.uiTheme);
             document.body.setAttribute('data-book-theme', this.themeColor);
             
+            const texts = {
+                toggleView: 'Switch View',
+                clickCover: 'Click to read',
+                btnFirst: 'First Page',
+                btnPrev: 'Previous Page',
+                btnNext: 'Next Page',
+                btnLast: 'Last Page',
+                btnFullscreen: 'Fullscreen'
+            };
+
             // Build elements
             const container = document.getElementById('hyperbook-viewer');
             container.innerHTML = `
                 <div class="header-area">
                     <div class="theme-switch-container">
-                        <button class="theme-switch" id="btn-toggle-view" title="見開き/縦並び切替">📖</button>
+                        <button class="theme-switch" id="btn-toggle-view" title="${texts.toggleView}">📖</button>
                         <button class="theme-switch" id="btn-toggle-theme">🌙</button>
                     </div>
-                    <div class="instruction-text" id="instruction-text">表紙をクリックして読む</div>
+                    <div class="instruction-text" id="instruction-text">${texts.clickCover}</div>
                 </div>
 
                 <div class="book-viewport">
@@ -223,12 +239,12 @@
 
                 <!-- Control Panel -->
                 <div class="control-panel">
-                    <button class="control-btn" id="btn-first" title="最初のページへ">⇤</button>
-                    <button class="control-btn" id="btn-prev" title="前のページへ">◀</button>
+                    <button class="control-btn" id="btn-first" title="${texts.btnFirst}">⇤</button>
+                    <button class="control-btn" id="btn-prev" title="${texts.btnPrev}">◀</button>
                     <input type="range" id="page-slider" min="-1" value="-1" class="page-slider">
-                    <button class="control-btn" id="btn-next" title="次のページへ">▶</button>
-                    <button class="control-btn" id="btn-last" title="最後のページへ">⇥</button>
-                    <button class="control-btn" id="btn-fullscreen" title="全画面表示">⛶</button>
+                    <button class="control-btn" id="btn-next" title="${texts.btnNext}">▶</button>
+                    <button class="control-btn" id="btn-last" title="${texts.btnLast}">⇥</button>
+                    <button class="control-btn" id="btn-fullscreen" title="${texts.btnFullscreen}">⛶</button>
                 </div>
 
                 <!-- Footer TOC Box -->
@@ -350,9 +366,9 @@
         }
 
         getProgressText() {
-            if (this.currentIndex === -1) return "表紙";
-            if (this.authorBio && this.currentIndex === this.getTotalPages()) return "裏表紙";
-            if (this.insertToc && this.currentIndex === 0) return "目次";
+            if (this.currentIndex === -1) return "Cover";
+            if (this.authorBio && this.currentIndex === this.getTotalPages()) return "Back Cover";
+            if (this.insertToc && this.currentIndex === 0) return "Contents";
             const dataIndex = this.insertToc ? this.currentIndex - 1 : this.currentIndex;
             return `${dataIndex + 1} / ${this.spreads.length}`;
         }
@@ -506,7 +522,7 @@
             const elem = document.documentElement;
             if (!document.fullscreenElement) {
                 elem.requestFullscreen().catch(err => {
-                    console.error(`全画面表示エラー: ${err.message}`);
+                    console.error(`Fullscreen error: ${err.message}`);
                 });
             } else {
                 document.exitFullscreen();
@@ -549,8 +565,10 @@
             }
 
             // Adjust Book opened state
+            const controlPanel = document.querySelector('.control-panel');
             if (isOpened) {
                 this.dom.bookBody.classList.add('opened');
+                if (controlPanel) controlPanel.classList.add('opened');
                 this.dom.cover.style.transform = 'rotateY(-110deg)';
                 this.dom.cover.style.opacity = '0';
                 this.dom.cover.style.pointerEvents = 'none';
@@ -558,11 +576,12 @@
                 this.dom.instruction.textContent = '';
             } else {
                 this.dom.bookBody.classList.remove('opened');
+                if (controlPanel) controlPanel.classList.remove('opened');
                 this.dom.cover.style.transform = 'none';
                 this.dom.cover.style.opacity = '1';
                 this.dom.cover.style.pointerEvents = 'auto';
                 this.dom.content.style.opacity = '0';
-                this.dom.instruction.textContent = '表紙をクリックして読む';
+                this.dom.instruction.textContent = 'Click to read';
             }
 
             // Render current spread content
@@ -598,7 +617,7 @@
                     // Author bio photo page
                     this.dom.leftText.innerHTML = `
                         <div class="author-photo-container">
-                            <img src="${this.normalizePath(this.authorImage || '/static/books/author_avatar.png')}" alt="著者近影" style="width: auto !important; height: auto !important; max-width: 100% !important; max-height: 100% !important; border-radius: 50%; object-fit: cover; box-shadow: 0 6px 15px rgba(0,0,0,0.15);" />
+                            <img src="${this.normalizePath(this.authorImage || '/static/books/author_avatar.png')}" alt="Photo" style="width: auto !important; height: auto !important; max-width: 100% !important; max-height: 100% !important; border-radius: 50%; object-fit: cover; box-shadow: 0 6px 15px rgba(0,0,0,0.15);" />
                         </div>
                     `;
                 } else if (this.insertToc && this.currentIndex === 0) {
@@ -649,7 +668,7 @@
 
             return `
                 <div class="book-toc-container">
-                    <h2>目次</h2>
+                    <h2>Contents</h2>
                     <ul class="book-toc-list">
                         ${listItemsHtml}
                     </ul>
@@ -673,7 +692,7 @@
                 this.dom.footerBox.innerHTML = `
                     <div style="max-width: 494px; margin: 0 auto; text-align: center;">
                         <button class="theme-switch" style="padding: 8px 16px; font-size: 0.95rem; border-radius: 20px; cursor: pointer;" id="btn-restore-toc">
-                            目次を戻す
+                            Close
                         </button>
                     </div>
                 `;
@@ -694,9 +713,9 @@
                 this.dom.footerBox.innerHTML = `
                     <div class="book-toc-container" style="max-width: 494px; margin: 0 auto; text-align: left; position: relative;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid var(--text-color); padding-bottom: 6px;">
-                            <h2 style="margin: 0; font-size: 1.3rem;">目次</h2>
+                            <h2 style="margin: 0; font-size: 1.3rem;">Contents</h2>
                             <label class="toc-checkbox-label" style="font-size: 0.9rem; opacity: 0.8; margin-left: auto; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                                <input type="checkbox" id="checkbox-toc-insert" /> 目次を本に含める
+                                <input type="checkbox" id="checkbox-toc-insert" /> Add Contents page
                             </label>
                         </div>
                         <ul class="book-toc-list" style="display: block;">
