@@ -102,14 +102,72 @@
         });
     });
 
+    // Helper to calculate the single-page index matching the flat pages array
+    function getPlainPageIndex(): number {
+        if (currentIndex === -1) return 0; // Cover
+        
+        let dataIndex = hasToc ? currentIndex - 1 : currentIndex;
+        
+        // TOC page
+        if (hasToc && currentIndex === 0) {
+            return 0;
+        }
+        
+        // Author Bio page
+        if (hasBio && currentIndex === total) {
+            return pages.length - 1;
+        }
+        
+        if (dataIndex < 0) dataIndex = 0;
+        if (dataIndex >= spreads.length) dataIndex = spreads.length - 1;
+        
+        let pageIdx = dataIndex * 2;
+        if (currentSubPage === 1) {
+            pageIdx += 1;
+        }
+        
+        if (pageIdx >= pages.length) pageIdx = pages.length - 1;
+        if (pageIdx < 0) pageIdx = 0;
+        
+        return pageIdx;
+    }
+
+    // Helper to jump to a single-page index (plain index) matching the flat pages array
+    function jumpToPlainPageIndex(plainIndex: number) {
+        if (plainIndex <= 0) {
+            currentIndex = hasToc ? 0 : -1;
+            currentSubPage = 0;
+            return;
+        }
+        
+        if (hasBio && plainIndex >= pages.length - 1) {
+            currentIndex = total;
+            currentSubPage = 0;
+            return;
+        }
+        
+        let dataIndex = Math.floor(plainIndex / 2);
+        let subPage = plainIndex % 2;
+        let targetIdx = hasToc ? dataIndex + 1 : dataIndex;
+        
+        if (targetIdx > total) targetIdx = total;
+        if (targetIdx < -1) targetIdx = -1;
+        
+        currentIndex = targetIdx;
+        currentSubPage = subPage;
+    }
+
     // Reactive sync for page change
     $effect(() => {
-        const currentIdx = currentIndex;
+        // Establish reactive dependency
+        const _idx = currentIndex;
+        const _sub = currentSubPage;
+        const currentIdx = getPlainPageIndex();
         const currentSub = currentSubPage;
         
         untrack(() => {
             if (iframeSource) {
-                iframeSource.postMessage({
+                (iframeSource as any).postMessage({
                     type: 'HCB_PAGE_CHANGED',
                     payload: {
                         currentPageIndex: currentIdx,
@@ -149,6 +207,7 @@
         try {
             const context = {
                 goCard: (index: number) => {
+                    if (index === undefined || index === null || index < 0) return;
                     currentIndex = index;
                     currentSubPage = 0;
                 },
@@ -502,7 +561,7 @@
             }
 
             // Multi-line bookmark_html extraction
-            const bookmarkMatch = fmMatch[1].match(/bookmark_html:\s*\|\s*\n([\s\S]*?)(?=\n[a-zA-Z0-9_\-]+\s*:|\n---|\n$)/);
+            const bookmarkMatch = fmMatch[1].match(/bookmark_html:\s*\|\s*\n([\s\S]*?)(?=\n[a-zA-Z0-9_\-]+\s*:|\n---|\s*$)/);
             if (bookmarkMatch) {
                 parsedBookmarkHtml = bookmarkMatch[1].trim();
             } else {
@@ -513,7 +572,7 @@
             }
 
             // Multi-line hooks extraction
-            const hookMatches = fmMatch[1].matchAll(/(on_[a-zA-Z0-9_\-]+):\s*\|\s*\n([\s\S]*?)(?=\n[a-zA-Z0-9_\-]+\s*:|\n---|\n$)/g);
+            const hookMatches = fmMatch[1].matchAll(/(on_[a-zA-Z0-9_\-]+):\s*\|\s*\n([\s\S]*?)(?=\n[a-zA-Z0-9_\-]+\s*:|\n---|\s*$)/g);
             for (const match of hookMatches) {
                 const camelKey = match[1].substring(3).replace(/_([a-z])/g, (_, char) => char.toUpperCase()).trim();
                 const content = match[2].trim();
@@ -611,19 +670,19 @@
     function renderPage(content: string): string {
         if (!content) return '';
         
-        const lines = content.split('\n');
-        const processedLines = lines.map(line => {
+        let processed = content.split('\n').map(line => {
             const trimmed = line.trim();
             const videoMatch = trimmed.match(/^video:\s*(.*)/);
             if (videoMatch) {
                 const videoUrl = videoMatch[1].trim();
                 return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
             }
-            
             return line;
-        });
+        }).join('\n');
+
+        processed = processed.replace(/\n{2,}/g, (match) => '<br>'.repeat(match.length - 1) + '\n');
         
-        let html = marked.parse(processedLines.join('\n')) as string;
+        let html = marked.parse(processed) as string;
         html = html.replace(/src="books\//g, 'src="/books/');
         return html;
     }
@@ -912,7 +971,7 @@
             }
             return `<pre><code>${codeText}</code></pre>`;
         };
-        marked.use({ renderer });
+        marked.use({ renderer, breaks: true });
 
         // Initialize mermaid globally
         if ((window as any).mermaid) {
@@ -943,21 +1002,30 @@
 
                 // Send HCB_INIT_BOOK to iframe
                 if (iframeSource) {
-                    iframeSource.postMessage({
+                    (iframeSource as any).postMessage({
                         type: 'HCB_INIT_BOOK',
                         payload: {
                             title: title,
                             totalPages: pages.length,
                             pages: $state.snapshot(pages),
-                            currentPageIndex: currentIndex
+                            currentPageIndex: getPlainPageIndex()
                         }
                     }, iframeOrigin);
                     console.log(`[HyperCardBook] Sent HCB_INIT_BOOK to iframe with ${pages.length} pages`);
                 }
             } else if (type === 'PAPE_ACTION') {
                 console.log('[HyperCardBook] Received PAPE_ACTION:', payload);
-                if (payload && payload.action === 'next_page') {
-                    goNext();
+                if (payload) {
+                    if (payload.action === 'next_page') {
+                        jumpToPlainPageIndex(getPlainPageIndex() + 1);
+                    } else if (payload.action === 'prev_page' || payload.action === 'previous_page') {
+                        jumpToPlainPageIndex(getPlainPageIndex() - 1);
+                    } else if (payload.action === 'go_to_page' || payload.action === 'jump_to_page') {
+                        const targetIdx = Number(payload.pageIndex);
+                        if (!isNaN(targetIdx)) {
+                            jumpToPlainPageIndex(targetIdx);
+                        }
+                    }
                 }
             }
         };

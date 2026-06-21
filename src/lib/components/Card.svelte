@@ -1,3 +1,7 @@
+<svelte:head>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</svelte:head>
+
 <script lang="ts">
     import { marked } from 'marked';
     import { onDestroy, onMount } from 'svelte';
@@ -25,6 +29,13 @@
     onMount(() => {
         if (!browser) return;
 
+        if ((window as any).mermaid) {
+            (window as any).mermaid.initialize({
+                startOnLoad: false,
+                theme: cardThemeColor === 'black' ? 'dark' : 'default',
+            });
+        }
+
         const handleMessage = (event: MessageEvent) => {
             if (!event.data || typeof event.data !== 'object') return;
 
@@ -37,7 +48,7 @@
 
                 // Send HCB_INIT_BOOK to iframe (treating this card as a single-page book)
                 if (iframeSource) {
-                    iframeSource.postMessage({
+                    (iframeSource as any).postMessage({
                         type: 'HCB_INIT_BOOK',
                         payload: {
                             title: cardTitle,
@@ -185,8 +196,8 @@
     let cardBodyHtml = $derived.by(() => {
         if (!markdown) return '';
         const cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
-        const lines = cleanMd.split('\n');
-        const processedLines = lines.map(line => {
+
+        let processed = cleanMd.split('\n').map(line => {
             const trimmed = line.trim();
             const videoMatch = trimmed.match(/^video:\s*(.*)/);
             if (videoMatch) {
@@ -194,11 +205,43 @@
                 return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
             }
             return line;
-        });
+        }).join('\n');
+
+        processed = processed.replace(/\n{2,}/g, (match) => '<br>'.repeat(match.length - 1) + '\n');
         
-        let html = marked.parse(processedLines.join('\n')) as string;
+        // Setup custom renderer for card mermaid support
+        const renderer = new marked.Renderer();
+        (renderer as any).code = function(code: any, lang: any) {
+            let codeText = typeof code === 'object' ? code.text : code;
+            let codeLang = typeof code === 'object' ? code.lang : lang;
+            if (codeLang === 'mermaid') {
+                return `<div class="mermaid">${codeText}</div>`;
+            }
+            return `<pre><code>${codeText}</code></pre>`;
+        };
+
+        let html = marked.parse(processed, { renderer, breaks: true }) as string;
         html = html.replace(/src="books\//g, 'src="/books/');
         return html;
+    });
+
+    // Trigger mermaid rendering when card content updates
+    $effect(() => {
+        const _trigger = cardBodyHtml;
+        import('svelte').then(({ tick }) => {
+            tick().then(() => {
+                if (browser && (window as any).mermaid) {
+                    try {
+                        const mermaidDivs = document.querySelectorAll('.mermaid');
+                        if (mermaidDivs.length > 0) {
+                            (window as any).mermaid.init(undefined, mermaidDivs);
+                        }
+                    } catch (e) {
+                        console.error("Card Mermaid render error:", e);
+                    }
+                }
+            });
+        });
     });
 
     function normalizePath(url: string): string {

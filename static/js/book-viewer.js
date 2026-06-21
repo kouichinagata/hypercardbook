@@ -286,7 +286,7 @@
                     }
                     return `<pre><code>${codeText}</code></pre>`;
                 };
-                window.marked.use({ renderer });
+                window.marked.use({ renderer, breaks: true });
             }
         }
 
@@ -303,8 +303,7 @@
         renderPage(content) {
             if (!content) return '';
             
-            const lines = content.split('\n');
-            const processedLines = lines.map(line => {
+            let processed = content.split('\n').map(line => {
                 const trimmed = line.trim();
                 const videoMatch = trimmed.match(/^video:\s*(.*)/);
                 if (videoMatch) {
@@ -312,10 +311,12 @@
                     return `<div class="video-container"><iframe src="${this.getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
                 }
                 return line;
-            });
+            }).join('\n');
+
+            processed = processed.replace(/\n{2,}/g, (match) => '<br>'.repeat(match.length - 1) + '\n');
             
             if (window.marked) {
-                let html = window.marked.parse(processedLines.join('\n'));
+                let html = window.marked.parse(processed);
                 html = html.replace(/src="books\//g, 'src="/books/');
                 return html;
             }

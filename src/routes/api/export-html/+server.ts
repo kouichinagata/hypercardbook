@@ -87,7 +87,7 @@ ${markdown}
 
             // Normalize paths & process videos/images
             const lines = cleanMd.split('\n');
-            const processedLines = lines.map((line: string) => {
+            let processed = cleanMd.split('\n').map((line: string) => {
                 const trimmed = line.trim();
                 const videoMatch = trimmed.match(/^video:\s*(.*)/);
                 if (videoMatch) {
@@ -95,9 +95,22 @@ ${markdown}
                     return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
                 }
                 return line;
-            });
+            }).join('\n');
 
-            let bodyHtml = marked.parse(processedLines.join('\n')) as string;
+            processed = processed.replace(/\n{2,}/g, (match) => '<br>'.repeat(match.length - 1) + '\n');
+
+            // Setup custom renderer for exported HTML to support mermaid and breaks
+            const renderer = new marked.Renderer();
+            (renderer as any).code = function(code: any, lang: any) {
+                let codeText = typeof code === 'object' ? code.text : code;
+                let codeLang = typeof code === 'object' ? code.lang : lang;
+                if (codeLang === 'mermaid') {
+                    return `<div class="mermaid">${codeText}</div>`;
+                }
+                return `<pre><code>${codeText}</code></pre>`;
+            };
+            
+            let bodyHtml = marked.parse(processed, { renderer, breaks: true }) as string;
             bodyHtml = bodyHtml.replace(/src="books\//g, 'src="/books/');
 
             // Assemble standalone HTML template

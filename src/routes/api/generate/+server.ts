@@ -74,13 +74,48 @@ CRITICAL RULES:
      - \`bookmark_html\`: A multiline HTML/CSS block (using YAML "|") defining the visual design of the bookmark. It will be rendered at the top-right of the book.
        Example:
        bookmark_html: |
-         <div class="post-it-tab">📌</div>
+         <div class="hcb-intro-bookmark">Bookmark</div>
          <style>
-           .post-it-tab { position: absolute; top: -15px; right: 10px; background: yellow; padding: 4px; border: 1px solid #ccc; font-size: 12px; }
+           .hcb-intro-bookmark {
+             position: absolute;
+             top: 0;
+             right: 15px;
+             padding: 6px 10px 8px 10px;
+             border-radius: 0 0 4px 4px;
+             font-size: 11px;
+             font-weight: bold;
+             color: #495057; /* 鉛筆で書いたようなチャコールグレー */
+             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+             z-index: 10;
+             white-space: nowrap;
+             display: flex;
+             align-items: center;
+             gap: 5px;
+       
+             /* パターンA：ミントグリーン      */
+             background-color: #e6fcf5;
+             border: 0.3px solid #c3fae8;
+             border-top: none;
+             /* パターンB：クリームゴールド
+             background-color: #fff9db;
+             border: 0.3px solid #f1e2ab;
+             border-top: none;
+             */
+             /* パターンC：スカイブルー
+             background-color: #e7f5ff;
+             border: 0.3px solid #d0ebff;
+             border-top: none;
+             */
+           }
          </style>
      - \`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`:
        Rules to execute on event. For local script execution, use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg).
-       Example: \`on_open_card: goCard(3)\`
+       Example:
+       on_open_stack: |
+         let p = getData("bookmark_" + stackId);
+         if (p !== null) goCard(Number(p));
+       on_close_card: |
+         saveData("bookmark_" + stackId, currentCard);
        For AI instructions, start with "[AI]".
        Example: \`on_open_card: "[AI] このページを要約して"\`
 `;
@@ -151,13 +186,47 @@ CRITICAL RULES:
      - \`bookmark_html\`: A multiline HTML/CSS block (using YAML "|") defining the visual design of the bookmark. It will be rendered at the top-right of the card.
        Example:
        bookmark_html: |
-         <div class="post-it-tab">📌</div>
+         <div class="hcb-intro-bookmark">Bookmark</div>
          <style>
-           .post-it-tab { position: absolute; top: -15px; right: 10px; background: yellow; padding: 4px; border: 1px solid #ccc; font-size: 12px; }
+           .hcb-intro-bookmark {
+             position: absolute;
+             top: 0;
+             right: 15px;
+             padding: 6px 10px 8px 10px;
+             border-radius: 0 0 4px 4px;
+             font-size: 11px;
+             font-weight: bold;
+             color: #495057; /* 鉛筆で書いたようなチャコールグレー */
+             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+             z-index: 10;
+             white-space: nowrap;
+             display: flex;
+             align-items: center;
+             gap: 5px;
+             /* パターンA：ミントグリーン      */
+             background-color: #e6fcf5;
+             border: 0.3px solid #c3fae8;
+             border-top: none;
+             /* パターンB：クリームゴールド
+             background-color: #fff9db;
+             border: 0.3px solid #f1e2ab;
+             border-top: none;
+             */
+             /* パターンC：スカイブルー
+             background-color: #e7f5ff;
+             border: 0.3px solid #d0ebff;
+             border-top: none;
+             */
+           }
          </style>
      - \`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`:
        Rules to execute on event. For local script execution, use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg).
-       Example: \`on_open_card: goCard(3)\`
+       Example:
+       on_open_stack: |
+         let p = getData("bookmark_" + stackId);
+         if (p !== null) goCard(Number(p));
+       on_close_card: |
+         saveData("bookmark_" + stackId, currentCard);
        For AI instructions, start with "[AI]".
        Example: \`on_open_card: "[AI] このページを要約して"\`
 `;
@@ -225,36 +294,7 @@ function handleGdriveMcpRequest(req: { jsonrpc: string; method: string; params: 
     };
 }
 
-// Validation logic for AI Content Validator Hook
-function validatePageLength(markdownText: string, mode: string): { isValid: boolean; errorMessage?: string } {
-    if (mode === 'card') {
-        const cleanContent = markdownText.replace(/---[\s\S]*?---/, '').trim();
-        if (cleanContent.length > 400) {
-            return {
-                isValid: false,
-                errorMessage: `The card content length is ${cleanContent.length} characters, which exceeds the 400-character limit.`
-            };
-        }
-    } else {
-        const contentWithoutFm = markdownText.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
-        let pages = contentWithoutFm.split(/(?:Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
-        pages = pages.map(p => p.trim()).filter(p => p.length > 0);
-        if (pages.length === 0 && contentWithoutFm.length > 0) {
-            pages = [contentWithoutFm];
-        }
 
-        for (let i = 0; i < pages.length; i++) {
-            const pageContent = pages[i].trim();
-            if (pageContent.length > 400) {
-                return {
-                    isValid: false,
-                    errorMessage: `Page ${i + 1} content length is ${pageContent.length} characters, which exceeds the 400-character limit. Please shorten it.`
-                };
-            }
-        }
-    }
-    return { isValid: true };
-}
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
@@ -440,38 +480,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             throw new Error('MCP loop exceeded maximum turns.');
         }
 
-        let responseText = '';
-        let currentContents = [...contents];
-        let attempts = 0;
-        const maxAttempts = 3;
-
-        while (attempts < maxAttempts) {
-            const generatedText = await generateWithMcpResolution(currentContents, activeSystemInstruction, activePluginIds, ai);
-
-            if (activePluginIds.includes('ai-validator-hook')) {
-                const validation = validatePageLength(generatedText, mode);
-                if (!validation.isValid) {
-                    console.warn(`Validation failed (Attempt ${attempts + 1}): ${validation.errorMessage}`);
-                    currentContents.push({
-                        role: 'model',
-                        parts: [{ text: generatedText }]
-                    });
-                    currentContents.push({
-                        role: 'user',
-                        parts: [{ text: `[AI Hook: PreToolUse Validation Error]\n${validation.errorMessage}\nPlease rewrite the content to ensure every page or card is strictly within 400 characters limit. Keep the narrative concise and complete.` }]
-                    });
-                    attempts++;
-                    continue;
-                }
-            }
-
-            responseText = generatedText;
-            break;
-        }
-
-        if (attempts >= maxAttempts && !responseText) {
-            throw new Error('Failed to generate content that satisfies the page length limit validation after 3 attempts.');
-        }
+        const responseText = await generateWithMcpResolution(contents, activeSystemInstruction, activePluginIds, ai);
 
         const encoder = new TextEncoder();
         

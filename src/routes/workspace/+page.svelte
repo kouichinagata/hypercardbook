@@ -46,6 +46,25 @@
     }
     let chatHistory: ChatMessage[] = $state([]);
 
+    // Trigger mermaid rendering when workspace preview or chat history updates
+    $effect(() => {
+        const _trigger1 = chatHistory;
+        const _trigger2 = markdown;
+        const _trigger3 = currentCardIndex;
+        tick().then(() => {
+            if (typeof window !== 'undefined' && (window as any).mermaid) {
+                try {
+                    const mermaidDivs = document.querySelectorAll('.mermaid');
+                    if (mermaidDivs.length > 0) {
+                        (window as any).mermaid.init(undefined, mermaidDivs);
+                    }
+                } catch (e) {
+                    console.error("Workspace Mermaid render error:", e);
+                }
+            }
+        });
+    });
+
     interface Plugin {
         id: string;
         name: string;
@@ -87,14 +106,6 @@
             owner: 'HyperCardBook',
             description: 'JSON-RPC 2.0 に準拠した Google Drive MCP サーバーと通信し、ファイルを検索・読み込みます。',
             skill: 'Google Driveからファイルを検索（gdrive_search_files）またはファイル読み込み（gdrive_read_file）を実行するツールを利用できます。'
-        },
-        {
-            id: 'ai-validator-hook',
-            name: 'AI Content Validator Hook',
-            kinds: 'Hook',
-            owner: 'HyperCardBook',
-            description: '[PreToolUse] 生成されたMarkdownコンテンツが「各ページ400字以内」であるかを検証し、超えている場合は自動で再生成を促します。',
-            skill: '生成するコンテンツの各ページ（またはカード）が、厳密に400文字以内に収まっていることを自動検証します。制限を超えている場合は自動でエラーフィードバックが行われ、再生成されます。'
         }
     ];
 
@@ -134,12 +145,28 @@
         
         if ((window as any).monaco) {
             createMonacoInstance();
-        } else if ((window as any).require) {
-            (window as any).require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
-            (window as any).require(['vs/editor/editor.main'], function() {
-                createMonacoInstance();
-            });
+            return;
         }
+
+        // Dynamically load Monaco's loader.min.js to avoid polluting global namespace with 'define' on startup
+        const script = document.createElement('script');
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js";
+        script.onload = () => {
+            const amdRequire = (window as any).require as any;
+            const amdDefine = (window as any).define as any;
+
+            if (amdRequire) {
+                amdRequire.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+                amdRequire(['vs/editor/editor.main'], () => {
+                    // Hide global AMD 'define' to prevent breaking UMD libraries like 'marked'
+                    if ((window as any).define === amdDefine) {
+                        (window as any).define = undefined;
+                    }
+                    createMonacoInstance();
+                });
+            }
+        };
+        document.head.appendChild(script);
     }
 
     function createMonacoInstance() {
@@ -520,8 +547,7 @@ ${markdown}
             let cardBodyHtml = '';
             if (markdown) {
                 const cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
-                const lines = cleanMd.split('\n');
-                const processedLines = lines.map(line => {
+                let processed = cleanMd.split('\n').map(line => {
                     const trimmed = line.trim();
                     const videoMatch = trimmed.match(/^video:\s*(.*)/);
                     if (videoMatch) {
@@ -529,8 +555,9 @@ ${markdown}
                         return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
                     }
                     return line;
-                });
-                cardBodyHtml = marked.parse(processedLines.join('\n')) as string;
+                }).join('\n');
+                processed = processed.replace(/\n{2,}/g, (match) => '<br>'.repeat(match.length - 1) + '\n');
+                cardBodyHtml = marked.parse(processed) as string;
                 cardBodyHtml = cardBodyHtml.replace(/src="books\//g, 'src="/books/');
             }
 
@@ -951,8 +978,34 @@ ${markdown}
         }
     }
 
+    function parseMarkdownForChat(content: string): string {
+        if (!content) return '';
+        const processed = content.replace(/\n{2,}/g, (match) => '<br>'.repeat(match.length - 1) + '\n');
+        return marked.parse(processed) as string;
+    }
+
     onMount(() => {
         document.body.classList.add('scroll-locked');
+
+        // Setup custom renderer for marked in workspace
+        const renderer = new marked.Renderer();
+        (renderer as any).code = function(code: any, lang: any) {
+            let codeText = typeof code === 'object' ? code.text : code;
+            let codeLang = typeof code === 'object' ? code.lang : lang;
+            if (codeLang === 'mermaid') {
+                return `<div class="mermaid">${codeText}</div>`;
+            }
+            return `<pre><code>${codeText}</code></pre>`;
+        };
+        marked.use({ renderer, breaks: true });
+
+        // Initialize mermaid globally
+        if ((window as any).mermaid) {
+            (window as any).mermaid.initialize({
+                startOnLoad: false,
+                theme: uiTheme === 'dark' ? 'dark' : 'default',
+            });
+        }
 
         const saved = localStorage.getItem('shelf-theme');
         if (saved) {
@@ -1348,9 +1401,7 @@ ${markdown}
 
 </script>
 
-<svelte:head>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
-</svelte:head>
+
 
 <div class="workspace-layout" data-theme={uiTheme}>
     <!-- Left Panel: Chat -->
@@ -1389,7 +1440,7 @@ ${markdown}
                         <div class="bubble-content">
                             {#if message.role === 'user'}
                                 {@const parsed = parseUserMessage(message.text)}
-                                {@html (marked.parse(parsed.body))}
+                                {@html parseMarkdownForChat(parsed.body)}
                                 
                                 {#if parsed.images.length > 0}
                                     <div class="bubble-attached-images-grid">
@@ -1412,7 +1463,7 @@ ${markdown}
                                     </div>
                                 {/if}
                             {:else}
-                                {@html (marked.parse(message.text.replace(/```(?:markdown)?[\s\S]*?```/gi, mode === 'card' ? '[Card generated/updated]' : '[Book generated/updated]').trim()))}
+                                {@html parseMarkdownForChat(message.text.replace(/```(?:markdown)?[\s\S]*?```/gi, mode === 'card' ? '[Card generated/updated]' : '[Book generated/updated]').trim())}
                             {/if}
                         </div>
                     </div>
@@ -1527,16 +1578,20 @@ ${markdown}
             <div class="tabs-right" style="display: flex; gap: 10px; align-items: center; padding-right: 12px;">
                 {#if activeTab === 'source'}
                     <button 
-                        class="toggle-monaco-btn" 
+                        class="card-action-btn tabs-action-btn" 
                         onclick={toggleMonaco} 
                         disabled={!data.session?.user}
-                        style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: #ffffff; padding: 5px 12px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; height: 32px; font-family: system-ui, sans-serif;"
                         title={useMonaco ? "Switch to Plain Text" : "Switch to Monaco Editor"}
                     >
                         {useMonaco ? '🔠' : '🆎'}
                     </button>
-                    <button class="insert-media-btn" onclick={openInsertMedia} disabled={!data.session?.user}>
-                        🖼️ Insert Image
+                    <button 
+                        class="card-action-btn tabs-action-btn" 
+                        onclick={openInsertMedia} 
+                        disabled={!data.session?.user}
+                        title="Insert Image"
+                    >
+                        🖼️
                     </button>
                 {/if}
                 {#if (mode === 'card' && cardSlug) || (mode === 'book' && bookUuid)}

@@ -1038,14 +1038,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
             owner: 'HyperCardBook',
             description: 'Connect to Google Drive MCP server using JSON-RPC 2.0 to search and read files.',
             skill: 'Use gdrive_search_files and gdrive_read_file tools to fetch content from Google Drive.'
-        },
-        {
-            id: 'ai-validator-hook',
-            name: 'AI Content Validator Hook',
-            kinds: 'Hook',
-            owner: 'HyperCardBook',
-            description: '[PreToolUse] Check if each page is under 400 characters and auto-correct if needed.',
-            skill: 'Verify that the character count of each page or card is strictly within 400 characters. Re-generate automatically if it fails.'
         }
     ];
 
@@ -2567,7 +2559,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 
     <footer class="app-footer">
         <div class="footer-content">
-            <span>Open-source project by Koichi Nagata.</span>
+            <span>Open-source project by Koichi Nagata(Quark).</span>
             <span class="footer-separator">&bull;</span>
             <span>MIT License</span>
             <span class="footer-separator">&bull;</span>
