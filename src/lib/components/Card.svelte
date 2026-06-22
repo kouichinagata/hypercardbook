@@ -207,7 +207,14 @@
             return line;
         }).join('\n');
 
-        processed = processed.replace(/\n{2,}/g, (match) => '<br>'.repeat(match.length - 1) + '\n');
+        processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+            const before = string.substring(0, offset).trimEnd();
+            const after = string.substring(offset + match.length).trimStart();
+            if (before.endsWith('>') || after.startsWith('<') || after === '') {
+                return match;
+            }
+            return '<br>'.repeat(match.length - 1) + '\n';
+        });
         
         // Setup custom renderer for card mermaid support
         const renderer = new marked.Renderer();

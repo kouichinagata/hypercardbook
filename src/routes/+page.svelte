@@ -669,8 +669,14 @@ HyperBook: ${hyperBook.title}
         const paperoboSlug = book.paperoboSlug || '';
         const hyperbookId = book.hyperbookId || '';
 
-        const papeBook = data.books.find((b: any) => b.id === paperoboSlug || b.slug === paperoboSlug);
-        const hyperBook = data.books.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
+        let papeBook = data.books.find((b: any) => b.id === paperoboSlug || b.slug === paperoboSlug);
+        if (!papeBook && data.publicBooks) {
+            papeBook = data.publicBooks.find((b: any) => b.id === paperoboSlug || b.slug === paperoboSlug);
+        }
+        let hyperBook = data.books.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
+        if (!hyperBook && data.publicBooks) {
+            hyperBook = data.publicBooks.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
+        }
 
         selectedHyperRoboBooks = [];
         if (papeBook) {
@@ -1525,7 +1531,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     async function getLeftPaneUrl() {
         if (activeHyperRobo) {
             const paperoboSlug = activeHyperRobo.paperoboSlug || '';
-            const paperoboBook = data.books.find((b: any) => b.slug === paperoboSlug || b.id === paperoboSlug);
+            let paperoboBook = data.books.find((b: any) => b.slug === paperoboSlug || b.id === paperoboSlug);
+            if (!paperoboBook && data.publicBooks) {
+                paperoboBook = data.publicBooks.find((b: any) => b.slug === paperoboSlug || b.id === paperoboSlug);
+            }
             let launchUrl = paperoboBook ? paperoboBook.launchUrl : '';
             if (!launchUrl) {
                 return await getFreeCallUrl();

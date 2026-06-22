@@ -556,7 +556,14 @@ ${markdown}
                     }
                     return line;
                 }).join('\n');
-                processed = processed.replace(/\n{2,}/g, (match) => '<br>'.repeat(match.length - 1) + '\n');
+                processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+                    const before = string.substring(0, offset).trimEnd();
+                    const after = string.substring(offset + match.length).trimStart();
+                    if (before.endsWith('>') || after.startsWith('<') || after === '') {
+                        return match;
+                    }
+                    return '<br>'.repeat(match.length - 1) + '\n';
+                });
                 cardBodyHtml = marked.parse(processed) as string;
                 cardBodyHtml = cardBodyHtml.replace(/src="books\//g, 'src="/books/');
             }
@@ -980,7 +987,14 @@ ${markdown}
 
     function parseMarkdownForChat(content: string): string {
         if (!content) return '';
-        const processed = content.replace(/\n{2,}/g, (match) => '<br>'.repeat(match.length - 1) + '\n');
+        const processed = content.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+            const before = string.substring(0, offset).trimEnd();
+            const after = string.substring(offset + match.length).trimStart();
+            if (before.endsWith('>') || after.startsWith('<') || after === '') {
+                return match;
+            }
+            return '<br>'.repeat(match.length - 1) + '\n';
+        });
         return marked.parse(processed) as string;
     }
 
