@@ -102,7 +102,7 @@
         if (logoParam) params.set('logo', logoParam);
         
         const path = isCard ? `/hypercard/${bookId}` : `/hyperbook/${bookId}`;
-        goto(`${path}?${params.toString()}`);
+        window.open(`${path}?${params.toString()}`, '_blank');
     }
 
     function handleItemClick(book: any) {

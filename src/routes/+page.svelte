@@ -394,7 +394,7 @@
         } else if (book.playMode === 'hyperrobo') {
             openHyperRoboEditMode(book);
         } else {
-            goto(`/workspace?id=${book.id}`);
+            window.open(`/workspace?id=${book.id}`, '_blank');
         }
     }
 
@@ -910,7 +910,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     function handleStackClick(book: any) {
         const subItems = parseStackMarkdown(book.markdownContent || '');
         const itemIds = subItems.map(item => item.id);
-        goto(`/hyperbookshelf?books=${itemIds.join(',')}&title=${encodeURIComponent(book.title)}`);
+        window.open(`/hyperbookshelf?books=${itemIds.join(',')}&title=${encodeURIComponent(book.title)}`, '_blank');
     }
 
     // Derived books to display on the shelf
