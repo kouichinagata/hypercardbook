@@ -322,7 +322,7 @@
                                         </div>
                                     </div>
                                 {:else if book.playMode === 'hyperrobo'}
-                                    <div class="book-cover hyperrobo-cover" data-theme-color="orange">
+                                    <div class="book-cover hyperrobo-cover" style="background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);">
                                         {#if book.coverImage}
                                             <div class="hyperrobo-phone-wrapper">
                                                 <img 
