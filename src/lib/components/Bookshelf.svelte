@@ -123,7 +123,7 @@
         } else if (book.playMode === 'hyperrobo') {
             onHyperRoboClick?.(book);
         } else if (book.playMode === 'paperobo' && book.launchUrl) {
-            window.location.href = book.launchUrl;
+            window.open(book.launchUrl, '_blank');
         } else {
             handleBookClick(book.id);
         }
@@ -152,9 +152,9 @@
             const accessToken = session.access_token;
             const refreshToken = session.refresh_token;
             // Append token in hash fragment to securely pass it to PapeRobo
-            window.location.href = `${targetUrl}#access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
+            window.open(`${targetUrl}#access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`, '_blank');
         } else {
-            window.location.href = targetUrl;
+            window.open(targetUrl, '_blank');
         }
     }
 </script>
