@@ -2568,7 +2568,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 
     <footer class="app-footer">
         <div class="footer-content">
-            <span>Open-source project by Koichi Nagata(Quark).</span>
+            <span><a href="/hypercard/c8b93e7d-2d4a-41e5-a39c-88f4afda5d75?from=home" target="_blank" rel="noopener noreferrer" class="footer-link">Open-source project</a> by Koichi Nagata(Quark).</span>
             <span class="footer-separator">&bull;</span>
             <span>MIT License</span>
             <span class="footer-separator">&bull;</span>
