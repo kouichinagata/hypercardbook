@@ -95,6 +95,77 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: dbError.message }, { status: 500 });
         }
 
+        // StackやHyperRoboが公開された場合、内包するコンテンツも自動的に公開する
+        if (resolvedIsPublic === true) {
+            const idsToPublish = new Set<string>();
+
+            // 再帰的に関係する本を収集する関数
+            const collectAndPublish = async (markdownContent: string, currentPlayMode: string) => {
+                if (currentPlayMode === 'stack') {
+                    const lines = markdownContent.split('\n');
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        // book, card, paperobo, hyperrobo のすべてのリンクからIDを抽出
+                        const match = trimmed.match(/^-\s*\[(.*?)\]\((book|card|paperobo|hyperrobo):(.*)\)/);
+                        if (match) {
+                            const subId = match[3].trim();
+                            if (subId && !idsToPublish.has(subId)) {
+                                idsToPublish.add(subId);
+                                // 子アイテムがさらにStackやHyperRoboであれば、その中身も再帰的に収集
+                                const { data: subBook } = await supabase
+                                    .from('books')
+                                    .select('play_mode, markdown_content')
+                                    .eq('id', subId)
+                                    .eq('user_id', session.user.id)
+                                    .maybeSingle();
+                                if (subBook) {
+                                    await collectAndPublish(subBook.markdown_content || '', subBook.play_mode || 'book');
+                                }
+                            }
+                        }
+                    }
+                } else if (currentPlayMode === 'hyperrobo') {
+                    // HyperRobo のフロントマターから hyperbook_id を取得し、再帰的に収集
+                    let hyperbookId = '';
+                    const fmMatch = markdownContent.match(/^---\s*([\s\S]*?)\s*---/);
+                    if (fmMatch && fmMatch[1]) {
+                        const fmLines = fmMatch[1].split('\n');
+                        fmLines.forEach((line: string) => {
+                            const parts = line.split(':');
+                            if (parts.length >= 2 && parts[0].trim() === 'hyperbook_id') {
+                                hyperbookId = parts.slice(1).join(':').trim();
+                            }
+                        });
+                    }
+                    if (hyperbookId && !idsToPublish.has(hyperbookId)) {
+                        idsToPublish.add(hyperbookId);
+                        const { data: subBook } = await supabase
+                            .from('books')
+                            .select('play_mode, markdown_content')
+                            .eq('id', hyperbookId)
+                            .eq('user_id', session.user.id)
+                            .maybeSingle();
+                        if (subBook) {
+                            await collectAndPublish(subBook.markdown_content || '', subBook.play_mode || 'book');
+                        }
+                    }
+                }
+            };
+
+            await collectAndPublish(markdown, playMode);
+
+            if (idsToPublish.size > 0) {
+                const { error: updateError } = await supabase
+                    .from('books')
+                    .update({ is_public: true, published_at: new Date().toISOString() })
+                    .in('id', Array.from(idsToPublish))
+                    .eq('user_id', session.user.id);
+                if (updateError) {
+                    console.error('Failed to update stack items to public:', updateError);
+                }
+            }
+        }
+
         return json({ success: true, id: data.id });
     } catch (err: any) {
         console.error('Save API Error:', err);

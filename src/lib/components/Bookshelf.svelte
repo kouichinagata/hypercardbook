@@ -222,7 +222,7 @@
                                 <div class="book-action-bar">
                                     {#if book.isSample || book.isPublic || (currentUserId && book.userId === currentUserId) || book.isStack}
                                         <button 
-                                            class={(book.playMode === 'paperobo' || book.playMode === 'hyperrobo') ? 'paperobo-action-btn prompt-btn' : 'action-btn prompt-btn'} 
+                                            class={(book.playMode === 'paperobo' || book.playMode === 'hyperrobo' || (book.isStack && isPublicShelf)) ? 'paperobo-action-btn prompt-btn' : 'action-btn prompt-btn'} 
                                             class:selected={selectedBookId === book.id}
                                             onclick={() => {
                                                 if (book.isStack) {
@@ -231,7 +231,7 @@
                                                     onPromptSelect?.(book);
                                                 }
                                             }}
-                                            disabled={(!currentUserId && !book.isStack) || book.playMode === 'paperobo' || book.playMode === 'hyperrobo'}
+                                            disabled={(!currentUserId && !book.isStack) || (book.isStack && isPublicShelf) || book.playMode === 'paperobo' || book.playMode === 'hyperrobo'}
                                         >
                                             {book.isStack ? 'Duplicate' : 'Prompt'}
                                         </button>
