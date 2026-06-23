@@ -384,7 +384,7 @@
 <div class="card-reader-container" data-theme-color={cardThemeColor} class:embed-mode={isEmbed}>
     {#if !isEmbed}
         <div class="reader-header-bar">
-            <a class="back-btn" href={backUrl}>back</a>
+            <a class="back-btn" href={backUrl} onclick={(e) => { if (window.history.length === 1 || window.opener) { e.preventDefault(); window.close(); } }}>back</a>
         </div>
     {/if}
 

@@ -1063,7 +1063,7 @@
             id="backToShelfBtn"
             class="theme-switch" 
             style="position: fixed; top: 20px; left: 20px; z-index: 9999; padding: 8px 14px; font-size: 12px; border-radius: 20px;" 
-            onclick={() => goto(backUrl)}
+            onclick={() => { if (window.history.length === 1 || window.opener) { window.close(); } else { goto(backUrl); } }}
         >
             Back
         </button>

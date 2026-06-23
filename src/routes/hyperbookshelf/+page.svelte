@@ -29,7 +29,7 @@
 
     {#if data.booksParam}
         <div class="back-btn-container">
-            <button class="back-btn" onclick={() => goto('/')}>back</button>
+            <button class="back-btn" onclick={() => { if (window.history.length === 1 || window.opener) { window.close(); } else { goto('/'); } }}>back</button>
         </div>
     {/if}
 

@@ -1422,7 +1422,7 @@ ${markdown}
         <div class="chat-panel">
             <div class="panel-header">
                 <div class="header-left">
-                    <button class="back-home-btn" onclick={() => goto('/')}>back</button>
+                    <button class="back-home-btn" onclick={() => { if (window.history.length === 1 || window.opener) { window.close(); } else { goto('/'); } }}>back</button>
                     <h2>Chat</h2>
                 </div>
                 <div class="status-indicator" class:saving={saveStatus === 'Saving...'} class:error={saveStatus === 'Error'} class:read-only={saveStatus === 'Read Only'}>
