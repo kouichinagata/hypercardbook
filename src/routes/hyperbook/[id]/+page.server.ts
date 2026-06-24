@@ -82,6 +82,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
         markdown: markdownContent,
         id,
         backUrl,
-        isEmbed
+        isEmbed,
+        currentUserId: locals.session?.user?.id || 'global'
     };
 };

@@ -110,7 +110,7 @@
     ];
 
     let userPlugins = $state<Plugin[]>([]);
-    let activePluginIds = $state<string[]>(['ai-summarizer-hook']);
+    let activePluginIds = $state<string[]>(['bookmark-postit', 'ai-summarizer-hook']);
     let currentCardIndex = $state(-1);
 
     function handleHookAiResult(event: { eventName: string; result: string; command?: string }) {
@@ -957,6 +957,20 @@ ${markdown}
                 userPlugins.push(newSkill);
                 activePluginIds.push(newId);
                 
+                // 物理フォルダ連携APIをPOSTで叩き、物理サーバーにSkillを保存
+                try {
+                    await fetch('/api/skills', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            skillName: skillName,
+                            skillMd: skillPrompt
+                        })
+                    });
+                } catch (apiErr) {
+                    console.error('Failed to call physical skill save API:', apiErr);
+                }
+                
                 // Persist user plugins and active plugins to Supabase user metadata
                 try {
                     const { error: updateError } = await supabase.auth.updateUser({
@@ -1032,7 +1046,7 @@ ${markdown}
 
         const metadata = data.session?.user?.user_metadata || {};
         userPlugins = metadata.user_plugins || [];
-        activePluginIds = metadata.active_plugin_ids || ['ai-summarizer-hook'];
+        activePluginIds = metadata.active_plugin_ids || ['bookmark-postit', 'ai-summarizer-hook'];
         markdown = data.markdown || '';
         bookUuid = data.bookId || '';
         chatHistory = data.initialChatHistory || [];
@@ -1686,6 +1700,7 @@ ${markdown}
                                 activePluginIds={activePluginIds} 
                                 bind:currentIndex={currentCardIndex} 
                                 onHookAiResult={handleHookAiResult} 
+                                currentUserId={data.currentUserId}
                             />
                         </div>
                     {:else}

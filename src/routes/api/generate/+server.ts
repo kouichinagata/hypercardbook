@@ -2,6 +2,73 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
+import fs from 'fs';
+import path from 'path';
+
+function parseSkillMd(content: string) {
+    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+    if (!match) {
+        return {
+            metadata: {} as Record<string, string>,
+            body: content
+        };
+    }
+    const yamlStr = match[1];
+    const body = match[2];
+    const metadata: Record<string, string> = {};
+    yamlStr.split('\n').forEach(line => {
+        const parts = line.split(':');
+        if (parts.length >= 2) {
+            const key = parts[0].trim();
+            const value = parts.slice(1).join(':').trim();
+            metadata[key] = value;
+        }
+    });
+    return { metadata, body };
+}
+
+interface SkillInfo {
+    id: string;
+    name: string;
+    description: string;
+    body: string;
+}
+
+function getAvailableSkills(userId: string): SkillInfo[] {
+    const skills: SkillInfo[] = [];
+    const baseDir = path.resolve('data/skills');
+    
+    const scanDirs = [
+        { dir: path.join(baseDir, 'global') },
+        { dir: path.join(baseDir, userId) }
+    ];
+
+    for (const { dir } of scanDirs) {
+        if (!fs.existsSync(dir)) continue;
+        const subdirs = fs.readdirSync(dir, { withFileTypes: true });
+        for (const subdir of subdirs) {
+            if (subdir.isDirectory()) {
+                const skillId = subdir.name;
+                const skillMdPath = path.join(dir, skillId, 'SKILL.md');
+                if (fs.existsSync(skillMdPath)) {
+                    try {
+                        const content = fs.readFileSync(skillMdPath, 'utf-8');
+                        const { metadata, body } = parseSkillMd(content);
+                        skills.push({
+                            id: skillId,
+                            name: metadata.name || skillId,
+                            description: metadata.description || '',
+                            body: body
+                        });
+                    } catch (e) {
+                        console.error(`Failed to read SKILL.md for ${skillId}:`, e);
+                    }
+                }
+            }
+        }
+    }
+    return skills;
+}
 
 const systemInstruction = `
 You are HyperCardBook Creator, an AI assistant specialized in creating card-style books for a vertical layout reader.
@@ -69,55 +136,17 @@ CRITICAL RULES:
    - The Prompt text should be the detailed instructions/rules to guide the AI to generate/modify content in that specific style or way.
 
 9. HYPERHOOKS AND BOOKMARK SKILLS (しおり・フック):
-   - If the user asks to add bookmark features (e.g., "しおりを挟んで", "ポストイット風にして") or transition hooks, you must write them inside the YAML frontmatter block.
-   - Fields to generate:
-     - \`bookmark_html\`: A multiline HTML/CSS block (using YAML "|") defining the visual design of the bookmark. It will be rendered at the top-right of the book.
-       Example:
-       bookmark_html: |
-         <div class="hcb-intro-bookmark">Bookmark</div>
-         <style>
-           .hcb-intro-bookmark {
-             position: absolute;
-             top: 0;
-             right: 15px;
-             padding: 6px 10px 8px 10px;
-             border-radius: 0 0 4px 4px;
-             font-size: 11px;
-             font-weight: bold;
-             color: #495057; /* 鉛筆で書いたようなチャコールグレー */
-             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-             z-index: 10;
-             white-space: nowrap;
-             display: flex;
-             align-items: center;
-             gap: 5px;
-       
-             /* パターンA：ミントグリーン      */
-             background-color: #e6fcf5;
-             border: 0.3px solid #c3fae8;
-             border-top: none;
-             /* パターンB：クリームゴールド
-             background-color: #fff9db;
-             border: 0.3px solid #f1e2ab;
-             border-top: none;
-             */
-             /* パターンC：スカイブルー
-             background-color: #e7f5ff;
-             border: 0.3px solid #d0ebff;
-             border-top: none;
-             */
-           }
-         </style>
-     - \`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`:
-       Rules to execute on event. For local script execution, use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg).
-       Example:
+   - If the user asks to add bookmark features (e.g., "しおりを挟んで", "ポストイット風にして"), you must ONLY generate bookmark hooks inside the YAML frontmatter block. DO NOT generate the \`bookmark_html\` field under any circumstances.
+   - Hooks to generate for bookmark features:
+     - \`on_open_stack\`: A hook that executes when opening the book to restore the reading position.
        on_open_stack: |
          let p = getData("bookmark_" + stackId);
          if (p !== null) goCard(Number(p));
+     - \`on_close_card\`: A hook that executes when leaving a card to save the reading position.
        on_close_card: |
          saveData("bookmark_" + stackId, currentCard);
-       For AI instructions, start with "[AI]".
-       Example: \`on_open_card: "[AI] このページを要約して"\`
+   - For other event hooks (\`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
+     Example: \`on_open_card: "[AI] このページを要約して"\`
 `;
 
 const cardSystemInstruction = `
@@ -180,55 +209,18 @@ CRITICAL RULES:
    - The SkillName should be a short, descriptive name (in English or Japanese) for the skill.
    - The Prompt text should be the detailed instructions/rules to guide the AI to generate/modify content in that specific style or way.
 
- 8. HYPERHOOKS AND BOOKMARK SKILLS (しおり・フック):
-   - If the user asks to add bookmark features (e.g., "しおりを挟んで", "ポストイット風にして") or transition hooks, you must write them inside the YAML frontmatter block.
-   - Fields to generate:
-     - \`bookmark_html\`: A multiline HTML/CSS block (using YAML "|") defining the visual design of the bookmark. It will be rendered at the top-right of the card.
-       Example:
-       bookmark_html: |
-         <div class="hcb-intro-bookmark">Bookmark</div>
-         <style>
-           .hcb-intro-bookmark {
-             position: absolute;
-             top: 0;
-             right: 15px;
-             padding: 6px 10px 8px 10px;
-             border-radius: 0 0 4px 4px;
-             font-size: 11px;
-             font-weight: bold;
-             color: #495057; /* 鉛筆で書いたようなチャコールグレー */
-             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-             z-index: 10;
-             white-space: nowrap;
-             display: flex;
-             align-items: center;
-             gap: 5px;
-             /* パターンA：ミントグリーン      */
-             background-color: #e6fcf5;
-             border: 0.3px solid #c3fae8;
-             border-top: none;
-             /* パターンB：クリームゴールド
-             background-color: #fff9db;
-             border: 0.3px solid #f1e2ab;
-             border-top: none;
-             */
-             /* パターンC：スカイブルー
-             background-color: #e7f5ff;
-             border: 0.3px solid #d0ebff;
-             border-top: none;
-             */
-           }
-         </style>
-     - \`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`:
-       Rules to execute on event. For local script execution, use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg).
-       Example:
-       on_open_stack: |
-         let p = getData("bookmark_" + stackId);
-         if (p !== null) goCard(Number(p));
-       on_close_card: |
-         saveData("bookmark_" + stackId, currentCard);
-       For AI instructions, start with "[AI]".
-       Example: \`on_open_card: "[AI] このページを要約して"\`
+  8. HYPERHOOKS AND BOOKMARK SKILLS (しおり・フック):
+    - If the user asks to add bookmark features (e.g., "しおりを挟んで", "ポストイット風にして"), you must ONLY generate bookmark hooks inside the YAML frontmatter block. DO NOT generate the \`bookmark_html\` field under any circumstances.
+    - Hooks to generate for bookmark features:
+      - \`on_open_stack\`: A hook that executes when opening the card to restore the reading position.
+        on_open_stack: |
+          let p = getData("bookmark_" + stackId);
+          if (p !== null) goCard(Number(p));
+      - \`on_close_card\`: A hook that executes when leaving a card to save the reading position.
+        on_close_card: |
+          saveData("bookmark_" + stackId, currentCard);
+    - For other event hooks (\`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
+      Example: \`on_open_card: "[AI] このページを要約して"\`
 `;
 
 // JSON-RPC 2.0 Google Drive MCP Server Mock
@@ -362,6 +354,23 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         }
         if (custompromptMd.trim()) {
             activeSystemInstruction += `\n\nCUSTOM PROMPT GUIDELINES:\nFollow these custom prompt guidelines for style, formatting, and content creation:\n"""\n${custompromptMd.trim()}\n"""`;
+        }
+
+        // Dynamic loading of available skills for "Progressive Disclosure"
+        const availableSkills = getAvailableSkills(session.user.id);
+        if (availableSkills.length > 0) {
+            let skillsCatalog = '\n\nAVAILABLE SKILLS:\n';
+            availableSkills.forEach(s => {
+                skillsCatalog += `- ${s.id}: ${s.description}\n`;
+            });
+            activeSystemInstruction += skillsCatalog;
+
+            // Inject prompt bodies for active skills
+            availableSkills.forEach(s => {
+                if (activePluginIds.includes(s.id)) {
+                    activeSystemInstruction += `\n\nACTIVE SKILL RULES for "${s.id}" (Apply these rules strictly when requested/relevant):\n"""\n${s.body.trim()}\n"""`;
+                }
+            });
         }
 
         // Helper to perform Gemini content generation with multi-turn tool (MCP) resolution

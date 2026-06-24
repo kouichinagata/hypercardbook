@@ -1056,7 +1056,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     ];
 
     let userPlugins = $state<Plugin[]>([]);
-    let activePluginIds = $state<string[]>(['ai-summarizer-hook']);
+    let activePluginIds = $state<string[]>(['bookmark-postit', 'ai-summarizer-hook']);
     let selectedPluginId = $state<string>('');
     let selectedPluginName = $state<string>('');
     let selectedPluginDescription = $state<string>('');
@@ -1162,14 +1162,41 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         }
     }
 
-    function deleteSelectedPlugin() {
+    async function deleteSelectedPlugin() {
         if (!selectedPluginId) return;
+        const skillToDelete = userPlugins.find(up => up.id === selectedPluginId);
         activePluginIds = activePluginIds.filter(id => id !== selectedPluginId);
         userPlugins = userPlugins.filter(up => up.id !== selectedPluginId);
+        const deletedId = selectedPluginId;
         selectedPluginId = '';
         selectedPluginName = '';
         selectedPluginDescription = '';
         selectedPluginSkill = '';
+
+        if (skillToDelete && deletedId.startsWith('my-plugin-')) {
+            try {
+                await fetch('/api/skills', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ skillName: skillToDelete.name })
+                });
+            } catch (err) {
+                console.error('Failed to call delete skill API:', err);
+            }
+        }
+
+        try {
+            const { error: updateError } = await supabase.auth.updateUser({
+                data: {
+                    user_plugins: $state.snapshot(userPlugins),
+                    active_plugin_ids: $state.snapshot(activePluginIds)
+                }
+            });
+            if (updateError) throw updateError;
+            await invalidateAll();
+        } catch (err) {
+            console.error('Failed to sync updated plugins list to Supabase:', err);
+        }
     }
 
     function handleNewSkillClick() {
@@ -1283,7 +1310,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         profileHypercardbookMd = metadata.hypercardbook_md || DEFAULT_HYPERCARDBOOK_MD;
         
         userPlugins = metadata.user_plugins || [];
-        activePluginIds = metadata.active_plugin_ids || ['ai-summarizer-hook'];
+        activePluginIds = metadata.active_plugin_ids || ['bookmark-postit', 'ai-summarizer-hook'];
         selectedPluginId = '';
         selectedPluginName = '';
         selectedPluginDescription = '';
@@ -2679,6 +2706,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                 backUrl="" 
                                 activePluginIds={[]} 
                                 language="ja"
+                                currentUserId={data.currentUserId}
                             />
                         {/if}
                     {/if}

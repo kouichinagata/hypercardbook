@@ -13,7 +13,8 @@
         activePluginIds = [], 
         language = 'ja',
         onHookAiResult = null,
-        currentIndex = $bindable(-1)
+        currentIndex = $bindable(-1),
+        currentUserId = 'global'
     } = $props();
 
     // Iframe postMessage connection states
@@ -104,17 +105,22 @@
 
     // Helper to calculate the single-page index matching the flat pages array
     function getPlainPageIndex(): number {
-        if (currentIndex === -1) return 0; // Cover
+        return getPlainPageIndexFor(currentIndex, currentSubPage);
+    }
+
+    // Helper to calculate the single-page index for custom parameters
+    function getPlainPageIndexFor(index: number, subPage: number): number {
+        if (index === -1) return 0; // Cover
         
-        let dataIndex = hasToc ? currentIndex - 1 : currentIndex;
+        let dataIndex = hasToc ? index - 1 : index;
         
         // TOC page
-        if (hasToc && currentIndex === 0) {
+        if (hasToc && index === 0) {
             return 0;
         }
         
         // Author Bio page
-        if (hasBio && currentIndex === total) {
+        if (hasBio && index === total) {
             return pages.length - 1;
         }
         
@@ -122,7 +128,7 @@
         if (dataIndex >= spreads.length) dataIndex = spreads.length - 1;
         
         let pageIdx = dataIndex * 2;
-        if (currentSubPage === 1) {
+        if (subPage === 1) {
             pageIdx += 1;
         }
         
@@ -191,6 +197,70 @@
     let spreads = $state<Array<{ title: string; leftMarkdown: string; rightMarkdown: string }>>([]);
     let bookmarkHtml = $state('');
     let hooks = $state<{ [key: string]: string }>({});
+    let pageHooks = $state<{ [pageIndex: number]: Array<{ eventName: string, skillName: string, args: string[] }> }>({});
+
+    // Dynamic ES Module Skill runner using Blob URL
+    async function runPageSkill(skillName: string, args: string[]) {
+        try {
+            // 1. Try user custom skill first
+            let url = `/api/skills/${currentUserId}/${skillName}/index.js`;
+            let res = await fetch(url);
+            if (!res.ok) {
+                // 2. Fallback to global skill
+                url = `/api/skills/global/${skillName}/index.js`;
+                res = await fetch(url);
+            }
+            if (!res.ok) {
+                console.warn(`[SkillRunner] Skill "${skillName}" not found in user or global directory.`);
+                return;
+            }
+
+            const code = await res.text();
+            const blob = new Blob([code], { type: 'application/javascript' });
+            const blobUrl = URL.createObjectURL(blob);
+            const module = await import(blobUrl);
+            const executeFn = module.default;
+            URL.revokeObjectURL(blobUrl);
+
+            if (typeof executeFn === 'function') {
+                const context = {
+                    goCard: (index: number) => {
+                        if (index !== undefined && index !== null && index >= 0) {
+                            currentIndex = index;
+                            currentSubPage = 0;
+                        }
+                    },
+                    saveData: (key: string, value: any) => {
+                        if (browser) localStorage.setItem(key, JSON.stringify(value));
+                    },
+                    getData: (key: string) => {
+                        if (!browser) return null;
+                        const item = localStorage.getItem(key);
+                        try { return item ? JSON.parse(item) : null; } catch { return item; }
+                    },
+                    alert: (msg: string) => {
+                        if (browser) window.alert(msg);
+                    },
+                    stackId: bookId,
+                    currentCard: currentIndex,
+                    cardText: getCardText(currentIndex)
+                };
+                await executeFn(context, ...args);
+            }
+        } catch (err) {
+            console.error(`[SkillRunner] Error executing page skill "${skillName}":`, err);
+        }
+    }
+
+    async function executePageHooks(eventName: string, plainPageIdx: number) {
+        const hooksForPage = pageHooks[plainPageIdx];
+        if (!hooksForPage) return;
+        for (const h of hooksForPage) {
+            if (h.eventName.toLowerCase() === eventName.toLowerCase()) {
+                await runPageSkill(h.skillName, h.args);
+            }
+        }
+    }
 
     // HyperHooks Execution Engine
     function getCardText(index: number): string {
@@ -317,10 +387,22 @@
                 // closeCard
                 if (prevIndex !== -1) {
                     executeHook('closeCard', { prevCard: prevIndex, prevSub: prevSubPage });
+                    
+                    const prevPlainIdx = getPlainPageIndexFor(prevIndex, prevSubPage);
+                    executePageHooks('onClosePage', prevPlainIdx);
+                    if (viewMode === 'spread') {
+                        executePageHooks('onClosePage', prevPlainIdx + 1);
+                    }
                 }
                 // openCard
                 if (currentIdx !== -1) {
                     executeHook('openCard', { currentCard: currentIdx, currentSub: currentSub });
+                    
+                    const leftIdx = getPlainPageIndex();
+                    executePageHooks('onOpenPage', leftIdx);
+                    if (viewMode === 'spread') {
+                        executePageHooks('onOpenPage', leftIdx + 1);
+                    }
                 }
             }
             prevIndex = currentIdx;
@@ -584,6 +666,36 @@
         const contentWithoutFm = trimmedMd.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
         let pagesRaw = contentWithoutFm.split(/(?:Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
         pagesRaw = pagesRaw.map(p => p.trim()).filter(p => p.length > 0);
+
+        // Parse page-level hooks and clean from rendering markdown
+        let parsedPageHooks: typeof pageHooks = {};
+        pagesRaw = pagesRaw.map((p, idx) => {
+            const lines = p.split('\n');
+            const cleanLines: string[] = [];
+            const hooksList: Array<{ eventName: string, skillName: string, args: string[] }> = [];
+            lines.forEach(line => {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('/!')) {
+                    const content = trimmed.substring(2).trim();
+                    const parts = content.split(':');
+                    if (parts.length >= 2) {
+                        const eventName = parts[0].trim();
+                        const rest = parts.slice(1).join(':').trim();
+                        const restParts = rest.split(/\s+/);
+                        const skillName = restParts[0].trim();
+                        const args = restParts.slice(1).map(arg => arg.replace(/,$/, '').trim()).filter(Boolean);
+                        hooksList.push({ eventName, skillName, args });
+                    }
+                } else {
+                    cleanLines.push(line);
+                }
+            });
+            if (hooksList.length > 0) {
+                parsedPageHooks[idx] = hooksList;
+            }
+            return cleanLines.join('\n').trim();
+        });
+        pageHooks = parsedPageHooks;
         if (pagesRaw.length === 0 && contentWithoutFm.length > 0) {
             pagesRaw = [contentWithoutFm];
         }
@@ -1114,6 +1226,12 @@
             {#if bookmarkHtml}
                 <div class="bookmark-slot" id="bookmarkSlot">
                     {@html bookmarkHtml}
+                </div>
+            {:else if activePluginIds.includes('bookmark-postit') && (hooks.openStack || hooks.closeCard)}
+                <div class="bookmark-slot" id="bookmarkSlot">
+                    <div class="default-bookmark">
+                        📌 しおり
+                    </div>
                 </div>
             {/if}
 
@@ -1837,5 +1955,24 @@
         min-height: 150px !important;
         background-color: rgba(239, 68, 68, 0.05) !important;
         cursor: pointer;
+    }
+
+    .default-bookmark {
+        background: #fef08a;
+        color: #854d0e;
+        padding: 10px 8px;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 11px;
+        font-weight: bold;
+        border-radius: 0 0 4px 4px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        border: 1px solid #fef08a;
+        border-top: none;
+        writing-mode: vertical-rl;
+        letter-spacing: 0.1em;
+        transition: transform 0.2s;
+    }
+    .default-bookmark:hover {
+        transform: translateY(4px);
     }
 </style>

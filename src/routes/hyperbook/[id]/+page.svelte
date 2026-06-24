@@ -6,7 +6,7 @@
     let { data } = $props();
 
     let isCard = $derived(data.markdown.includes('play_mode: card') || (!data.markdown.includes('play_mode: book') && !/Page\s*\d+:/i.test(data.markdown) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(data.markdown)));
-    let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || ['ai-summarizer-hook']);
+    let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || ['bookmark-postit', 'ai-summarizer-hook']);
     
     let currentLanguage = $state('ja');
 
@@ -35,7 +35,7 @@
         activePluginIds={activePluginIds}
     />
 {:else}
-    <Book markdown={data.markdown} id={data.id} backUrl={data.isEmbed ? '' : data.backUrl} activePluginIds={activePluginIds} language={currentLanguage} />
+    <Book markdown={data.markdown} id={data.id} backUrl={data.isEmbed ? '' : data.backUrl} activePluginIds={activePluginIds} language={currentLanguage} currentUserId={data.currentUserId} />
 {/if}
 
 
