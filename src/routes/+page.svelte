@@ -751,6 +751,14 @@ HyperBook: ${hyperBook.title}
         }
     }
 
+    function handleToggleSelectionWrapper(book: any) {
+        if (isHyperRoboSelectionMode) {
+            handleToggleHyperRoboSelection(book);
+        } else {
+            handleToggleSelection(book);
+        }
+    }
+
     function handleToggleSelection(book: any) {
         const index = selectedStackBooks.findIndex(b => b.id === book.id);
         if (index > -1) {
@@ -1775,7 +1783,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     selectedStackBookIds={selectedStackBookIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
                     selectedHyperRoboBookIds={selectedHyperRoboBookIds}
-                    onToggleSelection={isHyperRoboSelectionMode ? handleToggleHyperRoboSelection : handleToggleSelection}
+                    onToggleSelection={handleToggleSelectionWrapper}
                     onStackClick={handleStackClick}
                     onDuplicateStack={handleDuplicateStack}
                     onToggleStackSelectionMode={toggleStackSelectionMode}
@@ -1803,7 +1811,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     selectedStackBookIds={selectedStackBookIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
                     selectedHyperRoboBookIds={selectedHyperRoboBookIds}
-                    onToggleSelection={isHyperRoboSelectionMode ? handleToggleHyperRoboSelection : handleToggleSelection}
+                    onToggleSelection={handleToggleSelectionWrapper}
                     onStackClick={handleStackClick}
                     onDuplicateStack={handleDuplicateStack}
                     onToggleStackSelectionMode={toggleStackSelectionMode}
@@ -1832,7 +1840,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     selectedStackBookIds={selectedStackBookIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
                     selectedHyperRoboBookIds={selectedHyperRoboBookIds}
-                    onToggleSelection={isHyperRoboSelectionMode ? handleToggleHyperRoboSelection : handleToggleSelection}
+                    onToggleSelection={handleToggleSelectionWrapper}
                     onStackClick={handleStackClick}
                     onDuplicateStack={handleDuplicateStack}
                     onToggleStackSelectionMode={toggleStackSelectionMode}
@@ -1873,7 +1881,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     selectedStackBookIds={selectedStackBookIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
                     selectedHyperRoboBookIds={selectedHyperRoboBookIds}
-                    onToggleSelection={isHyperRoboSelectionMode ? handleToggleHyperRoboSelection : handleToggleSelection}
+                    onToggleSelection={handleToggleSelectionWrapper}
                     onStackClick={handleStackClick}
                     onDuplicateStack={handleDuplicateStack}
                     onToggleStackSelectionMode={toggleStackSelectionMode}

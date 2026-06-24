@@ -1589,16 +1589,16 @@
     }
 
     /* --- Fullscreen Styles --- */
-    :global(.book-workspace:fullscreen) {
+    :global(:fullscreen) .book-workspace {
         background: var(--bg-color);
     }
-    :global(.book-workspace:fullscreen) .header-area {
+    :global(:fullscreen) .header-area {
         display: none !important;
     }
-    :global(.book-workspace:fullscreen) .footer-box {
+    :global(:fullscreen) .footer-box {
         display: none !important;
     }
-    :global(.book-workspace:fullscreen) .book-viewport {
+    :global(:fullscreen) .book-viewport {
         height: calc(100vh - 75px);
         display: flex;
         align-items: center;
@@ -1606,7 +1606,7 @@
         padding: 0 !important;
         margin: 0 !important;
     }
-    :global(.book-workspace:fullscreen) .control-panel {
+    :global(:fullscreen) .control-panel {
         margin-top: 5px !important;
         margin-bottom: 5px !important;
     }

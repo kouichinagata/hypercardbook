@@ -1132,6 +1132,33 @@ ${markdown}
         mediaSearchResults = [];
     }
 
+    let isDownloadingPixabay = $state(false);
+
+    async function handlePixabaySelect(url: string, id: number, tags: string) {
+        if (isDownloadingPixabay) return;
+        isDownloadingPixabay = true;
+        try {
+            const response = await fetch('/api/media/download', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url, id })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                selectMedia(data.url, tags);
+            } else {
+                const errData = await response.json();
+                console.error('Failed to self-host image:', errData.error);
+                selectMedia(url, tags);
+            }
+        } catch (err) {
+            console.error('Self-host request failed:', err);
+            selectMedia(url, tags);
+        } finally {
+            isDownloadingPixabay = false;
+        }
+    }
+
     function selectMedia(url: string, altText: string) {
         if (replaceTargetUrl) {
             if (!confirm('Do you want to apply these changes?')) {
@@ -1788,7 +1815,8 @@ ${markdown}
                                     {#each mediaSearchResults as hit}
                                         <button 
                                             class="media-grid-item" 
-                                            onclick={() => selectMedia(hit.webformatUrl, hit.tags)}
+                                            onclick={() => handlePixabaySelect(hit.webformatUrl, hit.id, hit.tags)}
+                                            disabled={isDownloadingPixabay}
                                             title={hit.tags}
                                         >
                                             <img src={hit.previewUrl} alt={hit.tags} loading="lazy" />

@@ -113,7 +113,7 @@
             return;
         }
         if (isHyperRoboSelection) {
-            if (!book.isStack) {
+            if (!book.isStack && book.playMode !== 'hyperrobo') {
                 onToggleSelection?.(book);
             }
             return;
@@ -273,7 +273,7 @@
                                 class:is-stack={book.isStack}
                                 class:is-phone={book.playMode === 'paperobo'}
                                 class:selected-in-selection={(isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
-                                class:unselectable-in-selection={(isStackSelection && book.isStack) || (isHyperRoboSelection && book.isStack)}
+                                class:unselectable-in-selection={(isStackSelection && book.isStack) || (isHyperRoboSelection && (book.isStack || book.playMode === 'hyperrobo'))}
                                 onclick={() => handleItemClick(book)}
                                 onkeydown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
