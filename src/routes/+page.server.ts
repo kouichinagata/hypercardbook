@@ -24,6 +24,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 let launchUrl = '';
                 let paperoboSlug = '';
                 let hyperbookId = '';
+                let description = '';
+                let hideHyperbook = false;
 
                 const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
                 if (fmMatch) {
@@ -38,6 +40,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                             if (k === 'launch_url') launchUrl = v;
                             if (k === 'paperobo_slug') paperoboSlug = v;
                             if (k === 'hyperbook_id') hyperbookId = v;
+                            if (k === 'description') description = v.replace(/^["']|["']$/g, '');
+                            if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
                         }
                     });
                 }
@@ -60,6 +64,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                     paperoboSlug,
                     hyperbookId,
                     subTitle,
+                    description,
+                    hideHyperbook,
                     markdownContent: markdown
                 };
             });
@@ -85,6 +91,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
             let themeColor = '';
             let playMode = 'book';
             let subTitle = '';
+            let description = '';
+            let hideHyperbook = false;
 
             if (fmMatch) {
                 const lines = fmMatch[1].split('\n');
@@ -99,6 +107,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                         if (k === 'theme_color') themeColor = v;
                         if (k === 'play_mode') playMode = v;
                         if (k === 'sub_title') subTitle = v;
+                        if (k === 'description') description = v.replace(/^["']|["']$/g, '');
+                        if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
                     }
                 });
             }
@@ -117,6 +127,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 isCard,
                 isStack,
                 subTitle,
+                description,
+                hideHyperbook,
                 isSample: true,
                 markdownContent: content
             });
@@ -149,6 +161,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
             let launchUrl = '';
             let paperoboSlug = '';
             let hyperbookId = '';
+            let description = '';
+            let hideHyperbook = false;
 
             const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
             if (fmMatch) {
@@ -163,6 +177,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                         if (k === 'launch_url') launchUrl = v;
                         if (k === 'paperobo_slug') paperoboSlug = v;
                         if (k === 'hyperbook_id') hyperbookId = v;
+                        if (k === 'description') description = v.replace(/^["']|["']$/g, '');
+                        if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
                     }
                 });
             }
@@ -185,6 +201,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 paperoboSlug,
                 hyperbookId,
                 subTitle,
+                description,
+                hideHyperbook,
                 markdownContent: markdown,
                 createdAt: b.created_at,
                 updatedAt: b.updated_at,

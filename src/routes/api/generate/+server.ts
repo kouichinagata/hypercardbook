@@ -145,6 +145,7 @@ CRITICAL RULES:
      - author: <Author Name>
      - cover_image: <URL of Unsplash cover image suitable for the topic>
      - theme_color: black
+     - description: <A concise, 1-2 sentence description summarizing the book's content for tooltips>
    - Never use "***" as a horizontal rule separator inside a page. If you need a divider, use "---" instead.
    Example:
    ---
@@ -220,6 +221,7 @@ CRITICAL RULES:
      - author: <Author Name>
      - cover_image: <URL of Unsplash cover image suitable for the topic>
      - theme_color: white
+     - description: <A concise, 1-2 sentence description summarizing the card's content for tooltips>
    - You can also include:
      - sub_title: <subtitle of the card (optional)>
    - Example:

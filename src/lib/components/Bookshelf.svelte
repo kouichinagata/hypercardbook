@@ -321,6 +321,56 @@
                                             </div>
                                         </div>
                                     </div>
+                                {:else if book.playMode === 'hyperrobo' && book.hideHyperbook}
+                                    {@const pairedBook = books.find(b => b.id === book.hyperbookId || b.slug === book.hyperbookId)}
+                                    <!-- 逆版のHyperRoboカバー（PapeRoboと同一、一切省略しない） -->
+                                    <div class="book-cover paperobo-phone-cover">
+                                        <div class="phone-bezel">
+                                            <!-- スマホステータスバー -->
+                                            <div class="phone-status-bar">
+                                                <span class="phone-time">17:37</span>
+                                                <div class="phone-notch"></div>
+                                                <span class="phone-network">5G 100%</span>
+                                            </div>
+
+                                            {#if book.coverImage}
+                                                <img 
+                                                    src={normalizePath(book.coverImage)} 
+                                                    alt={book.title} 
+                                                    class="phone-screen-img" 
+                                                    onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
+                                                />
+                                            {/if}
+
+                                            <!-- 左上ぴったりの縮小されたオレンジの本の表紙 -->
+                                            <div class="mini-book-overlay">
+                                                <div class="mini-book-cover" style="background-color: #e67e22;">
+                                                    {#if pairedBook && pairedBook.coverImage}
+                                                        <img src={normalizePath(pairedBook.coverImage)} alt="" class="mini-book-img" />
+                                                    {/if}
+                                                    <div class="mini-book-title">{pairedBook ? pairedBook.title : book.title}</div>
+                                                </div>
+                                            </div>
+
+                                            <!-- 通話中ステータス -->
+                                            <div class="phone-call-status">
+                                                <div class="phone-avatar-name">
+                                                    <span class="phone-username">{book.title}</span>
+                                                </div>
+                                                <div class="phone-call-duration">通話中 ・ 00:02</div>
+                                            </div>
+
+                                            <!-- 右下のアクションボタン (緑・赤) -->
+                                            <div class="phone-action-buttons">
+                                                <div class="phone-icon-btn phone-btn-green">
+                                                    <span class="btn-icon">📹</span>
+                                                </div>
+                                                <div class="phone-icon-btn phone-btn-red">
+                                                    <span class="btn-icon">✕</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 {:else if book.playMode === 'hyperrobo'}
                                     <div class="book-cover hyperrobo-cover" style="background: linear-gradient(135deg, #ca6f1e 0%, #873a00 100%);">
                                         {#if book.coverImage}
@@ -414,7 +464,9 @@
                                 {/if}
                                 <div class="book-tooltip">
                                     <h4>{book.title}</h4>
-                                    {#if book.isCard && book.subTitle}
+                                    {#if book.description}
+                                        <p>{book.description}</p>
+                                    {:else if book.isCard && book.subTitle}
                                         <p>{book.subTitle}</p>
                                     {:else if book.author}
                                         <p>
@@ -1423,6 +1475,57 @@
         place-items: center;
         font-size: 34px;
         line-height: 1;
+    }
+
+    /* --- 逆版HyperRoboカバー内の縮小本スタイル --- */
+    .mini-book-overlay {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        width: 32px;
+        height: 46px;
+        z-index: 10;
+        border-radius: 2px;
+        overflow: hidden;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .mini-book-cover {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: center;
+        box-sizing: border-box;
+        padding: 2px;
+    }
+    .mini-book-img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 1;
+    }
+    .mini-book-title {
+        position: relative;
+        z-index: 2;
+        font-size: 5px;
+        color: #ffffff;
+        font-weight: bold;
+        line-height: 1.1;
+        text-align: center;
+        word-break: break-all;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 4;
+        -webkit-box-orient: vertical;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8);
+        margin-top: 2px;
+        width: 100%;
     }
 
 </style>

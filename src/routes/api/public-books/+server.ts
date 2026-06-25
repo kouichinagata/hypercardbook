@@ -31,6 +31,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
             let launchUrl = '';
             let paperoboSlug = '';
             let hyperbookId = '';
+            let description = '';
+            let hideHyperbook = false;
             
             const fmMatch = b.markdown_content?.match(/^---\s*([\s\S]*?)\s*---/);
             if (fmMatch) {
@@ -44,6 +46,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
                         if (k === 'launch_url') launchUrl = v;
                         if (k === 'paperobo_slug') paperoboSlug = v;
                         if (k === 'hyperbook_id') hyperbookId = v;
+                        if (k === 'description') description = v.replace(/^["']|["']$/g, '');
+                        if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
                     }
                 });
             }
@@ -69,7 +73,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
                 playMode,
                 launchUrl,
                 paperoboSlug,
-                hyperbookId
+                hyperbookId,
+                description,
+                hideHyperbook
             };
         });
 

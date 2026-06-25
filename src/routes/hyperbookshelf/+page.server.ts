@@ -52,6 +52,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
             let themeColor = '';
             let playMode = 'book';
             let subTitle = '';
+            let description = '';
+            let hideHyperbook = false;
 
             if (fmMatch) {
                 const lines = fmMatch[1].split('\n');
@@ -67,6 +69,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                         if (k === 'theme_color') themeColor = v;
                         if (k === 'play_mode') playMode = v;
                         if (k === 'sub_title') subTitle = v;
+                        if (k === 'description') description = v.replace(/^["']|["']$/g, '');
+                        if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
                     }
                 });
             }
@@ -84,6 +88,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                 isCard,
                 isStack,
                 subTitle,
+                description,
+                hideHyperbook,
                 markdownContent: content
             };
         } catch (err) {
@@ -111,6 +117,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                 let launchUrl = '';
                 let paperoboSlug = '';
                 let hyperbookId = '';
+                let description = '';
+                let hideHyperbook = false;
 
                 const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
                 if (fmMatch) {
@@ -125,6 +133,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                             if (k === 'launch_url') launchUrl = v;
                             if (k === 'paperobo_slug') paperoboSlug = v;
                             if (k === 'hyperbook_id') hyperbookId = v;
+                            if (k === 'description') description = v.replace(/^["']|["']$/g, '');
+                            if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
                         }
                     });
                 }
@@ -147,6 +157,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                     paperoboSlug,
                     hyperbookId,
                     subTitle,
+                    description,
+                    hideHyperbook,
                     markdownContent: markdown
                 };
             });

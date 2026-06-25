@@ -203,6 +203,19 @@
         // Auto translate bookshelf covers on mount
         translateBookshelfCovers();
 
+        // URLの launch_robo パラメータをチェックし、存在すれば自動起動
+        const urlParams = new URLSearchParams(window.location.search);
+        const launchRoboId = urlParams.get('launch_robo');
+        if (launchRoboId) {
+            let roboBook = data.books.find((b: any) => b.id === launchRoboId || b.slug === launchRoboId);
+            if (!roboBook && data.publicBooks) {
+                roboBook = data.publicBooks.find((b: any) => b.id === launchRoboId || b.slug === launchRoboId);
+            }
+            if (roboBook) {
+                openHyperRoboView(roboBook);
+            }
+        }
+
         // Subscribe to realtime changes on the books table to auto-refresh bookshelf
         const channel = supabase
             .channel('bookshelf-realtime')
@@ -403,6 +416,7 @@
     let isStackSelectionMode = $state(false);
     let showStackModal = $state(false);
     let stackTitle = $state('HyperStack001');
+    let stackDescription = $state('');
     let selectedStackBooks = $state<any[]>([]); // Array of { id, title, isCard }
     let editingStackId = $state(''); // Empty if creating a new stack
 
@@ -410,6 +424,8 @@
     let selectedHyperRoboBooks = $state<any[]>([]); // Array of { id, title, playMode }
     let selectedHyperRoboBookIds = $derived(selectedHyperRoboBooks.map(b => b.id));
     let hyperRoboTitle = $state('HyperRobo001');
+    let hyperRoboDescription = $state('');
+    let hideHyperbook = $state(false);
     let showHyperRoboModal = $state(false);
     let editingHyperRoboId = $state('');
     let isHyperRoboPublic = $state(false);
@@ -526,6 +542,7 @@
         if (isStackSelectionMode) {
             selectedStackBooks = [];
             stackTitle = getNextStackDefaultTitle();
+            stackDescription = '';
             editingStackId = '';
             isStackPublic = false;
             stackPublishedAt = null;
@@ -540,6 +557,7 @@
         showStackModal = false;
         selectedStackBooks = [];
         editingStackId = '';
+        stackDescription = '';
         isStackPublic = false;
         stackPublishedAt = null;
     }
@@ -549,6 +567,8 @@
         if (isHyperRoboSelectionMode) {
             selectedHyperRoboBooks = [];
             hyperRoboTitle = getNextHyperRoboDefaultTitle();
+            hyperRoboDescription = '';
+            hideHyperbook = false;
             editingHyperRoboId = '';
             isHyperRoboPublic = false;
             hyperRoboPublishedAt = null;
@@ -563,6 +583,8 @@
         showHyperRoboModal = false;
         selectedHyperRoboBooks = [];
         editingHyperRoboId = '';
+        hyperRoboDescription = '';
+        hideHyperbook = false;
         isHyperRoboPublic = false;
         hyperRoboPublishedAt = null;
         isSavingHyperRobo = false;
@@ -621,6 +643,8 @@ is_public: ${isHyperRoboPublic}
 ${hyperRoboPublishedAt ? `published_at: ${hyperRoboPublishedAt}` : ''}
 paperobo_slug: ${papeBook.id}
 hyperbook_id: ${hyperBook.id}
+description: "${(hyperRoboDescription || '').replace(/\n/g, ' ').replace(/"/g, '\\"')}"
+hide_hyperbook: ${hideHyperbook}
 ---
 
 # ${titleText}
@@ -647,6 +671,8 @@ HyperBook: ${hyperBook.title}
                 editingHyperRoboId = '';
                 isHyperRoboPublic = false;
                 hyperRoboPublishedAt = null;
+                hyperRoboDescription = '';
+                hideHyperbook = false;
                 await invalidateAll();
             } else {
                 const errData = await response.json();
@@ -665,6 +691,8 @@ HyperBook: ${hyperBook.title}
         hyperRoboTitle = book.title;
         isHyperRoboPublic = book.is_public || false;
         hyperRoboPublishedAt = book.published_at || null;
+        hyperRoboDescription = book.description || '';
+        hideHyperbook = book.hideHyperbook || false;
 
         const paperoboSlug = book.paperoboSlug || '';
         const hyperbookId = book.hyperbookId || '';
@@ -814,6 +842,7 @@ play_mode: stack
 id: ${stackId}
 is_public: ${isStackPublic}
 ${stackPublishedAt ? `published_at: ${stackPublishedAt}` : ''}
+description: "${(stackDescription || '').replace(/\n/g, ' ').replace(/"/g, '\\"')}"
 ---
 
 ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.id})`).join('\n')}
@@ -836,6 +865,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                 showStackModal = false;
                 selectedStackBooks = [];
                 editingStackId = '';
+                stackDescription = '';
                 await invalidateAll();
             } else {
                 const errData = await response.json();
@@ -878,6 +908,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         stackTitle = book.title;
         isStackPublic = book.is_public || false;
         stackPublishedAt = book.published_at || null;
+        stackDescription = book.description || '';
         
         const subItems = parseStackMarkdown(book.markdownContent || '');
         selectedStackBooks = subItems.map(item => ({
@@ -1542,8 +1573,16 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     }
 
     function openHyperRoboView(book: any) {
-        activeHyperRobo = book;
-        isSplitViewOpen = true;
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('launch_robo') === book.id) {
+            // すでに別タブのパラメータ経由で開いている場合は、自画面で通常起動
+            activeHyperRobo = book;
+            isSplitViewOpen = true;
+        } else {
+            // 通常の本棚からクリックされた場合は、別タブでパラメータ付きURLを開く
+            const baseUrl = window.location.origin;
+            window.open(`${baseUrl}/?launch_robo=${book.id}`, '_blank');
+        }
     }
 
     async function getLeftPaneUrl() {
@@ -1936,6 +1975,18 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                     />
                 </div>
 
+                <div class="form-group-stack">
+                    <label for="stack-description">Description</label>
+                    <textarea 
+                        id="stack-description"
+                        bind:value={stackDescription} 
+                        placeholder="Enter stack description..." 
+                        class="stack-title-input-field"
+                        rows="2"
+                        style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: #fff; font-family: inherit; resize: vertical; box-sizing: border-box;"
+                    ></textarea>
+                </div>
+
                 <div class="stack-listbox-container">
                     <label class="listbox-label">HyperCard or HyperBook</label>
                     <div class="stack-listbox">
@@ -2022,6 +2073,30 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                         class="stack-title-input-field"
                         disabled={isSavingHyperRobo}
                     />
+                </div>
+
+                <div class="form-group-stack">
+                    <label for="hyperrobo-description">Description</label>
+                    <textarea 
+                        id="hyperrobo-description"
+                        bind:value={hyperRoboDescription} 
+                        placeholder="Enter description..." 
+                        class="stack-title-input-field"
+                        disabled={isSavingHyperRobo}
+                        rows="2"
+                        style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: #fff; font-family: inherit; resize: vertical; box-sizing: border-box;"
+                    ></textarea>
+                </div>
+
+                <div class="form-group-stack" style="display: flex; align-items: center; gap: 8px; margin: 10px 0;">
+                    <input 
+                        id="hyperrobo-hide-book"
+                        type="checkbox" 
+                        bind:checked={hideHyperbook} 
+                        disabled={isSavingHyperRobo}
+                        style="width: auto; cursor: pointer; margin: 0;"
+                    />
+                    <label for="hyperrobo-hide-book" style="margin: 0; cursor: pointer; user-select: none; color: #a0aec0; font-size: 0.85rem;">Hide HyperBook or Card</label>
                 </div>
 
                 <div class="stack-listbox-container">
@@ -2638,31 +2713,35 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     <!-- 左右分割ビュー（実験用） -->
     {#if isSplitViewOpen}
         <div class="split-view-container">
-            <div class="split-view-header">
-                <!-- 左側ヘッダー -->
-                <div class="header-left-pane">
-                    <button type="button" class="back-home-btn" onclick={toggleSplitView}>
-                        back
-                    </button>
+            {#if !activeHyperRobo?.hideHyperbook}
+                <div class="split-view-header">
+                    <!-- 左側ヘッダー -->
+                    <div class="header-left-pane">
+                        <button type="button" class="back-home-btn" onclick={toggleSplitView}>
+                            back
+                        </button>
+                    </div>
+                    <!-- 右側ヘッダー -->
+                    <div class="header-right-pane">
+                    </div>
                 </div>
-                <!-- 右側ヘッダー -->
-                <div class="header-right-pane">
-                </div>
-            </div>
-            <div class="split-view-panes">
-                <!-- 左側：PapeRobo (モバイルアスペクト比で中央寄せ) -->
-                <div class="split-pane left-pane">
+            {/if}
+            <div class="split-view-panes" style={activeHyperRobo?.hideHyperbook ? "height: 100% !important;" : ""}>
+                <!-- 左側：PapeRobo (モバイルアスペクト比で中央寄せ、非表示時は390pxで上寄せ中央) -->
+                <div class="split-pane left-pane" class:full-width={activeHyperRobo?.hideHyperbook}>
                     {#await getLeftPaneUrl() then src}
                         <iframe 
                             {src} 
                             title="PapeRobo" 
                             class="split-iframe"
                             allow="microphone; camera; autoplay"
+                            allowtransparency="true"
+                            style="background: transparent; color-scheme: normal;"
                         ></iframe>
                     {/await}
                 </div>
                 <!-- 右側：HyperCardBook -->
-                <div class="split-pane right-pane">
+                <div class="split-pane right-pane" style={activeHyperRobo?.hideHyperbook ? "display: none !important;" : ""}>
                     {#if activeHyperBook}
                         {#if activeHyperBook.isCard}
                             <div class="right-pane-card-wrapper">
@@ -4579,7 +4658,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         flex: 0 0 390px;
         width: 390px;
         border-right: 1px solid rgba(255, 255, 255, 0.08);
-        background-color: #12131c;
+        background-color: #4a4e4c; /* ダークモード時も枠線が見えやすいグレーに統一 */
         padding: 20px;
         box-sizing: border-box;
         display: flex;
@@ -4594,7 +4673,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         width: 100%;
         height: 100%;
         border: none;
-        background: #0f1517;
+        background: transparent; /* 透過させて親のグレーを見せる */
     }
     .right-pane {
         background-color: #12131c;
@@ -4627,6 +4706,25 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     }
     .split-view-trigger-btn:hover {
         transform: scale(1.2);
+    }
+
+    /* 逆版の本の非表示起動レイアウトスタイル */
+    .left-pane.full-width {
+        width: 100% !important;
+        flex: 1 !important;
+        border-right: none !important;
+        padding: 0 !important;
+        display: flex;
+        justify-content: center; /* 画面横は中央寄せ */
+        align-items: flex-start; /* 縦は上寄せ */
+        background-color: #4a4e4c !important; /* PapeRobo本来の背景グレーに統一 */
+    }
+    .left-pane.full-width .split-iframe {
+        width: 390px !important; /* 横幅はスマホサイズに制限 */
+        max-width: 100%;
+        height: 100%;
+        border: none;
+        background: transparent !important; /* iframe自体も完全に透過 */
     }
     .header-right-pane {
         flex: 1;
