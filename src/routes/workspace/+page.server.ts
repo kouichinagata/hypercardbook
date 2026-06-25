@@ -11,7 +11,8 @@ export const load: PageServerLoad = async ({ url, locals, fetch }) => {
         return {
             markdown: '',
             bookId: null,
-            initialChatHistory: []
+            initialChatHistory: [],
+            currentUserId: locals.session?.user?.id || 'global'
         };
     }
 
@@ -25,7 +26,8 @@ export const load: PageServerLoad = async ({ url, locals, fetch }) => {
             return {
                 markdown: markdownContent,
                 bookId: bookId,
-                initialChatHistory: []
+                initialChatHistory: [],
+                currentUserId: locals.session?.user?.id || 'global'
             };
         } catch (err) {
             console.error(`Failed to read fetched sample file in workspace loader ${bookId}:`, err);
@@ -64,6 +66,7 @@ export const load: PageServerLoad = async ({ url, locals, fetch }) => {
     return {
         markdown: book.markdown_content,
         bookId: book.id,
-        initialChatHistory: messages || []
+        initialChatHistory: messages || [],
+        currentUserId: locals.session?.user?.id || 'global'
     };
 };

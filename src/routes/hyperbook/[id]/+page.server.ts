@@ -12,6 +12,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
     const fromParam = url.searchParams.get('from');
 
     let markdownContent = '';
+    let ownerId = 'global';
 
     // Check if the book ID matches a file in the 'samples' directory (sample books)
     const sampleFilename = id.endsWith('.md') ? id : `${id}.md`;
@@ -43,7 +44,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
     } else {
         // 2. Otherwise, query Supabase database as usual
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-        const query = supabase.from('books').select('markdown_content');
+        const query = supabase.from('books').select('markdown_content, user_id');
         if (isUuid) {
             query.eq('id', id);
         } else {
@@ -57,32 +58,33 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
             throw error(404, { message: 'Book not found' });
         }
         markdownContent = data.markdown_content;
+        ownerId = data.user_id || 'global';
     }
 
-    // Check if markdown is actually a "Card" instead of a "Book"
-    const isCard = markdownContent.includes('play_mode: card') || (!markdownContent.includes('play_mode: book') && !/Page\s*\d+:/i.test(markdownContent) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(markdownContent));
-    if (isCard) {
-        const redirectParams = new URLSearchParams(url.searchParams);
-        throw redirect(302, `/hypercard/${id}?${redirectParams.toString()}`);
-    }
+        // Check if markdown is actually a "Card" instead of a "Book"
+        const isCard = markdownContent.includes('play_mode: card') || (!markdownContent.includes('play_mode: book') && !/Page\s*\d+:/i.test(markdownContent) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(markdownContent));
+        if (isCard) {
+            const redirectParams = new URLSearchParams(url.searchParams);
+            throw redirect(302, `/hypercard/${id}?${redirectParams.toString()}`);
+        }
 
-    // Compute back URL with query parameters
-    let backUrl = '/';
-    if (fromParam === 'hyperbookshelf') {
-        const backParams = new URLSearchParams();
-        if (booksParam) backParams.set('books', booksParam);
-        if (titleParam) backParams.set('title', titleParam);
-        if (logoParam) backParams.set('logo', logoParam);
-        const queryStr = backParams.toString();
-        backUrl = queryStr ? `/hyperbookshelf?${queryStr}` : '/hyperbookshelf';
-    }
+        // Compute back URL with query parameters
+        let backUrl = '/';
+        if (fromParam === 'hyperbookshelf') {
+            const backParams = new URLSearchParams();
+            if (booksParam) backParams.set('books', booksParam);
+            if (titleParam) backParams.set('title', titleParam);
+            if (logoParam) backParams.set('logo', logoParam);
+            const queryStr = backParams.toString();
+            backUrl = queryStr ? `/hyperbookshelf?${queryStr}` : '/hyperbookshelf';
+        }
 
-    const isEmbed = url.searchParams.get('embed') === 'true';
-    return {
-        markdown: markdownContent,
-        id,
-        backUrl,
-        isEmbed,
-        currentUserId: locals.session?.user?.id || 'global'
-    };
+        const isEmbed = url.searchParams.get('embed') === 'true';
+        return {
+            markdown: markdownContent,
+            id,
+            backUrl,
+            isEmbed,
+            currentUserId: ownerId
+        };
 };

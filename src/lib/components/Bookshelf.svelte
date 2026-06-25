@@ -348,7 +348,12 @@
                                         {/if}
                                     </div>
                                 {:else if book.isCard}
-                                    <div class="book-cover card-cover" data-theme-color={book.themeColor || 'white'}>
+                                    {@const isPreset = ['white', 'black', 'blue', 'pink', 'gold'].includes(book.themeColor)}
+                                    <div 
+                                        class="book-cover card-cover" 
+                                        data-theme-color={isPreset ? book.themeColor : 'white'}
+                                        style={!isPreset && book.themeColor ? `background: ${book.themeColor};` : ''}
+                                    >
                                         <div class="card-cover-title">{book.title}</div>
                                         {#if book.coverImage}
                                             <img 
@@ -380,7 +385,12 @@
                                         {/if}
                                     </div>
                                 {:else}
-                                    <div class="book-cover" data-theme-color={book.themeColor || 'black'}>
+                                    {@const isPreset = ['white', 'black', 'blue', 'pink', 'gold'].includes(book.themeColor)}
+                                    <div 
+                                        class="book-cover" 
+                                        data-theme-color={isPreset ? book.themeColor : 'black'}
+                                        style={!isPreset && book.themeColor ? `background: ${book.themeColor};` : ''}
+                                    >
                                         {#if book.coverImage}
                                             <img 
                                                 src={normalizePath(book.coverImage)} 

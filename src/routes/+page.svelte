@@ -1063,7 +1063,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     let selectedPluginSkill = $state<string>('');
     let pluginSubView = $state<'list' | 'add'>('list');
     let selectedAddPluginId = $state<string>('');
-    let isCreatingNewSkill = $state(false);
 
     let allPlugins = $derived.by(() => {
         const activeSystem = SYSTEM_PLUGINS.filter(sp => activePluginIds.includes(sp.id));
@@ -1073,7 +1072,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     let selectedPlugin = $derived(allPlugins.find(p => p.id === selectedPluginId));
 
     function selectPlugin(p: Plugin) {
-        isCreatingNewSkill = false;
         selectedPluginId = p.id;
         selectedPluginName = p.name;
         selectedPluginDescription = p.description || '';
@@ -1082,13 +1080,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     }
 
     function updateSelectedSkillFields(name: string, description: string, skillText: string) {
-        if (isCreatingNewSkill) {
-            selectedPluginName = name;
-            selectedPluginDescription = description;
-            selectedPluginSkill = skillText;
-            return;
-        }
-
         if (!selectedPluginId) return;
 
         // If editing a system plugin, clone it to custom user plugin
@@ -1144,7 +1135,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
     }
 
     function openAddPluginView() {
-        isCreatingNewSkill = false;
         pluginSubView = 'add';
         selectedAddPluginId = '';
     }
@@ -1199,44 +1189,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         }
     }
 
-    function handleNewSkillClick() {
-        selectedPluginId = '';
-        isCreatingNewSkill = true;
-        selectedPluginName = '';
-        selectedPluginDescription = '';
-        selectedPluginSkill = '';
-        aiInstructionInput = '';
-    }
 
-    function cancelNewSkillCreation() {
-        isCreatingNewSkill = false;
-        selectedPluginId = '';
-        selectedPluginName = '';
-        selectedPluginDescription = '';
-        selectedPluginSkill = '';
-    }
-
-    function saveNewSkill() {
-        if (!selectedPluginName.trim()) {
-            alert('Please enter a skill name.');
-            return;
-        }
-        const newId = `my-plugin-${Date.now()}`;
-        const newSkill: Plugin = {
-            id: newId,
-            name: selectedPluginName.trim(),
-            description: selectedPluginDescription.trim(),
-            kinds: 'Skill',
-            owner: 'My plugin',
-            skill: selectedPluginSkill.trim()
-        };
-        userPlugins.push(newSkill);
-        if (!activePluginIds.includes(newId)) {
-            activePluginIds.push(newId);
-        }
-        isCreatingNewSkill = false;
-        selectPlugin(newSkill);
-    }
 
     // AI Refiner State & Actions
     let aiInstructionInput = $state('');
@@ -1298,7 +1251,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
 - language: ja (日本語)
 - default_theme: dark`;
 
-    function openSettingsModal() {
+    async function openSettingsModal() {
         if (!data.session?.user) return;
         const metadata = data.session.user.user_metadata || {};
         
@@ -1309,14 +1262,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         
         profileHypercardbookMd = metadata.hypercardbook_md || DEFAULT_HYPERCARDBOOK_MD;
         
-        userPlugins = metadata.user_plugins || [];
         activePluginIds = metadata.active_plugin_ids || ['bookmark-postit', 'ai-summarizer-hook'];
         selectedPluginId = '';
         selectedPluginName = '';
         selectedPluginDescription = '';
         selectedPluginSkill = '';
-        aiInstructionInput = '';
-        isCreatingNewSkill = false;
         pluginSubView = 'list';
         
         settingsActiveTab = 'profile';
@@ -1325,6 +1275,21 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         deleteConfirmPassword = '';
         deleteErrorMsg = '';
         cancelPasswordChange();
+
+        // Load physical custom skills from server storage
+        try {
+            const res = await fetch('/api/skills');
+            if (res.ok) {
+                const listData = await res.json();
+                userPlugins = listData.skills || [];
+            } else {
+                userPlugins = metadata.user_plugins || [];
+            }
+        } catch (err) {
+            console.error('Failed to load user skills from server:', err);
+            userPlugins = metadata.user_plugins || [];
+        }
+        
         showSettingsModal = true;
     }
 
@@ -1374,6 +1339,24 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         isSavingSettings = true;
         
         try {
+            // Update all custom skills' physical files on server
+            for (const up of userPlugins) {
+                if (up.owner === 'My plugin' || up.id.startsWith('my-plugin-')) {
+                    const safeSkillName = up.id.replace('my-plugin-', '').replace(/[^a-zA-Z0-9_\-]/g, '');
+                    if (safeSkillName) {
+                        const skillMd = `---\nname: ${up.name}\ndescription: ${up.description}\n---\n${up.skill}`;
+                        await fetch('/api/skills', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                skillName: safeSkillName,
+                                skillMd: skillMd
+                            })
+                        });
+                    }
+                }
+            }
+
             const { error: updateError } = await supabase.auth.updateUser({
                 data: {
                     nickname: profileNickname,
@@ -2404,22 +2387,15 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                     <div class="plugin-actions-row">
                                         <button type="button" class="plugin-action-btn" onclick={openAddPluginView}>Add</button>
                                         <button type="button" class="plugin-action-btn" onclick={deleteSelectedPlugin} disabled={!selectedPluginId}>Delete</button>
-                                        <button type="button" class="plugin-action-btn" onclick={handleNewSkillClick}>New</button>
                                     </div>
                                 </div>
 
-                                {#if selectedPlugin || isCreatingNewSkill}
+                                {#if selectedPlugin}
                                     <div class="plugin-prompt-section" style="border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 12px; display: flex; flex-direction: column; gap: 12px;">
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
                                             <h4 style="margin: 0; font-size: 13px; font-weight: 600;">
-                                                {isCreatingNewSkill ? 'Create New Skill' : 'Edit Skill Details'}
+                                                Edit Skill Details
                                             </h4>
-                                            {#if isCreatingNewSkill}
-                                                <div style="display: flex; gap: 8px;">
-                                                    <button type="button" class="plugin-action-btn" onclick={cancelNewSkillCreation}>Cancel</button>
-                                                    <button type="button" class="plugin-action-btn" onclick={saveNewSkill} disabled={!selectedPluginName.trim()}>Create</button>
-                                                </div>
-                                            {/if}
                                         </div>
 
                                         <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
@@ -2461,7 +2437,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
                                             ></textarea>
                                         </div>
 
-                                        {#if isCreatingNewSkill || (selectedPlugin && selectedPlugin.owner === 'My plugin')}
+                                        {#if selectedPlugin && selectedPlugin.owner === 'My plugin'}
                                             <div class="ai-assistant-pane" style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
                                                 <div style="display: flex; justify-content: space-between; align-items: center;">
                                                     <span style="font-size: 12px; font-weight: 600; color: #c084fc;">AI Skill Generator / Refiner</span>

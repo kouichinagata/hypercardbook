@@ -75,7 +75,24 @@
             }
 
             // Split pages by "Page X:" or "***"
-            const contentWithoutFm = trimmed.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+            let contentWithoutFm = trimmed.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+
+            // Extract user style blocks
+            const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
+            let styleMatch;
+            let userStyles = '';
+            while ((styleMatch = styleRegex.exec(contentWithoutFm)) !== null) {
+                userStyles += styleMatch[1] + '\n';
+            }
+            contentWithoutFm = contentWithoutFm.replace(/<style>[\s\S]*?<\/style>/gi, '');
+
+            if (userStyles) {
+                const styleEl = document.createElement('style');
+                styleEl.id = 'user-styles';
+                styleEl.textContent = userStyles;
+                document.head.appendChild(styleEl);
+            }
+
             let pagesRaw = contentWithoutFm.split(/(?:Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
             pagesRaw = pagesRaw.map(p => p.trim()).filter(p => p.length > 0);
             if (pagesRaw.length === 0 && contentWithoutFm.length > 0) {
@@ -188,8 +205,9 @@
 
         buildDOMStructure() {
             // Apply theme attributes to body
+            const isPreset = ['white', 'black', 'blue', 'pink', 'gold'].includes(this.themeColor);
             document.body.setAttribute('data-theme', this.uiTheme);
-            document.body.setAttribute('data-book-theme', this.themeColor);
+            document.body.setAttribute('data-book-theme', isPreset ? this.themeColor : 'black');
             
             const texts = {
                 toggleView: 'Switch View',
@@ -215,10 +233,10 @@
                 <div class="book-viewport">
                     <div class="book-body" id="book-body" role="button" tabindex="0">
                         <!-- Cover Overlay -->
-                        <div class="cover-overlay" id="cover-overlay">
+                        <div class="cover-overlay" id="cover" style="${!isPreset && this.themeColor ? `background: ${this.themeColor} !important;` : ''}">
                             ${this.coverImage ? `<img src="${this.coverImage}" alt="${this.title}" class="cover-image" />` : ''}
-                            <div class="cover-title">${this.title}</div>
-                            ${this.author ? `<div class="cover-author">${this.author}</div>` : ''}
+                            <div class="cover-title" id="coverTitle">${this.title}</div>
+                            ${this.author ? `<div class="cover-author" id="coverAuthor">${this.author}</div>` : ''}
                         </div>
 
                         <!-- Inside Pages -->
@@ -255,7 +273,7 @@
             this.dom = {
                 body: document.body,
                 bookBody: document.getElementById('book-body'),
-                cover: document.getElementById('cover-overlay'),
+                cover: document.getElementById('cover'),
                 content: document.getElementById('book-content'),
                 pageLeft: document.getElementById('page-left'),
                 pageRight: document.getElementById('page-right'),

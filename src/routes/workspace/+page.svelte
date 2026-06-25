@@ -113,6 +113,70 @@
     let activePluginIds = $state<string[]>(['bookmark-postit', 'ai-summarizer-hook']);
     let currentCardIndex = $state(-1);
 
+    function applyPartialUpdate(currentMarkdown: string, updateText: string): string {
+        const fmMatch = currentMarkdown.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n)([\s\S]*)$/);
+        if (!fmMatch) return currentMarkdown;
+        const fm = fmMatch[1];
+        const content = fmMatch[2];
+
+        const parts = content.split(/(Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
+        const pages: string[] = [];
+        const delimiters: string[] = [];
+        
+        delimiters.push('');
+        for (let i = 0; i < parts.length; i++) {
+            if (i === 0) {
+                pages.push(parts[i]);
+            } else if (i % 2 === 1) {
+                delimiters.push(parts[i]);
+            } else {
+                pages.push(parts[i]);
+            }
+        }
+
+        const updatePagesMatch = updateText.match(/\[UPDATE_PAGES\]([\s\S]*?)\[\/UPDATE_PAGES\]/i);
+        if (!updatePagesMatch) return currentMarkdown;
+        const updateContent = updatePagesMatch[1];
+
+        const pageRegex = /\[PAGE\s+(\d+)\]([\s\S]*?)\[\/PAGE\]/gi;
+        let match;
+        
+        let newPages = [...pages];
+        let newDelimiters = [...delimiters];
+        
+        while ((match = pageRegex.exec(updateContent)) !== null) {
+            const pageIdx = parseInt(match[1], 10);
+            const pageContent = match[2].trim();
+            
+            if (pageIdx >= 0 && pageIdx < newPages.length) {
+                if (pageContent === 'DELETE') {
+                    newPages[pageIdx] = '';
+                    newDelimiters[pageIdx] = '';
+                } else {
+                    newPages[pageIdx] = '\n' + pageContent + '\n';
+                }
+            } else if (pageIdx === newPages.length) {
+                newPages.push('\n' + pageContent + '\n');
+                newDelimiters.push('\n***\n');
+            }
+        }
+
+        const fmRegex = /\[FRONTMATTER\]([\s\S]*?)\[\/FRONTMATTER\]/i;
+        const fmUpdateMatch = updateText.match(fmRegex);
+        let finalFm = fm;
+        if (fmUpdateMatch) {
+            finalFm = `---\n${fmUpdateMatch[1].trim()}\n---\n`;
+        }
+
+        let finalContent = newPages[0];
+        for (let i = 1; i < newPages.length; i++) {
+            if (newPages[i] === '' && newDelimiters[i] === '') continue;
+            finalContent += (newDelimiters[i] || '') + newPages[i];
+        }
+
+        return finalFm + finalContent;
+    }
+
     function handleHookAiResult(event: { eventName: string; result: string; command?: string }) {
         chatHistory = [
             ...chatHistory,
@@ -618,7 +682,9 @@ ${markdown}
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     markdown,
-                    id: bookUuid || currentSlug
+                    id: bookUuid || currentSlug,
+                    activePluginIds,
+                    userId: data.currentUserId
                 })
             });
 
@@ -868,6 +934,10 @@ ${markdown}
 
         // Add user message to history
         chatHistory = [...chatHistory, { role: 'user', text: visiblePrompt }];
+        // Append temporary Thinking... AI response
+        chatHistory = [...chatHistory, { role: 'model', text: 'Thinking...' }];
+        const lastIndex = chatHistory.length - 1;
+
         currentInput = '';
         attachedFiles = [];
         isGenerating = true;
@@ -880,7 +950,7 @@ ${markdown}
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: finalPrompt,
-                    history: chatHistory.slice(0, -1), // Send previous history
+                    history: chatHistory.slice(0, -2), // Send previous history (excluding user message and Thinking...)
                     currentMarkdown: markdown,
                     bookId: bookUuid,
                     mode: mode,
@@ -902,15 +972,16 @@ ${markdown}
             const decoder = new TextDecoder();
             let accumulatedText = '';
             
-            // Append temporary empty AI response
-            chatHistory = [...chatHistory, { role: 'model', text: '' }];
-            const lastIndex = chatHistory.length - 1;
-
+            let isFirstChunk = true;
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
                 const chunk = decoder.decode(value, { stream: true });
+                if (isFirstChunk && chunk.trim() !== '') {
+                    accumulatedText = ''; // Thinking... をクリアしてAIテキストで上書き開始
+                    isFirstChunk = false;
+                }
                 accumulatedText += chunk;
 
                 // Update typing effect in chat
@@ -929,12 +1000,16 @@ ${markdown}
             }
 
             // Final fallback parsing
-            const finalMdMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
-            if (finalMdMatch) {
-                markdown = finalMdMatch[1].trim();
-            } else if (accumulatedText.includes('---')) {
-                const startIndex = accumulatedText.indexOf('---');
-                markdown = accumulatedText.substring(startIndex).trim();
+            if (accumulatedText.includes('[UPDATE_PAGES]')) {
+                markdown = applyPartialUpdate(markdown, accumulatedText);
+            } else {
+                const finalMdMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
+                if (finalMdMatch) {
+                    markdown = finalMdMatch[1].trim();
+                } else if (accumulatedText.includes('---')) {
+                    const startIndex = accumulatedText.indexOf('---');
+                    markdown = accumulatedText.substring(startIndex).trim();
+                }
             }
 
             // Check for automatic skill creation tag
@@ -943,8 +1018,12 @@ ${markdown}
                 const skillName = skillMatch[1].trim();
                 const skillPrompt = skillMatch[2].trim();
                 
+                const safeSkillName = skillName.replace(/[^a-zA-Z0-9_\-]/g, '');
+                const skillDirName = safeSkillName || `skill-${Date.now()}`;
+                const newId = `my-plugin-${skillDirName}`;
+                const skillMd = `---\nname: ${skillName}\ndescription: \n---\n${skillPrompt}`;
+                
                 // Add to user plugins list
-                const newId = `my-plugin-${Date.now()}`;
                 const newSkill = {
                     id: newId,
                     name: skillName,
@@ -954,8 +1033,16 @@ ${markdown}
                     skill: skillPrompt
                 };
                 
-                userPlugins.push(newSkill);
-                activePluginIds.push(newId);
+                const existIdx = userPlugins.findIndex(up => up.id === newId);
+                if (existIdx !== -1) {
+                    userPlugins[existIdx] = newSkill;
+                } else {
+                    userPlugins.push(newSkill);
+                }
+
+                if (!activePluginIds.includes(newId)) {
+                    activePluginIds.push(newId);
+                }
                 
                 // 物理フォルダ連携APIをPOSTで叩き、物理サーバーにSkillを保存
                 try {
@@ -963,8 +1050,8 @@ ${markdown}
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            skillName: skillName,
-                            skillMd: skillPrompt
+                            skillName: skillDirName,
+                            skillMd: skillMd
                         })
                     });
                 } catch (apiErr) {
@@ -993,6 +1080,10 @@ ${markdown}
         } catch (err: any) {
             console.error('Generation failed:', err);
             errorMsg = err.message || 'API Key error. Check GEMINI_API_KEY.';
+            // Thinking... が残っている場合は削除
+            if (chatHistory[lastIndex] && chatHistory[lastIndex].text === 'Thinking...') {
+                chatHistory = chatHistory.slice(0, -1);
+            }
         } finally {
             isGenerating = false;
             scrollToBottom();
@@ -1472,7 +1563,7 @@ ${markdown}
             </div>
 
             <div class="chat-list" bind:this={chatListContainer}>
-                {#each chatHistory as message}
+                {#each chatHistory as message, idx}
                     <div class="message-bubble" class:user={message.role === 'user'} class:ai={message.role === 'model'}>
                         <div class="bubble-avatar-container">
                             <div class="bubble-avatar">
@@ -1518,22 +1609,38 @@ ${markdown}
                                     </div>
                                 {/if}
                             {:else}
-                                {@html parseMarkdownForChat(message.text.replace(/```(?:markdown)?[\s\S]*?```/gi, mode === 'card' ? '[Card generated/updated]' : '[Book generated/updated]').trim())}
+                                {#if message.text === '' || message.text === 'Thinking...'}
+                                    <div style="display: flex; align-items: center; gap: 6px; color: var(--text-muted, #a1a1aa);">
+                                        <span>Thinking</span>
+                                        <div class="typing-indicator" style="margin: 0; display: inline-flex;">
+                                            <span></span><span></span><span></span>
+                                        </div>
+                                    </div>
+                                {:else}
+                                    {@html parseMarkdownForChat(
+                                        message.text
+                                            .replace(/\[UPDATED_MARKDOWN\][\s\S]*/gi, '')
+                                            .replace(
+                                                isGenerating && idx === chatHistory.length - 1
+                                                    ? /```(?:markdown)?[\s\S]*/gi
+                                                    : /```(?:markdown)?[\s\S]*?```/gi,
+                                                mode === 'card' ? '[Card generated/updated]' : '[Book generated/updated]'
+                                            )
+                                            .replace(/\[UPDATE_PAGES\][\s\S]*?\[\/UPDATE_PAGES\]/gi, '[Book pages updated]')
+                                            .replace(/\[UPDATE_PAGES\][\s\S]*/gi, '')
+                                            .trim()
+                                    )}
+
+                                    {#if isGenerating && idx === chatHistory.length - 1 && message.role === 'model'}
+                                        <div class="typing-indicator" style="margin-top: 8px;">
+                                            <span></span><span></span><span></span>
+                                        </div>
+                                    {/if}
+                                {/if}
                             {/if}
                         </div>
                     </div>
                 {/each}
-
-                {#if isGenerating}
-                    <div class="message-bubble ai loading">
-                        <div class="bubble-avatar animate-pulse">🤖</div>
-                        <div class="bubble-content">
-                            <div class="typing-indicator">
-                                <span></span><span></span><span></span>
-                            </div>
-                        </div>
-                    </div>
-                {/if}
 
                 {#if errorMsg}
                     <div class="error-banner">
@@ -1689,7 +1796,7 @@ ${markdown}
             <div class="preview-container" class:hidden={activeTab !== 'preview'}>
                 {#if mode === 'card'}
                     <div onclick={handleWebViewClick} role="presentation" class="preview-scroll-wrapper" style="width: 100%; height: 100%; overflow-y: auto;">
-                        <Card markdown={markdown} id={bookUuid || cardSlug} isEmbed={true} showNewTab={false} activePluginIds={activePluginIds} />
+                        <Card markdown={markdown} id={bookUuid || cardSlug} isEmbed={true} showNewTab={false} activePluginIds={activePluginIds} currentUserId={data.currentUserId} />
                     </div>
                 {:else}
                     {#if markdown}

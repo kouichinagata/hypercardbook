@@ -195,6 +195,9 @@
     let parsedId = $state('');
     let bookId = $derived(id || parsedId);
     let spreads = $state<Array<{ title: string; leftMarkdown: string; rightMarkdown: string }>>([]);
+    let bookLocalStyles = $state('');
+    let pluginStyles = $state('');
+    let userStyles = $derived(bookLocalStyles + '\n' + pluginStyles);
     let bookmarkHtml = $state('');
     let hooks = $state<{ [key: string]: string }>({});
     let pageHooks = $state<{ [pageIndex: number]: Array<{ eventName: string, skillName: string, args: string[] }> }>({});
@@ -486,6 +489,51 @@
         }
     });
 
+    $effect(() => {
+        const ids = activePluginIds || [];
+        const uId = currentUserId || 'global';
+        const myPlugins = ids.filter((pId: string) => pId.startsWith('my-plugin-'));
+        console.log('[Book.svelte Plugin CSS] activePluginIds:', ids, 'currentUserId:', uId, 'filtered myPlugins:', myPlugins);
+        if (myPlugins.length > 0) {
+            const url = `/api/skills/css?userId=${encodeURIComponent(uId)}&pluginIds=${encodeURIComponent(myPlugins.join(','))}`;
+            console.log('[Book.svelte Plugin CSS] Fetching URL:', url);
+            fetch(url)
+                .then(res => {
+                    console.log('[Book.svelte Plugin CSS] Fetch response status:', res.status);
+                    if (res.ok) return res.json();
+                    throw new Error(`Failed to fetch plugin CSS, status: ${res.status}`);
+                })
+                .then(data => {
+                    console.log('[Book.svelte Plugin CSS] Received CSS length:', (data.css || '').length);
+                    pluginStyles = data.css || '';
+                })
+                .catch(err => {
+                    console.error('[Book.svelte Plugin CSS] Fetch error:', err);
+                    pluginStyles = '';
+                });
+        } else {
+            console.log('[Book.svelte Plugin CSS] No custom plugins to fetch.');
+            pluginStyles = '';
+        }
+    });
+
+    $effect(() => {
+        if (!browser) return;
+        let styleEl = document.getElementById('book-dynamic-styles');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'book-dynamic-styles';
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = userStyles;
+        console.log('[Book.svelte style element] Applied styles to #book-dynamic-styles, length:', userStyles.length);
+        
+        return () => {
+            const el = document.getElementById('book-dynamic-styles');
+            if (el) el.remove();
+        };
+    });
+
     // Reactive states matching total pages calculation
     let hasToc = $derived(insertToc);
     let hasBio = $derived(!!authorBio);
@@ -608,6 +656,7 @@
         let parsedAuthorBio = '';
         let parsedThemeColor = 'black';
         let parsedSpreads: typeof spreads = [];
+        let parsedUserStyles = '';
 
         // Extract frontmatter
         let parsedBookmarkHtml = '';
@@ -663,7 +712,16 @@
         }
 
         // Split pages
-        const contentWithoutFm = trimmedMd.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+        let contentWithoutFm = trimmedMd.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+
+        // Extract user style blocks from body
+        const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
+        let styleMatch;
+        while ((styleMatch = styleRegex.exec(contentWithoutFm)) !== null) {
+            parsedUserStyles += styleMatch[1] + '\n';
+        }
+        contentWithoutFm = contentWithoutFm.replace(/<style>[\s\S]*?<\/style>/gi, '');
+
         let pagesRaw = contentWithoutFm.split(/(?:Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
         pagesRaw = pagesRaw.map(p => p.trim()).filter(p => p.length > 0);
 
@@ -743,6 +801,7 @@
         parsedId = parsedIdLocal;
         bookmarkHtml = parsedBookmarkHtml;
         hooks = parsedHooks;
+        bookLocalStyles = parsedUserStyles;
     }
 
     function getEmbedUrl(url: string): string {
@@ -1169,7 +1228,7 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 </svelte:head>
 
-<div class="book-workspace" data-theme={uiTheme} data-book-theme={themeColor} class:vertical-mode={viewMode === 'vertical'}>
+<div class="book-workspace" data-theme={uiTheme} data-book-theme={['white', 'black', 'blue', 'pink', 'gold'].includes(themeColor) ? themeColor : 'black'} class:vertical-mode={viewMode === 'vertical'}>
     {#if backUrl}
         <button 
             id="backToShelfBtn"
@@ -1236,7 +1295,7 @@
             {/if}
 
             <!-- 表紙エリア -->
-            <div class="cover-overlay" id="cover" style:transform={isOpened ? 'rotateY(-110deg)' : 'none'} style:opacity={isOpened ? 0 : 1} style:pointer-events={isOpened ? 'none' : 'auto'}>
+            <div class="cover-overlay" id="cover" style="background: {!['white', 'black', 'blue', 'pink', 'gold'].includes(themeColor) ? themeColor : ''}; transform: {isOpened ? 'rotateY(-110deg)' : 'none'}; opacity: {isOpened ? 0 : 1}; pointer-events: {isOpened ? 'none' : 'auto'};">
                 {#if coverImage}
                     <img src={coverImage} alt={title} class="cover-image" id="coverImg" />
                 {/if}

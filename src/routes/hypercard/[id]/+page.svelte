@@ -12,4 +12,5 @@
     isEmbed={data.isEmbed} 
     showNewTab={!data.isEmbed}
     activePluginIds={activePluginIds}
+    currentUserId={data.currentUserId}
 />

@@ -13,7 +13,8 @@
         showNewTab = true,
         isEmbed = false,
         backUrl = '/',
-        activePluginIds = []
+        activePluginIds = [],
+        currentUserId = 'global'
     } = $props();
 
     // Iframe postMessage connection states
@@ -24,6 +25,66 @@
     let cleanMarkdownText = $derived.by(() => {
         if (!markdown) return '';
         return markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
+    });
+
+    let pluginStyles = $state('');
+
+    let cardLocalStyles = $derived.by(() => {
+        if (!markdown) return '';
+        const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
+        let match;
+        let styles = '';
+        while ((match = styleRegex.exec(markdown)) !== null) {
+            styles += match[1] + '\n';
+        }
+        return styles;
+    });
+
+    let cardUserStyles = $derived(cardLocalStyles + '\n' + pluginStyles);
+
+    $effect(() => {
+        const ids = activePluginIds || [];
+        const uId = currentUserId || 'global';
+        const myPlugins = ids.filter((pId: string) => pId.startsWith('my-plugin-'));
+        console.log('[Card.svelte Plugin CSS] activePluginIds:', ids, 'currentUserId:', uId, 'filtered myPlugins:', myPlugins);
+        if (myPlugins.length > 0) {
+            const url = `/api/skills/css?userId=${encodeURIComponent(uId)}&pluginIds=${encodeURIComponent(myPlugins.join(','))}`;
+            console.log('[Card.svelte Plugin CSS] Fetching URL:', url);
+            fetch(url)
+                .then(res => {
+                    console.log('[Card.svelte Plugin CSS] Fetch response status:', res.status);
+                    if (res.ok) return res.json();
+                    throw new Error(`Failed to fetch plugin CSS, status: ${res.status}`);
+                })
+                .then(data => {
+                    console.log('[Card.svelte Plugin CSS] Received CSS length:', (data.css || '').length);
+                    pluginStyles = data.css || '';
+                })
+                .catch(err => {
+                    console.error('[Card.svelte Plugin CSS] Fetch error:', err);
+                    pluginStyles = '';
+                });
+        } else {
+            console.log('[Card.svelte Plugin CSS] No custom plugins to fetch.');
+            pluginStyles = '';
+        }
+    });
+
+    $effect(() => {
+        if (!browser) return;
+        let styleEl = document.getElementById('card-dynamic-styles');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'card-dynamic-styles';
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = cardUserStyles;
+        console.log('[Card.svelte style element] Applied styles to #card-dynamic-styles, length:', cardUserStyles.length);
+        
+        return () => {
+            const el = document.getElementById('card-dynamic-styles');
+            if (el) el.remove();
+        };
     });
 
     onMount(() => {
@@ -195,7 +256,8 @@
 
     let cardBodyHtml = $derived.by(() => {
         if (!markdown) return '';
-        const cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
+        let cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
+        cleanMd = cleanMd.replace(/<style>[\s\S]*?<\/style>/gi, '');
 
         let processed = cleanMd.split('\n').map(line => {
             const trimmed = line.trim();
@@ -294,10 +356,11 @@
         
         const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
         let styleMatch;
-        let userStyles = '';
+        let localStyles = '';
         while ((styleMatch = styleRegex.exec(markdown)) !== null) {
-            userStyles += styleMatch[1] + '\n';
+            localStyles += styleMatch[1] + '\n';
         }
+        const userStyles = localStyles + '\n' + pluginStyles;
 
         const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
         let scriptMatch;
@@ -381,7 +444,7 @@
     }
 </script>
 
-<div class="card-reader-container" data-theme-color={cardThemeColor} class:embed-mode={isEmbed}>
+<div class="card-reader-container" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} class:embed-mode={isEmbed}>
     {#if !isEmbed}
         <div class="reader-header-bar">
             <a class="back-btn" href={backUrl} onclick={(e) => { if (window.history.length === 1 || window.opener) { e.preventDefault(); window.close(); } }}>back</a>
@@ -407,7 +470,7 @@
         </div>
         {/if}
 
-        <div class="card-webview-frame" data-theme-color={cardThemeColor} class:embed-mode={isEmbed}>
+        <div class="card-webview-frame" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} style={!['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? `background-color: ${cardThemeColor};` : ''} class:embed-mode={isEmbed}>
             <div class="card-webview-header">
                 <h1 class="card-webview-title">{cardTitle}</h1>
                 {#if cardCoverImage}
