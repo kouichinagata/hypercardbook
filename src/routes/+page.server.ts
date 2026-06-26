@@ -72,69 +72,108 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
         }
     }
 
-    // Load sample books from the static files
-    const SAMPLE_FILES = ['sample001.md', 'sample002.md', 'sample003.md', 'sample004.md', 'sample005.md'];
+    // Load sample books dynamically from the public stack 'HyperCardBook Samples' (ID: c9ee4774-d099-41a1-b1e7-b42f7a2b4c68)
     let sampleBooks: any[] = [];
+    try {
+        // Fetch the stack book
+        const { data: stackData, error: stackError } = await supabase
+            .from('books')
+            .select('markdown_content')
+            .eq('id', 'c9ee4774-d099-41a1-b1e7-b42f7a2b4c68')
+            .single();
 
-    for (const filename of SAMPLE_FILES) {
-        try {
-            const res = await fetch(`/samples/${filename}`);
-            if (!res.ok) continue;
-            
-            const content = await res.text();
-            const fmMatch = content.match(/^---\s*([\s\S]*?)\s*---/);
-            
-            let id = filename.replace('.md', '');
-            let title = '無題のサンプル';
-            let author = '';
-            let coverImage = '';
-            let themeColor = '';
-            let playMode = 'book';
-            let subTitle = '';
-            let description = '';
-            let hideHyperbook = false;
-
-            if (fmMatch) {
-                const lines = fmMatch[1].split('\n');
-                lines.forEach((line: string) => {
-                    const parts = line.split(':');
-                    if (parts.length >= 2) {
-                        const k = parts[0].trim();
-                        const v = parts.slice(1).join(':').trim();
-                        if (k === 'title') title = v;
-                        if (k === 'author') author = v;
-                        if (k === 'cover_image') coverImage = v;
-                        if (k === 'theme_color') themeColor = v;
-                        if (k === 'play_mode') playMode = v;
-                        if (k === 'sub_title') subTitle = v;
-                        if (k === 'description') description = v.replace(/^["']|["']$/g, '');
-                        if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
-                    }
-                });
-            }
-
-            const isCard = playMode === 'card';
-            const isStack = playMode === 'stack';
-
-            sampleBooks.push({
-                id,
-                slug: id,
-                title,
-                author,
-                coverImage,
-                themeColor: themeColor || (isCard ? 'white' : 'black'),
-                userId: null,
-                isCard,
-                isStack,
-                subTitle,
-                description,
-                hideHyperbook,
-                isSample: true,
-                markdownContent: content
+        if (stackError) {
+            console.error('Failed to fetch sample stack from Supabase:', stackError);
+        } else if (stackData) {
+            const markdown = stackData.markdown_content || '';
+            // Parse linked book IDs and their playModes
+            const linkedItems: { type: string; id: string }[] = [];
+            const lines = markdown.split('\n');
+            lines.forEach((line: string) => {
+                const match = line.match(/-\s*\[.*?\]\((book|card|stack):([a-zA-Z0-9_\-]+)\)/);
+                if (match) {
+                    linkedItems.push({ type: match[1], id: match[2] });
+                }
             });
-        } catch (err) {
-            console.error(`Failed to fetch sample book ${filename}:`, err);
+
+            if (linkedItems.length > 0) {
+                const targetIds = linkedItems.map(item => item.id);
+                // Fetch the actual book details from Supabase
+                const { data: rawLinkedBooks, error: linkedBooksError } = await supabase
+                    .from('books')
+                    .select('id, slug, title, author, cover_image, theme_color, user_id, markdown_content, created_at, updated_at')
+                    .in('id', targetIds);
+
+                if (linkedBooksError) {
+                    console.error('Failed to fetch linked books for sample stack:', linkedBooksError);
+                } else if (rawLinkedBooks) {
+                    // Map details and parse YAML frontmatter for each linked book
+                    const mappedBooks = rawLinkedBooks.map(b => {
+                        const content = b.markdown_content || '';
+                        let playMode = 'book';
+                        let subTitle = '';
+                        let launchUrl = '';
+                        let paperoboSlug = '';
+                        let hyperbookId = '';
+                        let description = '';
+                        let hideHyperbook = false;
+
+                        const fmMatch = content.match(/^---\s*([\s\S]*?)\s*---/);
+                        if (fmMatch) {
+                            const fmLines = fmMatch[1].split('\n');
+                            fmLines.forEach((line: string) => {
+                                const parts = line.split(':');
+                                if (parts.length >= 2) {
+                                    const k = parts[0].trim();
+                                    const v = parts.slice(1).join(':').trim();
+                                    if (k === 'play_mode') playMode = v;
+                                    if (k === 'sub_title') subTitle = v;
+                                    if (k === 'launch_url') launchUrl = v;
+                                    if (k === 'paperobo_slug') paperoboSlug = v;
+                                    if (k === 'hyperbook_id') hyperbookId = v;
+                                    if (k === 'description') description = v.replace(/^["']|["']$/g, '');
+                                    if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
+                                }
+                            });
+                        }
+
+                        const isCard = playMode === 'card';
+                        const isStack = playMode === 'stack';
+
+                        return {
+                            id: b.id,
+                            slug: b.slug,
+                            title: b.title,
+                            author: b.author,
+                            coverImage: b.cover_image,
+                            themeColor: b.theme_color || (isCard ? 'white' : 'black'),
+                            userId: b.user_id,
+                            isCard,
+                            isStack,
+                            playMode,
+                            launchUrl,
+                            paperoboSlug,
+                            hyperbookId,
+                            subTitle,
+                            description,
+                            hideHyperbook,
+                            isSample: true, // Identify as a Sample Book for the front-end
+                            markdownContent: content
+                        };
+                    });
+
+                    // Sort the fetched books according to the original linkedItems order (Stack's order)
+                    linkedItems.forEach(item => {
+                        const found = mappedBooks.find(b => b.id === item.id);
+                        if (found) {
+                            sampleBooks.push(found);
+                        }
+                    });
+                }
+            }
         }
+    } catch (err) {
+        console.error('Failed to load dynamic sample books:', err);
     }
 
     // Fetch initial 50 public books (ordered by published_at ASC)

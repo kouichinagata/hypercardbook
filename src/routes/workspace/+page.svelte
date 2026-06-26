@@ -1150,6 +1150,13 @@ ${markdown}
             mode = parsedIsCard ? 'card' : 'book';
         }
 
+        // Set default display tab: Code (source) for Card workspace, Preview for Book workspace
+        if (mode === 'card') {
+            activeTab = 'source';
+        } else {
+            activeTab = 'preview';
+        }
+
         let initPrompt = page.url.searchParams.get('prompt');
         if (!initPrompt) {
             try {
