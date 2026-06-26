@@ -493,8 +493,9 @@
     let hasMorePublic = $state(false);
     let isLoadingMorePublic = $state(false);
 
-    let myBooksList = $derived(data.books.filter((b: any) => !b.isSample));
+    let myBooksList = $derived(data.books.filter((b: any) => !b.isSample && !b.isQuarkChoice));
     let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample));
+    let quarksChoiceList = $derived(data.books.filter((b: any) => b.isQuarkChoice));
 
     function localizeBook(b: any) {
         if (!b) return b;
@@ -508,6 +509,7 @@
 
     let myBooksListLocalized = $derived(myBooksList.map(localizeBook));
     let sampleBooksListLocalized = $derived(sampleBooksList.map(localizeBook));
+    let quarksChoiceListLocalized = $derived(quarksChoiceList.map(localizeBook));
     let publicBooksListLocalized = $derived(publicBooksList.map(localizeBook));
 
     $effect(() => {
@@ -1850,8 +1852,41 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 />
             {/if}
         {:else}
+            <!-- Always render Quark's Choice if available -->
+            {#if quarksChoiceList && quarksChoiceList.length > 0}
+                <div class="public-books-separator">
+                    <div class="golden-plate no-pointer">Quark's Choice</div>
+                </div>
+                <Bookshelf
+                    books={quarksChoiceListLocalized}
+                    currentUserId={data.currentUserId}
+                    showActions={true}
+                    isPublicShelf={true}
+                    bind:selectedBookId={selectedBookId}
+                    onPromptSelect={handlePromptSelect}
+                    onEditBook={handleEditBook}
+                    onDeleteBook={handleDeleteBook}
+                    onDownloadBook={handleDownloadBook}
+                    fromPage="home"
+                    showStackBtn={false}
+                    isStackSelection={isStackSelectionMode}
+                    selectedStackBookIds={selectedStackBookIds}
+                    isHyperRoboSelection={isHyperRoboSelectionMode}
+                    selectedHyperRoboBookIds={selectedHyperRoboBookIds}
+                    onToggleSelection={handleToggleSelectionWrapper}
+                    onStackClick={handleStackClick}
+                    onDuplicateStack={handleDuplicateStack}
+                    onToggleStackSelectionMode={toggleStackSelectionMode}
+                    onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
+                    onHyperRoboClick={openHyperRoboView}
+                />
+            {/if}
+
             <!-- Render My Books if user has any books -->
             {#if myBooksList && myBooksList.length > 0}
+                <div class="public-books-separator">
+                    <div class="golden-plate no-pointer">My Books</div>
+                </div>
                 <Bookshelf
                     books={myBooksListLocalized}
                     currentUserId={data.currentUserId}

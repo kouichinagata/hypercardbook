@@ -176,6 +176,85 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
         console.error('Failed to load dynamic sample books:', err);
     }
 
+    // Load 'Quark\'s Choice' dynamically from Supabase (id/slug: hypercardbook-oss-launch)
+    let quarksChoiceBooks: any[] = [];
+    try {
+        const { data: b, error: dbError } = await supabase
+            .from('books')
+            .select('id, slug, title, author, cover_image, theme_color, user_id, markdown_content, created_at, updated_at')
+            .eq('id', 'hypercardbook-oss-launch')
+            .single();
+
+        let bookData = b;
+        if (dbError || !b) {
+            // Fallback to checking by slug in case 'hypercardbook-oss-launch' is a slug
+            const { data: bBySlug, error: slugError } = await supabase
+                .from('books')
+                .select('id, slug, title, author, cover_image, theme_color, user_id, markdown_content, created_at, updated_at')
+                .eq('slug', 'hypercardbook-oss-launch')
+                .single();
+            if (!slugError && bBySlug) {
+                bookData = bBySlug;
+            }
+        }
+
+        if (bookData) {
+            const content = bookData.markdown_content || '';
+            let playMode = 'book';
+            let subTitle = '';
+            let launchUrl = '';
+            let paperoboSlug = '';
+            let hyperbookId = '';
+            let description = '';
+            let hideHyperbook = false;
+
+            const fmMatch = content.match(/^---\s*([\s\S]*?)\s*---/);
+            if (fmMatch) {
+                const fmLines = fmMatch[1].split('\n');
+                fmLines.forEach((line: string) => {
+                    const parts = line.split(':');
+                    if (parts.length >= 2) {
+                        const k = parts[0].trim();
+                        const v = parts.slice(1).join(':').trim();
+                        if (k === 'play_mode') playMode = v;
+                        if (k === 'sub_title') subTitle = v;
+                        if (k === 'launch_url') launchUrl = v;
+                        if (k === 'paperobo_slug') paperoboSlug = v;
+                        if (k === 'hyperbook_id') hyperbookId = v;
+                        if (k === 'description') description = v.replace(/^["']|["']$/g, '');
+                        if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
+                    }
+                });
+            }
+
+            const isCard = playMode === 'card';
+            const isStack = playMode === 'stack';
+
+            quarksChoiceBooks.push({
+                id: bookData.id,
+                slug: bookData.slug,
+                title: bookData.title,
+                author: bookData.author,
+                coverImage: bookData.cover_image,
+                themeColor: bookData.theme_color || (isCard ? 'white' : 'black'),
+                userId: bookData.user_id,
+                isCard,
+                isStack,
+                playMode,
+                launchUrl,
+                paperoboSlug,
+                hyperbookId,
+                subTitle,
+                description,
+                hideHyperbook,
+                isQuarkChoice: true, // Identify as Quark's Choice for the front-end
+                markdownContent: content
+            });
+        }
+    } catch (err) {
+        console.error('Failed to load Quark\'s Choice book:', err);
+    }
+
     // Fetch initial 50 public books (ordered by published_at ASC)
     let publicBooks: any[] = [];
     let hasMorePublic = false;
@@ -252,7 +331,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
     }
 
     return {
-        books: [...formattedBooks, ...sampleBooks],
+        books: [...formattedBooks, ...sampleBooks, ...quarksChoiceBooks],
         publicBooks,
         hasMorePublic,
         currentUserId: session?.user?.id || null
