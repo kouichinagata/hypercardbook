@@ -91,9 +91,9 @@
         return trimmed;
     }
 
-    function handleBookClick(bookId: string) {
-        const targetBook = books.find((b: any) => b.id === bookId || b.slug === bookId);
-        const isCard = targetBook ? targetBook.isCard : false;
+    function handleBookClick(book: any) {
+        const isCard = book.isCard;
+        const bookId = book.id;
 
         const params = new URLSearchParams();
         params.set('from', fromPage);
@@ -123,7 +123,7 @@
         } else if (book.playMode === 'paperobo' && book.launchUrl) {
             window.open(book.launchUrl, '_blank');
         } else {
-            handleBookClick(book.id);
+            handleBookClick(book);
         }
     }
 

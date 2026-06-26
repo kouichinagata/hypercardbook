@@ -39,7 +39,23 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
                 throw error(500, { message: 'Failed to read book file' });
             }
         } else {
-            throw error(404, { message: 'Book file not found' });
+            // Fallback to database lookup if filesystem file does not exist
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+            const query = supabase.from('books').select('markdown_content, user_id');
+            if (isUuid) {
+                query.eq('id', id);
+            } else {
+                query.eq('slug', id);
+            }
+
+            const { data, error: dbError } = await query.single();
+
+            if (dbError || !data) {
+                console.error(`Book not found in DB or file for "${id}":`, dbError);
+                throw error(404, { message: 'Book file not found' });
+            }
+            markdownContent = data.markdown_content;
+            ownerId = data.user_id || 'global';
         }
     } else {
         // 2. Otherwise, query Supabase database as usual

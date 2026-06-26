@@ -30,6 +30,11 @@
         window.open(`/hyperbookshelf?books=${itemIds.join(',')}&title=${encodeURIComponent(book.title)}`, '_blank');
     }
 
+    function handleHyperRoboClick(book: any) {
+        const baseUrl = window.location.origin;
+        window.open(`${baseUrl}/?launch_robo=${book.id}`, '_blank');
+    }
+
     onMount(() => {
         const saved = localStorage.getItem('shelf-theme');
         if (saved) {
@@ -81,6 +86,7 @@
             titleParam={data.title || ''}
             logoParam={data.logo || ''}
             onStackClick={handleStackClick}
+            onHyperRoboClick={handleHyperRoboClick}
         />
     {/if}
 </div>
