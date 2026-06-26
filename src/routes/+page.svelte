@@ -203,6 +203,12 @@
         // Auto translate bookshelf covers on mount
         translateBookshelfCovers();
 
+        // Tab focus detection to automatically refresh the bookshelf
+        const handleWindowFocus = () => {
+            invalidateAll();
+        };
+        window.addEventListener('focus', handleWindowFocus);
+
         // URLの launch_robo パラメータをチェックし、存在すれば自動起動
         const urlParams = new URLSearchParams(window.location.search);
         const launchRoboId = urlParams.get('launch_robo');
@@ -230,6 +236,7 @@
 
         return () => {
             supabase.removeChannel(channel);
+            window.removeEventListener('focus', handleWindowFocus);
         };
     });
 

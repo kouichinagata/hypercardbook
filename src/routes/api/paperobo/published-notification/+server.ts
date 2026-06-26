@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request }) => {
         }
 
         const payload = await request.json();
-        const { action, agentId, userId, title, coverImage, launchUrl } = payload;
+        const { action, agentId, userId, title, coverImage, launchUrl, description } = payload;
 
         if (!agentId || !userId) {
             return json({ error: 'Missing required parameters: agentId and userId.' }, { status: 400 });
@@ -52,6 +52,7 @@ export const POST: RequestHandler = async ({ request }) => {
 title: ${title}
 play_mode: paperobo
 launch_url: ${launchUrl || ''}
+${description ? `description: "${description.replace(/\n/g, ' ').replace(/"/g, '\\"')}"` : ''}
 ---
 # ${title}
 This character is integrated from PapeRobo.
