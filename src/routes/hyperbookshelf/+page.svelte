@@ -7,6 +7,29 @@
 
     let uiTheme = $state('dark');
 
+    function parseStackMarkdown(markdown: string): Array<{ type: 'book' | 'card' | 'stack', id: string, title: string }> {
+        const items: Array<{ type: 'book' | 'card' | 'stack', id: string, title: string }> = [];
+        if (!markdown) return items;
+        const lines = markdown.split('\n');
+        lines.forEach(line => {
+            const trimmed = line.trim();
+            const match = trimmed.match(/^-\s*\[(.*?)\]\((book|card|stack):(.*)\)/);
+            if (match) {
+                const title = match[1];
+                const type = match[2] as 'book' | 'card' | 'stack';
+                const id = match[3].trim();
+                items.push({ type, id, title });
+            }
+        });
+        return items;
+    }
+
+    function handleStackClick(book: any) {
+        const subItems = parseStackMarkdown(book.markdownContent || book.markdown_content || '');
+        const itemIds = subItems.map(item => item.id);
+        window.open(`/hyperbookshelf?books=${itemIds.join(',')}&title=${encodeURIComponent(book.title)}`, '_blank');
+    }
+
     onMount(() => {
         const saved = localStorage.getItem('shelf-theme');
         if (saved) {
@@ -57,6 +80,7 @@
             booksParam={data.booksParam || ''}
             titleParam={data.title || ''}
             logoParam={data.logo || ''}
+            onStackClick={handleStackClick}
         />
     {/if}
 </div>

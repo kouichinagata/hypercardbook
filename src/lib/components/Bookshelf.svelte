@@ -107,9 +107,7 @@
 
     function handleItemClick(book: any) {
         if (isStackSelection) {
-            if (!book.isStack) {
-                onToggleSelection?.(book);
-            }
+            onToggleSelection?.(book);
             return;
         }
         if (isHyperRoboSelection) {
@@ -273,7 +271,7 @@
                                 class:is-stack={book.isStack}
                                 class:is-phone={book.playMode === 'paperobo'}
                                 class:selected-in-selection={(isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
-                                class:unselectable-in-selection={(isStackSelection && book.isStack) || (isHyperRoboSelection && (book.isStack || book.playMode === 'hyperrobo'))}
+                                class:unselectable-in-selection={isHyperRoboSelection && (book.isStack || book.playMode === 'hyperrobo')}
                                 onclick={() => handleItemClick(book)}
                                 onkeydown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {

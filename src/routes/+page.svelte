@@ -792,7 +792,7 @@ HyperBook: ${hyperBook.title}
         if (index > -1) {
             selectedStackBooks = selectedStackBooks.filter(b => b.id !== book.id);
         } else {
-            selectedStackBooks = [...selectedStackBooks, { id: book.id, title: book.title, isCard: book.isCard }];
+            selectedStackBooks = [...selectedStackBooks, { id: book.id, title: book.title, isCard: book.isCard, isStack: book.isStack, playMode: book.playMode }];
         }
     }
 
@@ -811,16 +811,16 @@ HyperBook: ${hyperBook.title}
     }
 
     // Parse stack markdown links
-    function parseStackMarkdown(markdown: string): Array<{ type: 'book' | 'card', id: string, title: string }> {
-        const items: Array<{ type: 'book' | 'card', id: string, title: string }> = [];
+    function parseStackMarkdown(markdown: string): Array<{ type: 'book' | 'card' | 'stack', id: string, title: string }> {
+        const items: Array<{ type: 'book' | 'card' | 'stack', id: string, title: string }> = [];
         if (!markdown) return items;
         const lines = markdown.split('\n');
         lines.forEach(line => {
             const trimmed = line.trim();
-            const match = trimmed.match(/^-\s*\[(.*?)\]\((book|card):(.*)\)/);
+            const match = trimmed.match(/^-\s*\[(.*?)\]\((book|card|stack):(.*)\)/);
             if (match) {
                 const title = match[1];
-                const type = match[2] as 'book' | 'card';
+                const type = match[2] as 'book' | 'card' | 'stack';
                 const id = match[3].trim();
                 items.push({ type, id, title });
             }
@@ -845,7 +845,7 @@ ${stackPublishedAt ? `published_at: ${stackPublishedAt}` : ''}
 description: "${(stackDescription || '').replace(/\n/g, ' ').replace(/"/g, '\\"')}"
 ---
 
-${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.id})`).join('\n')}
+${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'stack' ? 'stack' : (b.isCard ? 'card' : 'book')}:${b.id})`).join('\n')}
 `;
 
         try {
@@ -914,7 +914,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isCard ? 'card' : 'book'}:${b.
         selectedStackBooks = subItems.map(item => ({
             id: item.id,
             title: item.title,
-            isCard: item.type === 'card'
+            isCard: item.type === 'card',
+            isStack: item.type === 'stack',
+            playMode: item.type
         }));
         
         isStackSelectionMode = true;

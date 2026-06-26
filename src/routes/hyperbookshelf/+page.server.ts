@@ -167,10 +167,17 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
     let allBooks = [...formattedBooks, ...staticBooks];
 
-    // Filter books by booksParam if provided
+    // Filter books by booksParam if provided and keep their order
     if (booksParam) {
         const allowedIds = booksParam.split(',').map(id => id.trim());
-        allBooks = allBooks.filter(b => allowedIds.includes(b.id) || allowedIds.includes(b.slug));
+        const orderedBooks: any[] = [];
+        allowedIds.forEach(id => {
+            const found = allBooks.find(b => b.id === id || b.slug === id);
+            if (found) {
+                orderedBooks.push(found);
+            }
+        });
+        allBooks = orderedBooks;
     }
 
     return {
