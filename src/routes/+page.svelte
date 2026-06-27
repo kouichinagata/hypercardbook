@@ -50,6 +50,25 @@
         const compressedBlob = await compressImage(file);
         const sessionUser = data.session?.user;
         const userId = sessionUser?.id || 'guest';
+
+        if (userId !== 'guest') {
+            const { data: files, error: listError } = await supabase.storage
+                .from('HyperCardBookBucket')
+                .list(userId, { limit: 1000 });
+
+            if (listError) {
+                console.error('Failed to list storage files:', listError);
+            } else if (files) {
+                let totalSize = 0;
+                for (const f of files) {
+                    totalSize += f.metadata?.size || 0;
+                }
+                const limitBytes = 20 * 1024 * 1024; // 20MB
+                if (totalSize + compressedBlob.size > limitBytes) {
+                    throw new Error('Storage limit (20MB) reached. Cannot upload.');
+                }
+            }
+        }
         
         const cleanName = file.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
         const fileName = `${crypto.randomUUID()}_${cleanName}.webp`;
@@ -209,7 +228,7 @@
         };
         window.addEventListener('focus', handleWindowFocus);
 
-        // URLの launch_robo パラメータをチェックし、存在すれば自動起動
+        // Check launch_robo URL parameter and auto-launch if present
         const urlParams = new URLSearchParams(window.location.search);
         const launchRoboId = urlParams.get('launch_robo');
         if (launchRoboId) {
@@ -386,10 +405,10 @@
         if (successFiles.length > 0) {
             finalPrompt += '\n\n<!-- ATTACHMENTS_START -->';
             if (images.length > 0) {
-                finalPrompt += '\n### 添付画像\n' + images.map(img => `![${img.name}](${img.url})`).join('\n');
+                finalPrompt += '\n### Attached Images\n' + images.map(img => `![${img.name}](${img.url})`).join('\n');
             }
             if (texts.length > 0) {
-                finalPrompt += '\n### 添付テキスト\n' + texts.map(txt => `📄 ${txt.name}\n\`\`\`content\n${txt.content}\n\`\`\``).join('\n\n');
+                finalPrompt += '\n### Attached Texts\n' + texts.map(txt => `📄 ${txt.name}\n\`\`\`content\n${txt.content}\n\`\`\``).join('\n\n');
             }
             finalPrompt += '\n<!-- ATTACHMENTS_END -->';
         }
@@ -1288,9 +1307,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     let passwordChangeSuccess = $state('');
 
     // Default configuration constants
-    const DEFAULT_HYPERCARDBOOK_MD = `# HyperCardBook設定
-## 全般
-- language: ja (日本語)
+    const DEFAULT_HYPERCARDBOOK_MD = `# HyperCardBook Settings
+## General
+- language: en (English)
 - default_theme: dark`;
 
     async function openSettingsModal() {
@@ -1419,7 +1438,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             
             showSettingsModal = false;
             await invalidateAll();
-            alert('Settings saved.');
         } catch (err: any) {
             console.error('Failed to save settings:', err);
             alert(`Failed to save settings: ${err.message || err}`);
@@ -1436,9 +1454,30 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         
         try {
             const compressedBlob = await compressImage(file);
+            const userId = data.currentUserId || 'guest';
+
+            if (userId !== 'guest') {
+                const { data: files, error: listError } = await supabase.storage
+                    .from('HyperCardBookBucket')
+                    .list(userId, { limit: 1000 });
+
+                if (listError) {
+                    console.error('Failed to list storage files:', listError);
+                } else if (files) {
+                    let totalSize = 0;
+                    for (const f of files) {
+                        totalSize += f.metadata?.size || 0;
+                    }
+                    const limitBytes = 20 * 1024 * 1024; // 20MB
+                    if (totalSize + compressedBlob.size > limitBytes) {
+                        throw new Error('Storage limit (20MB) reached. Cannot upload.');
+                    }
+                }
+            }
+
             const fileExt = 'webp';
-            const fileName = `avatar_${data.currentUserId || 'guest'}_${Date.now()}.${fileExt}`;
-            const filePath = `${data.currentUserId || 'guest'}/${fileName}`;
+            const fileName = `avatar_${userId}_${Date.now()}.${fileExt}`;
+            const filePath = `${userId}/${fileName}`;
             
             const { error: uploadError } = await supabase.storage
                 .from('HyperCardBookBucket')
@@ -1585,12 +1624,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
     function openHyperRoboView(book: any) {
         const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('launch_robo') === book.id) {
-            // すでに別タブのパラメータ経由で開いている場合は、自画面で通常起動
+        // If already opened via parameter in another tab, launch normally in self
+        if (urlParams.has('launch_robo') || urlParams.has('embedded')) {
             activeHyperRobo = book;
             isSplitViewOpen = true;
         } else {
-            // 通常の本棚からクリックされた場合は、別タブでパラメータ付きURLを開く
+            // If clicked from normal bookshelf, open parameter-appended URL in another tab
             const baseUrl = window.location.origin;
             window.open(`${baseUrl}/?launch_robo=${book.id}`, '_blank');
         }
@@ -1658,7 +1697,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { openSettingsModal(); } }}
                 role="button"
                 tabindex="0"
-                title="環境設定を開く"
+                title="Settings"
             >
                 {#if data.session.user.user_metadata?.avatar_url}
                     <img 
@@ -1792,7 +1831,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     <span>Book</span>
                                 </label>
                             </div>
-                            <!-- 📱 ボタンを追加 -->
+                            <!-- 📱 Add mobile button -->
                             <button
                                 type="button"
                                 class="split-view-trigger-btn"
@@ -2048,7 +2087,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                 class="control-arrow-btn"
                                                 onclick={() => moveStackItem(idx, -1)}
                                                 disabled={idx === 0}
-                                                title="上に移動"
+                                                title="Move Up"
                                             >
                                                 ▲
                                             </button>
@@ -2057,7 +2096,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                 class="control-arrow-btn"
                                                 onclick={() => moveStackItem(idx, 1)}
                                                 disabled={idx === selectedStackBooks.length - 1}
-                                                title="下に移動"
+                                                title="Move Down"
                                             >
                                                 ▼
                                             </button>
@@ -2065,7 +2104,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                 type="button"
                                                 class="control-remove-btn"
                                                 onclick={() => removeStackItem(idx)}
-                                                title="削除"
+                                                title="Delete"
                                             >
                                                 ✕
                                             </button>
@@ -2524,7 +2563,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                 class="plugin-name-input" 
                                                 bind:value={selectedPluginName} 
                                                 oninput={handleNameInput} 
-                                                placeholder="e.g. ですます切り替え"
+                                                placeholder="e.g. polite-tone"
                                                 style="width: 100%; box-sizing: border-box;"
                                                 disabled={selectedPlugin && selectedPlugin.owner !== 'My plugin'}
                                             />
@@ -2537,14 +2576,14 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                 class="plugin-name-input" 
                                                 bind:value={selectedPluginDescription} 
                                                 oninput={handleDescriptionInput} 
-                                                placeholder="e.g. 文章の敬体を変換する"
+                                                placeholder="e.g. Convert text to polite tone."
                                                 style="width: 100%; box-sizing: border-box;"
                                                 disabled={selectedPlugin && selectedPlugin.owner !== 'My plugin'}
                                             />
                                         </div>
 
                                         <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
-                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Skill Text (Skill文)</label>
+                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Skill Prompt</label>
                                             <textarea 
                                                 class="md-editor-textarea" 
                                                 bind:value={selectedPluginSkill} 
@@ -2645,17 +2684,17 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         <div class="modal-overlay" onclick={cancelPasswordChange} onkeydown={(e) => e.key === 'Escape' && cancelPasswordChange()} role="presentation">
             <div class="settings-modal-card" style="max-width: 400px;" onclick={(e) => e.stopPropagation()} role="presentation">
                 <div class="modal-header">
-                    <h2>パスワード変更 (Change Password)</h2>
+                    <h2>Change Password</h2>
                     <button class="close-btn" onclick={cancelPasswordChange}>✕</button>
                 </div>
                 
                 <div class="modal-body" style="padding-top: 20px;">
                     <div class="password-change-form">
                         <div style="margin-bottom: 12px; font-size: 13px; border-bottom: 1px solid var(--card-border); padding-bottom: 10px;">
-                            <span style="opacity: 0.7; color: var(--text-color);">ユーザーID (Email): </span>
+                            <span style="opacity: 0.7; color: var(--text-color);">User ID (Email): </span>
                             <strong style="color: var(--text-color); font-family: monospace; font-size: 13px;">{data.session?.user?.email || ''}</strong>
                         </div>
-                        <p style="font-size: 13px; opacity: 0.8; margin: 0 0 12px 0;">新しいパスワードを入力してください。</p>
+                        <p style="font-size: 13px; opacity: 0.8; margin: 0 0 12px 0;">Enter new password.</p>
                         {#if passwordChangeError}
                             <p class="error-msg">{passwordChangeError}</p>
                         {/if}
@@ -2666,7 +2705,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                             <input 
                                 type="password" 
                                 bind:value={newPassword} 
-                                placeholder="新しいパスワード" 
+                                placeholder="New password" 
                                 disabled={passwordChangeStep === 'loading'}
                             />
                         </div>
@@ -2674,7 +2713,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                             <input 
                                 type="password" 
                                 bind:value={confirmNewPassword} 
-                                placeholder="新しいパスワード（確認用）" 
+                                placeholder="Confirm new password" 
                                 disabled={passwordChangeStep === 'loading'}
                             />
                         </div>
@@ -2682,14 +2721,14 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 </div>
                 
                 <div class="modal-footer" style="margin-top: 20px;">
-                    <button type="button" class="cancel-btn" onclick={cancelPasswordChange} disabled={passwordChangeStep === 'loading'}>キャンセル</button>
+                    <button type="button" class="cancel-btn" onclick={cancelPasswordChange} disabled={passwordChangeStep === 'loading'}>Cancel</button>
                     <button 
                         type="button" 
                         class="save-btn" 
                         onclick={executePasswordChange} 
                         disabled={passwordChangeStep === 'loading' || !newPassword || !confirmNewPassword}
                     >
-                        {passwordChangeStep === 'loading' ? '更新中...' : 'パスワードを更新'}
+                        {passwordChangeStep === 'loading' ? 'Updating...' : 'Update'}
                     </button>
                 </div>
             </div>
@@ -2754,24 +2793,24 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         </div>
     {/if}
 
-    <!-- 左右分割ビュー（実験用） -->
+    <!-- Left-right split view (Experimental) -->
     {#if isSplitViewOpen}
         <div class="split-view-container">
             {#if !activeHyperRobo?.hideHyperbook}
                 <div class="split-view-header">
-                    <!-- 左側ヘッダー -->
+                    <!-- Left header -->
                     <div class="header-left-pane">
                         <button type="button" class="back-home-btn" onclick={toggleSplitView}>
                             back
                         </button>
                     </div>
-                    <!-- 右側ヘッダー -->
+                    <!-- Right header -->
                     <div class="header-right-pane">
                     </div>
                 </div>
             {/if}
             <div class="split-view-panes" style={activeHyperRobo?.hideHyperbook ? "height: 100% !important;" : ""}>
-                <!-- 左側：PapeRobo (モバイルアスペクト比で中央寄せ、非表示時は390pxで上寄せ中央) -->
+                <!-- Left: PapeRobo -->
                 <div class="split-pane left-pane" class:full-width={activeHyperRobo?.hideHyperbook}>
                     {#await getLeftPaneUrl() then src}
                         <iframe 
@@ -2784,7 +2823,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                         ></iframe>
                     {/await}
                 </div>
-                <!-- 右側：HyperCardBook -->
+                <!-- Right: HyperCardBook -->
                 <div class="split-pane right-pane" style={activeHyperRobo?.hideHyperbook ? "display: none !important;" : ""}>
                     {#if activeHyperBook}
                         {#if activeHyperBook.isCard}
@@ -4624,7 +4663,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         background: #0f1517;
     }
 
-    /* 左右分割ビュー（実験用）のスタイル */
+    /* Styles for split view (Experimental) */
     .split-view-container {
         position: fixed;
         top: 0;
@@ -4702,7 +4741,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         flex: 0 0 390px;
         width: 390px;
         border-right: 1px solid rgba(255, 255, 255, 0.08);
-        background-color: #4a4e4c; /* ダークモード時も枠線が見えやすいグレーに統一 */
+        background-color: #4a4e4c; /* Dark gray background for dark mode border visibility */
         padding: 20px;
         box-sizing: border-box;
         display: flex;
@@ -4717,7 +4756,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         width: 100%;
         height: 100%;
         border: none;
-        background: transparent; /* 透過させて親のグレーを見せる */
+        background: transparent; /* Make transparent to display parent gray background */
     }
     .right-pane {
         background-color: #12131c;
@@ -4752,16 +4791,16 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         transform: scale(1.2);
     }
 
-    /* 逆版の本の非表示起動レイアウトスタイル */
+    /* Styles for hidden book launch layout */
     .left-pane.full-width {
         width: 100% !important;
         flex: 1 !important;
         border-right: none !important;
         padding: 0 !important;
         display: flex;
-        justify-content: center; /* 画面横は中央寄せ */
-        align-items: flex-start; /* 縦は上寄せ */
-        background-color: #4a4e4c !important; /* PapeRobo本来の背景グレーに統一 */
+        justify-content: center; /* Center horizontally */
+        align-items: flex-start; /* Align to top vertically */
+        background-color: #4a4e4c !important; /* Same background color as PapeRobo */
     }
     .left-pane.full-width .split-iframe {
         width: 390px !important; /* 横幅はスマホサイズに制限 */

@@ -360,6 +360,25 @@
         const compressedBlob = await compressImage(file);
         const sessionUser = data.session?.user;
         const userId = sessionUser?.id || 'guest';
+
+        if (userId !== 'guest') {
+            const { data: files, error: listError } = await supabase.storage
+                .from('HyperCardBookBucket')
+                .list(userId, { limit: 1000 });
+
+            if (listError) {
+                console.error('Failed to list storage files:', listError);
+            } else if (files) {
+                let totalSize = 0;
+                for (const f of files) {
+                    totalSize += f.metadata?.size || 0;
+                }
+                const limitBytes = 20 * 1024 * 1024; // 20MB
+                if (totalSize + compressedBlob.size > limitBytes) {
+                    throw new Error('Storage limit (20MB) reached. Cannot upload.');
+                }
+            }
+        }
         
         const cleanName = file.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
         const fileName = `${crypto.randomUUID()}_${cleanName}.webp`;
@@ -912,10 +931,10 @@ ${markdown}
         if (successFiles.length > 0) {
             visiblePrompt += '\n\n<!-- ATTACHMENTS_START -->';
             if (images.length > 0) {
-                visiblePrompt += '\n### 添付画像\n' + images.map(img => `![${img.name}](${img.url})`).join('\n');
+                visiblePrompt += '\n### Attached Images\n' + images.map(img => `![${img.name}](${img.url})`).join('\n');
             }
             if (texts.length > 0) {
-                visiblePrompt += '\n### 添付テキスト\n' + texts.map(txt => `📄 ${txt.name}\n\`\`\`content\n${txt.content}\n\`\`\``).join('\n\n');
+                visiblePrompt += '\n### Attached Texts\n' + texts.map(txt => `📄 ${txt.name}\n\`\`\`content\n${txt.content}\n\`\`\``).join('\n\n');
             }
             visiblePrompt += '\n<!-- ATTACHMENTS_END -->';
         }
@@ -1044,7 +1063,7 @@ ${markdown}
                     activePluginIds.push(newId);
                 }
                 
-                // 物理フォルダ連携APIをPOSTで叩き、物理サーバーにSkillを保存
+                // Call physical folder integration API via POST to save Skill on physical server
                 try {
                     await fetch('/api/skills', {
                         method: 'POST',
@@ -1080,7 +1099,7 @@ ${markdown}
         } catch (err: any) {
             console.error('Generation failed:', err);
             errorMsg = err.message || 'API Key error. Check GEMINI_API_KEY.';
-            // Thinking... が残っている場合は削除
+            // Remove Thinking... if it remains
             if (chatHistory[lastIndex] && chatHistory[lastIndex].text === 'Thinking...') {
                 chatHistory = chatHistory.slice(0, -1);
             }
@@ -2796,7 +2815,7 @@ ${markdown}
         color: rgba(61, 37, 22, 0.6);
     }
 
-    /* AIバブルの文字をライトモード時にハッキリ黒く見せるための追加修正 */
+    /* Additional fix to make AI bubble text clearly black in light mode */
     .workspace-layout[data-theme="light"] .message-bubble:not(.user) .bubble-content {
         background: #ffffff;
         color: #3d2516;
