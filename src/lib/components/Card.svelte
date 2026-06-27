@@ -349,97 +349,31 @@
         return url;
     }
 
-    // HTML Export helper functions
-    function handleDownloadHtml() {
-        const titleText = cardTitle || 'Untitled Card';
-        const slug = cardSlug || id || `card-${Date.now()}`;
-        
-        const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
-        let styleMatch;
-        let localStyles = '';
-        while ((styleMatch = styleRegex.exec(markdown)) !== null) {
-            localStyles += styleMatch[1] + '\n';
-        }
-        const userStyles = localStyles + '\n' + pluginStyles;
 
-        const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
-        let scriptMatch;
-        let userScripts = '';
-        while ((scriptMatch = scriptRegex.exec(markdown)) !== null) {
-            userScripts += scriptMatch[1] + '\n';
-        }
+    let hasPublishedHtml = $state(false);
 
-        const standaloneHtml = `<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${titleText}</title>
-    <style>
-        ${userStyles}
-    </style>
-</head>
-<body>
-    ${cardBodyHtml}
-    
-    <${'script'}>
-        ${userScripts}
-    </${'script'}>
-</body>
-</html>`;
-
-        const blob = new Blob([standaloneHtml], { type: 'text/html;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${slug}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-
-    let isExportingHtml = $state(false);
-    async function handleExportHtmlLink() {
-        if (isExportingHtml) return;
-
-        const newTab = window.open('', '_blank');
-        if (!newTab) {
-            alert('Popup blocker is active. Please allow popups for this site.');
-            return;
-        }
-
-        newTab.document.write('<html><head><title>Exporting HTML...</title><style>body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f4eae1; color: #333; } .loader { text-align: center; }</style></head><body><div class="loader"><h2>Generating standalone HTML...</h2><p>Please wait a moment.</p></div></body></html>');
-
-        isExportingHtml = true;
-        
-        try {
-            const response = await fetch('/api/export-html', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    markdown,
-                    id: id || cardSlug
+    $effect(() => {
+        if (!browser) return;
+        const targetSlug = cardSlug || id;
+        if (targetSlug && currentUserId) {
+            const publishedUrl = `/published/${currentUserId}/${targetSlug}.html`;
+            fetch(publishedUrl)
+                .then(res => {
+                    if (res.ok) {
+                        hasPublishedHtml = true;
+                    }
                 })
-            });
+                .catch(err => {
+                    console.error('Failed to check published HTML:', err);
+                });
+        }
+    });
 
-            if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.error || `HTTP error ${response.status}`);
-            }
-
-            const dataRes = await response.json();
-            if (dataRes.url) {
-                newTab.location.href = dataRes.url;
-            } else {
-                throw new Error('No URL returned from export API');
-            }
-        } catch (err: any) {
-            console.error('Export HTML failed:', err);
-            newTab.close();
-            alert(`Failed to export HTML: ${err.message || err}`);
-        } finally {
-            isExportingHtml = false;
+    function handleOpenPublishedHtml() {
+        const targetSlug = cardSlug || id;
+        if (targetSlug && currentUserId) {
+            const publishedUrl = `/published/${currentUserId}/${targetSlug}.html`;
+            window.open(publishedUrl, '_blank');
         }
     }
 </script>
@@ -460,12 +394,11 @@
                 </button>
             {/if}
             {#if !isEmbed}
-                <button class="card-action-btn" onclick={handleDownloadHtml} title="Download HTML">
-                    💾
-                </button>
-                <button class="card-action-btn" onclick={handleExportHtmlLink} disabled={isExportingHtml} title="Export HTML">
-                    🌐
-                </button>
+                {#if hasPublishedHtml}
+                    <button class="card-action-btn" onclick={handleOpenPublishedHtml} title="Show Published HTML">
+                        🌏
+                    </button>
+                {/if}
             {/if}
         </div>
         {/if}

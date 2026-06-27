@@ -1868,7 +1868,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDeleteBook={handleDeleteBook}
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
-                    showStackBtn={false}
+                    showStackBtn={true}
+                    showPapeRoboBtn={true}
+                    showHyperRoboBtn={true}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
@@ -1897,9 +1899,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDeleteBook={handleDeleteBook}
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
-                    showStackBtn={true}
-                    showPapeRoboBtn={true}
-                    showHyperRoboBtn={true}
+                    showStackBtn={false}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}

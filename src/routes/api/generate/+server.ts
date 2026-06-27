@@ -438,10 +438,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                     let lastPageEdit: any = null;
 
                     for (let turn = 0; turn < 10; turn++) {
-                        const toolDeclarations = [
-                            {
+                        const toolDeclarations = [];
+
+                        if (mode === 'book') {
+                            toolDeclarations.push({
                                 name: 'edit_page',
-                                description: 'Edit, delete, or insert a specific page (card) or the frontmatter in the current book/card document. Use for minor edits.',
+                                description: 'Edit, delete, or insert a specific page or the frontmatter in the current book document. Use for minor edits.',
                                 parameters: {
                                     type: 'OBJECT',
                                     properties: {
@@ -460,8 +462,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                                     },
                                     required: ['page_index', 'action', 'new_content']
                                 }
-                            }
-                        ];
+                            });
+                        }
 
                         if (activePluginIds.includes('gdrive-mcp')) {
                             toolDeclarations.push(

@@ -10,6 +10,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const supabase = locals.supabase;
         const session = locals.session;
         
+        // ログイン必須チェック
+        if (!session?.user?.id) {
+            return json({ error: 'Unauthorized. Please login to publish HTML.' }, { status: 401 });
+        }
+
         if (!markdown) {
             return json({ error: 'No markdown content provided.' }, { status: 400 });
         }
@@ -168,7 +173,7 @@ ${markdown}
         }
 
         // Upload HTML to Supabase Storage
-        const exportUserId = session?.user?.id || 'guest';
+        const exportUserId = session.user.id;
         const storagePath = `${exportUserId}/published/${slug}.html`;
 
         const { error: uploadError } = await supabase.storage

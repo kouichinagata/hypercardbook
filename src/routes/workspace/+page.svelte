@@ -682,7 +682,7 @@ ${markdown}
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     markdown,
-                    id: bookUuid || currentSlug,
+                    id: currentSlug || bookUuid,
                     activePluginIds,
                     userId: data.currentUserId
                 })
