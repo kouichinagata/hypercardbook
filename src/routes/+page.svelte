@@ -1295,16 +1295,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     // Account deletion workflow states
     let deleteStep = $state('none'); // 'none', 'warn', 'credentials', 'loading'
     let deleteConfirmEmail = $state('');
-    let deleteConfirmPassword = $state('');
     let deleteErrorMsg = $state('');
-
-    // Password change states
-    let showPasswordModal = $state(false);
-    let passwordChangeStep = $state('none'); // 'none', 'edit', 'loading'
-    let newPassword = $state('');
-    let confirmNewPassword = $state('');
-    let passwordChangeError = $state('');
-    let passwordChangeSuccess = $state('');
 
     // Default configuration constants
     const DEFAULT_HYPERCARDBOOK_MD = `# HyperCardBook Settings
@@ -1333,9 +1324,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         settingsActiveTab = 'profile';
         deleteStep = 'none';
         deleteConfirmEmail = '';
-        deleteConfirmPassword = '';
         deleteErrorMsg = '';
-        cancelPasswordChange();
 
         // Load physical custom skills from server storage
         try {
@@ -1352,46 +1341,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         }
         
         showSettingsModal = true;
-    }
-
-    function cancelPasswordChange() {
-        showPasswordModal = false;
-        passwordChangeStep = 'none';
-        newPassword = '';
-        confirmNewPassword = '';
-        passwordChangeError = '';
-        passwordChangeSuccess = '';
-    }
-
-    async function executePasswordChange() {
-        if (!newPassword || !confirmNewPassword) return;
-        if (newPassword !== confirmNewPassword) {
-            passwordChangeError = 'Passwords do not match.';
-            return;
-        }
-        if (newPassword.length < 6) {
-            passwordChangeError = 'Password must be at least 6 characters.';
-            return;
-        }
-
-        passwordChangeStep = 'loading';
-        passwordChangeError = '';
-        passwordChangeSuccess = '';
-
-        try {
-            const { error } = await supabase.auth.updateUser({ password: newPassword });
-            if (error) throw error;
-            passwordChangeSuccess = 'Password updated.';
-            newPassword = '';
-            confirmNewPassword = '';
-            setTimeout(() => {
-                cancelPasswordChange();
-            }, 2000);
-        } catch (err: any) {
-            console.error('Password change failed:', err);
-            passwordChangeError = err.message || 'Failed to change password.';
-            passwordChangeStep = 'edit';
-        }
     }
 
     let isSavingSettings = $state(false);
@@ -1511,8 +1460,13 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     }
     
     async function executeAccountDelete() {
-        if (!deleteConfirmEmail.trim() || !deleteConfirmPassword.trim()) return;
+        if (!deleteConfirmEmail.trim()) return;
         
+        if (deleteConfirmEmail.toLowerCase() !== data.session?.user?.email?.toLowerCase()) {
+            deleteErrorMsg = 'Email address does not match your account.';
+            return;
+        }
+
         if (!confirm('Are you sure you want to permanently delete your account? This action is not reversible.')) {
             return;
         }
@@ -1525,8 +1479,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    email: deleteConfirmEmail,
-                    password: deleteConfirmPassword
+                    email: deleteConfirmEmail
                 })
             });
             
@@ -2439,12 +2392,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 <textarea id="setting-bio" bind:value={profileAuthorBio} rows="4" placeholder=""></textarea>
                             </div>
                             
-                            <div class="password-change-zone">
-                                <h3>Change Password</h3>
-                                <button type="button" class="theme-switch" onclick={() => showPasswordModal = true}>
-                                    Change...
-                                </button>
-                            </div>
+
                             
                             <div class="danger-zone">
                                 <h3>Delete Account</h3>
@@ -2461,7 +2409,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     </div>
                                 {:else if deleteStep === 'credentials' || deleteStep === 'loading'}
                                     <div class="delete-credentials-box">
-                                        <p>Enter email and password to confirm.</p>
+                                        <p>Type your email address to confirm deletion.</p>
                                         {#if deleteErrorMsg}
                                             <p class="error-msg">{deleteErrorMsg}</p>
                                         {/if}
@@ -2470,14 +2418,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                 type="email" 
                                                 bind:value={deleteConfirmEmail} 
                                                 placeholder="Email" 
-                                                disabled={deleteStep === 'loading'} 
-                                            />
-                                        </div>
-                                        <div class="form-group">
-                                            <input 
-                                                type="password" 
-                                                bind:value={deleteConfirmPassword} 
-                                                placeholder="Password" 
                                                 disabled={deleteStep === 'loading'} 
                                             />
                                         </div>
@@ -2494,7 +2434,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                 type="button" 
                                                 class="delete-execute-btn" 
                                                 onclick={executeAccountDelete}
-                                                disabled={!deleteConfirmEmail.trim() || !deleteConfirmPassword.trim() || deleteStep === 'loading'}
+                                                disabled={deleteConfirmEmail.toLowerCase() !== data.session?.user?.email?.toLowerCase() || deleteStep === 'loading'}
                                             >
                                                 {deleteStep === 'loading' ? 'Deleting...' : 'Delete Account'}
                                             </button>
@@ -2680,60 +2620,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         </div>
     {/if}
 
-    {#if showPasswordModal}
-        <div class="modal-overlay" onclick={cancelPasswordChange} onkeydown={(e) => e.key === 'Escape' && cancelPasswordChange()} role="presentation">
-            <div class="settings-modal-card" style="max-width: 400px;" onclick={(e) => e.stopPropagation()} role="presentation">
-                <div class="modal-header">
-                    <h2>Change Password</h2>
-                    <button class="close-btn" onclick={cancelPasswordChange}>✕</button>
-                </div>
-                
-                <div class="modal-body" style="padding-top: 20px;">
-                    <div class="password-change-form">
-                        <div style="margin-bottom: 12px; font-size: 13px; border-bottom: 1px solid var(--card-border); padding-bottom: 10px;">
-                            <span style="opacity: 0.7; color: var(--text-color);">User ID (Email): </span>
-                            <strong style="color: var(--text-color); font-family: monospace; font-size: 13px;">{data.session?.user?.email || ''}</strong>
-                        </div>
-                        <p style="font-size: 13px; opacity: 0.8; margin: 0 0 12px 0;">Enter new password.</p>
-                        {#if passwordChangeError}
-                            <p class="error-msg">{passwordChangeError}</p>
-                        {/if}
-                        {#if passwordChangeSuccess}
-                            <p class="success-msg">{passwordChangeSuccess}</p>
-                        {/if}
-                        <div class="form-group-compact">
-                            <input 
-                                type="password" 
-                                bind:value={newPassword} 
-                                placeholder="New password" 
-                                disabled={passwordChangeStep === 'loading'}
-                            />
-                        </div>
-                        <div class="form-group-compact" style="margin-top: 12px;">
-                            <input 
-                                type="password" 
-                                bind:value={confirmNewPassword} 
-                                placeholder="Confirm new password" 
-                                disabled={passwordChangeStep === 'loading'}
-                            />
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="modal-footer" style="margin-top: 20px;">
-                    <button type="button" class="cancel-btn" onclick={cancelPasswordChange} disabled={passwordChangeStep === 'loading'}>Cancel</button>
-                    <button 
-                        type="button" 
-                        class="save-btn" 
-                        onclick={executePasswordChange} 
-                        disabled={passwordChangeStep === 'loading' || !newPassword || !confirmNewPassword}
-                    >
-                        {passwordChangeStep === 'loading' ? 'Updating...' : 'Update'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    {/if}
+
 
     <footer class="app-footer">
         <div class="footer-content">

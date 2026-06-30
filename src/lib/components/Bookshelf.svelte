@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, tick } from 'svelte';
     import { goto } from '$app/navigation';
+    import * as htmlToImage from 'html-to-image';
 
     let {
         books = [],
@@ -69,8 +70,20 @@
         });
 
         window.addEventListener('resize', recalculateRows);
+        
+        const handleWindowClick = () => {
+            if (menuVisible) closeMenu();
+        };
+        const handleWindowScroll = () => {
+            if (menuVisible) closeMenu();
+        };
+        window.addEventListener('click', handleWindowClick);
+        window.addEventListener('scroll', handleWindowScroll);
+
         return () => {
             window.removeEventListener('resize', recalculateRows);
+            window.removeEventListener('click', handleWindowClick);
+            window.removeEventListener('scroll', handleWindowScroll);
         };
     });
 
@@ -153,6 +166,65 @@
             window.open(`${targetUrl}#access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`, '_blank');
         } else {
             window.open(targetUrl, '_blank');
+        }
+    }
+
+    // Context Menu States
+    let menuVisible = $state(false);
+    let menuX = $state(0);
+    let menuY = $state(0);
+    let activeMenuBook = $state<any>(null);
+    let activeMenuElement = $state<HTMLElement | null>(null);
+
+    function handleContextMenu(e: MouseEvent, book: any) {
+        if (book.isMoreBtn) return;
+        e.preventDefault();
+        activeMenuBook = book;
+        activeMenuElement = e.currentTarget as HTMLElement;
+        menuX = e.clientX;
+        menuY = e.clientY;
+        menuVisible = true;
+    }
+
+    function closeMenu() {
+        menuVisible = false;
+        activeMenuBook = null;
+        activeMenuElement = null;
+    }
+
+    async function downloadCoverImage(book: any, targetElement: HTMLElement | null) {
+        const coverEl = targetElement?.querySelector('.book-cover') as HTMLElement;
+        if (!coverEl) return;
+
+        const safeTitle = (book.title || 'cover').replace(/[^a-zA-Z0-9_ーぁ-んァ-ヶ\-]/g, '_');
+
+        try {
+            const dataUrl = await htmlToImage.toPng(coverEl, {
+                pixelRatio: window.devicePixelRatio || 2,
+                cacheBust: true,
+                filter: (node) => {
+                    if (node.classList && node.classList.contains('book-tooltip')) {
+                        return false;
+                    }
+                    return true;
+                },
+                style: {
+                    transform: 'none',
+                    transition: 'none',
+                    boxShadow: 'none',
+                    overflow: 'visible'
+                }
+            });
+
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = `${safeTitle}_cover.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } catch (err) {
+            console.error('Failed to capture cover image:', err);
+            alert("Download failed: External image restricts access.");
         }
     }
 </script>
@@ -273,6 +345,7 @@
                                 class:selected-in-selection={(isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
                                 class:unselectable-in-selection={isHyperRoboSelection && (book.isStack || book.playMode === 'hyperrobo')}
                                 onclick={() => handleItemClick(book)}
+                                oncontextmenu={(e) => handleContextMenu(e, book)}
                                 onkeydown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
                                         handleItemClick(book);
@@ -488,6 +561,25 @@
         {/each}
     </div>
 </div>
+
+{#if menuVisible && activeMenuBook}
+    <div 
+        class="custom-context-menu" 
+        style="top: {menuY}px; left: {menuX}px;"
+        onclick={(e) => e.stopPropagation()}
+    >
+        <button 
+            type="button" 
+            class="context-menu-item" 
+            onclick={() => {
+                downloadCoverImage(activeMenuBook, activeMenuElement);
+                closeMenu();
+            }}
+        >
+            📥 Download Icon
+        </button>
+    </div>
+{/if}
 
 <style>
     /* --- 本棚コンテナ --- */
@@ -1526,4 +1618,53 @@
         width: 100%;
     }
 
+    /* --- Custom Context Menu --- */
+    .custom-context-menu {
+        position: fixed;
+        background: #1e1e2e;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        padding: 6px;
+        z-index: 10000;
+        min-width: 150px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        animation: menuFadeIn 0.15s ease-out;
+    }
+
+    @keyframes menuFadeIn {
+        from {
+            opacity: 0;
+            transform: scale(0.95);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+
+    .context-menu-item {
+        background: none;
+        border: none;
+        color: #f5ebe0;
+        padding: 10px 12px;
+        text-align: left;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background 0.2s, color 0.2s;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .context-menu-item:hover {
+        background: #8b5cf6;
+        color: #ffffff;
+    }
 </style>

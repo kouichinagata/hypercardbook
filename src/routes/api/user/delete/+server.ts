@@ -11,28 +11,16 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
             return json({ error: 'Unauthorized. Please login first.' }, { status: 401 });
         }
 
-        const { email, password } = await request.json();
-        if (!email || !password) {
-            return json({ error: 'Email and password are required for reauthentication.' }, { status: 400 });
+        const { email } = await request.json();
+        if (!email) {
+            return json({ error: 'Email is required for confirmation.' }, { status: 400 });
         }
 
-        // 1. Verify user identity by trying to sign in with provided credentials
+        if (email.toLowerCase() !== session.user.email?.toLowerCase()) {
+            return json({ error: 'Incorrect email. Unable to delete account.' }, { status: 400 });
+        }
+
         const supabaseUrl = publicEnv.PUBLIC_SUPABASE_URL || env.PUBLIC_SUPABASE_URL || '';
-        const supabaseAnonKey = publicEnv.PUBLIC_SUPABASE_ANON_KEY || env.PUBLIC_SUPABASE_ANON_KEY || '';
-        
-        // Setup a temporary client to verify the password
-        const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
-            auth: { persistSession: false, autoRefreshToken: false }
-        });
-
-        const { data: authData, error: authError } = await tempClient.auth.signInWithPassword({
-            email,
-            password
-        });
-
-        if (authError || !authData.user || authData.user.id !== session.user.id) {
-            return json({ error: 'Incorrect email or password. Unable to delete account.' }, { status: 401 });
-        }
 
         // 2. Perform account deletion using Service Role Key admin privileges
         const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
