@@ -14,7 +14,8 @@
         language = 'ja',
         onHookAiResult = null,
         currentIndex = $bindable(-1),
-        currentUserId = 'global'
+        currentUserId = 'global',
+        isWorkspace = false
     } = $props();
 
     // Iframe postMessage connection states
@@ -1042,10 +1043,16 @@
     }
 
     function handleBookClick(e: MouseEvent) {
+        // Prevent page turn when user is selecting text
+        const selection = window.getSelection();
+        if (selection && selection.toString().length > 0) {
+            return;
+        }
+
         if (
             (e.target as HTMLElement).closest('a') || 
             (e.target as HTMLElement).closest('.control-panel') ||
-            (e.target as HTMLElement).tagName === 'IMG'
+            (isWorkspace && (e.target as HTMLElement).tagName === 'IMG')
         ) {
             return;
         }

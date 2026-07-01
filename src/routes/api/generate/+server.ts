@@ -201,9 +201,8 @@ CRITICAL RULES:
    - The SkillName should be a short, descriptive name (in English or Japanese) for the skill.
    - The Prompt text should be the detailed instructions/rules to guide the AI to generate/modify content in that specific style or way.
 
-9. HYPERHOOKS (イベントフック):
+9. HYPERHOOKS:
    - For event hooks (\`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
-     Example: \`on_open_card: "[AI] このページを要約して"\`
 `;
 
 const cardSystemInstruction = `
@@ -269,9 +268,9 @@ CRITICAL RULES:
    - The SkillName should be a short, descriptive name (in English or Japanese) for the skill.
    - The Prompt text should be the detailed instructions/rules to guide the AI to generate/modify content in that specific style or way.
 
-  8. HYPERHOOKS (イベントフック):
+  8. HYPERHOOKS:
     - For event hooks (\`on_open_stack\`, \`on_open_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
-      Example: \`on_open_card: "[AI] このページを要約して"\`
+
 `;
 
 // JSON-RPC 2.0 Google Drive MCP Server Mock
@@ -320,6 +319,24 @@ function handleGdriveMcpRequest(req: { jsonrpc: string; method: string; params: 
                     {
                         type: "text",
                         text: content
+                    }
+                ]
+            },
+            id: req.id
+        };
+    }
+
+    if (name === 'gdrive_write_file') {
+        const filename = args?.name || 'untitled.md';
+        const content = args?.content || '';
+        console.log(`[GDrive Mock] Saved file '${filename}' with content length ${content.length}`);
+        return {
+            jsonrpc: "2.0",
+            result: {
+                content: [
+                    {
+                        type: "text",
+                        text: `Successfully saved file '${filename}' to Google Drive.`
                     }
                 ]
             },
@@ -427,6 +444,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             });
         }
 
+        if (activePluginIds.includes('gdrive-mcp')) {
+            activeSystemInstruction += `\n\nGOOGLE DRIVE MCP TOOL INSTRUCTIONS:\n- You have direct access to the user's Google Drive via 'gdrive_search_files', 'gdrive_read_file', and 'gdrive_write_file' tools.\n- If the user asks about files, summaries, or content stored in Google Drive, you MUST search for files or read files using these tools FIRST to gather facts before responding. Do NOT invent/hallucinate the contents of their Google Drive.\n- CRITICAL RULE: You MUST NOT edit the book contents, delete pages, or overwrite the book with external information unless the user explicitly requested you to edit, write, or save that information to the book. If they only ask a question about their Google Drive (e.g. "Googleドライブの概要を教えて"), just answer their question in a conversational message, do NOT call 'edit_page' or overwrite the book.`;
+        }
+
         const stream = new ReadableStream({
             async start(controller) {
                 const encoder = new TextEncoder();
@@ -486,6 +507,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                                             fileId: { type: 'STRING', description: 'The unique ID of the file to read.' }
                                         },
                                         required: ['fileId']
+                                    }
+                                },
+                                {
+                                    name: 'gdrive_write_file',
+                                    description: 'Create a new file or update an existing file in Google Drive with the specified name and content.',
+                                    parameters: {
+                                        type: 'OBJECT',
+                                        properties: {
+                                            name: { type: 'STRING', description: 'The filename to save as.' },
+                                            content: { type: 'STRING', description: 'The text content (e.g. Markdown) of the file.' }
+                                        },
+                                        required: ['name', 'content']
                                     }
                                 }
                             );
@@ -560,6 +593,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                                         jsonrpc: '2.0',
                                         method: 'tools/call',
                                         params: { name: 'gdrive_read_file', arguments: { fileId: fileIdArg } },
+                                        id: Date.now()
+                                    });
+                                    resultData = jsonRpcResponse.result;
+                                } else if (fc.name === 'gdrive_write_file') {
+                                    const nameArg = fc.args?.name || '';
+                                    const contentArg = fc.args?.content || '';
+                                    const jsonRpcResponse = handleGdriveMcpRequest({
+                                        jsonrpc: '2.0',
+                                        method: 'tools/call',
+                                        params: { name: 'gdrive_write_file', arguments: { name: nameArg, content: contentArg } },
                                         id: Date.now()
                                     });
                                     resultData = jsonRpcResponse.result;
