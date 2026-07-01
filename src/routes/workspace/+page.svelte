@@ -88,29 +88,22 @@
             name: 'Bookmark (Post-it style)',
             kinds: 'Skill',
             owner: 'HyperCardBook',
-            description: '本の右上にポストイット風のしおりを表示し、読書位置を自動保存・復帰します。',
-            skill: '本のYAMLフロントマターに bookmark_html（黄色のポストイット風デザイン）を追加し、しおりから読書を再開するための on_open_stack フック（例: let p = getData("bookmark_" + stackId); if(p!==null) goCard(p);）としおりを自動で挟む on_close_card フック（例: saveData("bookmark_" + stackId, currentCard);）を自動生成しなさい。'
+            description: 'Add a sticky bookmark to save and restore your reading position.',
+            skill: 'Generate bookmark_html (sticky design) and on_open_stack / on_close_card hooks in YAML frontmatter to auto-save and restore the reading position.'
         },
         {
-            id: 'ai-summarizer-hook',
-            name: 'AI Summarizer Hook',
+            id: 'hypercard-hook',
+            name: 'HyperCardHook',
             kinds: 'HyperHook',
             owner: 'HyperCardBook',
-            description: 'ページを開いた時（openCard）に、AIがそのページを自動で要約してチャットに表示するフックを適用します。',
-            skill: '本のYAMLフロントマターに、ページが開いた時にAIに要約させるためのフック（on_open_card: "[AI] このページの内容を3行で要約してチャットに流してください。") を自動生成しなさい。'
-        },
-        {
-            id: 'gdrive-mcp',
-            name: 'Google Drive MCP',
-            kinds: 'MCP',
-            owner: 'HyperCardBook',
-            description: 'JSON-RPC 2.0 に準拠した Google Drive MCP サーバーと通信し、ファイルを検索・読み込みます。',
-            skill: 'Google Driveからファイルを検索（gdrive_search_files）またはファイル読み込み（gdrive_read_file）を実行するツールを利用できます。'
+            description: 'Execute custom logic on card open event (openCard).',
+            skill: ''
         }
     ];
 
     let userPlugins = $state<Plugin[]>([]);
-    let activePluginIds = $state<string[]>(['bookmark-postit', 'ai-summarizer-hook']);
+    let activePluginIds = $state<string[]>([]);
+    let markdownHistory = $state<string[]>([]);
     let currentCardIndex = $state(-1);
 
     function applyPartialUpdate(currentMarkdown: string, updateText: string): string {
@@ -904,6 +897,14 @@ ${markdown}
         }, 1500); // 1.5 seconds debounce
     }
 
+    function handleUndo() {
+        if (markdownHistory.length === 0) return;
+        const previousMarkdown = markdownHistory[markdownHistory.length - 1];
+        markdownHistory = markdownHistory.slice(0, -1);
+        markdown = previousMarkdown;
+        triggerAutoSave();
+    }
+
     // Scroll chat list to bottom
     let chatListContainer: HTMLDivElement | null = $state(null);
     function scrollToBottom() {
@@ -962,6 +963,9 @@ ${markdown}
         isGenerating = true;
         errorMsg = '';
         scrollToBottom();
+
+        // Backup current book state before AI modifications
+        markdownHistory = [...markdownHistory, markdown];
 
         try {
             const response = await fetch('/api/generate', {
@@ -1156,7 +1160,7 @@ ${markdown}
 
         const metadata = data.session?.user?.user_metadata || {};
         userPlugins = metadata.user_plugins || [];
-        activePluginIds = metadata.active_plugin_ids || ['bookmark-postit', 'ai-summarizer-hook'];
+        activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
         markdown = data.markdown || '';
         bookUuid = data.bookId || '';
         chatHistory = data.initialChatHistory || [];
@@ -1583,8 +1587,21 @@ ${markdown}
                     <button class="back-home-btn" onclick={() => { if (window.history.length === 1 || window.opener) { window.close(); } else { goto('/'); } }}>back</button>
                     <h2>Chat</h2>
                 </div>
-                <div class="status-indicator" class:saving={saveStatus === 'Saving...'} class:error={saveStatus === 'Error'} class:read-only={saveStatus === 'Read Only'}>
-                    {saveStatus}
+                <div class="header-right" style="display: flex; align-items: center; gap: 8px;">
+                    {#if markdownHistory.length > 0}
+                        <button 
+                            type="button" 
+                            class="undo-btn" 
+                            onclick={handleUndo}
+                            title="Undo AI edit"
+                            style="background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;"
+                        >
+                            ↩ Undo ({markdownHistory.length})
+                        </button>
+                    {/if}
+                    <div class="status-indicator" class:saving={saveStatus === 'Saving...'} class:error={saveStatus === 'Error'} class:read-only={saveStatus === 'Read Only'}>
+                        {saveStatus}
+                    </div>
                 </div>
             </div>
 
@@ -1834,6 +1851,7 @@ ${markdown}
                                 bind:currentIndex={currentCardIndex} 
                                 onHookAiResult={handleHookAiResult} 
                                 currentUserId={data.currentUserId}
+                                isWorkspace={true}
                             />
                         </div>
                     {:else}

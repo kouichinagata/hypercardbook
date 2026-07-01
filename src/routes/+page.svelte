@@ -212,6 +212,9 @@
         // Check onboarding trigger (new logins with empty profile data)
         if (data.session?.user) {
             const metadata = data.session.user.user_metadata || {};
+            userPlugins = metadata.user_plugins || [];
+            activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
+            
             if (!metadata.nickname || !metadata.language) {
                 onboardingNickname = metadata.nickname || data.session.user.email?.split('@')[0] || '';
                 onboardingLanguage = currentLanguage;
@@ -1099,25 +1102,17 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             skill: 'Generate bookmark_html (sticky design) and on_open_stack / on_close_card hooks in YAML frontmatter to auto-save and restore the reading position.'
         },
         {
-            id: 'ai-summarizer-hook',
-            name: 'AI Summarizer Hook',
+            id: 'hypercard-hook',
+            name: 'HyperCardHook',
             kinds: 'HyperHook',
             owner: 'HyperCardBook',
-            description: 'Show an AI summary in chat when a page is opened (on_open_card).',
-            skill: 'Generate on_open_card: "[AI] Summarize this page in 3 lines" hook in YAML frontmatter.'
-        },
-        {
-            id: 'gdrive-mcp',
-            name: 'Google Drive MCP',
-            kinds: 'MCP',
-            owner: 'HyperCardBook',
-            description: 'Connect to Google Drive MCP server using JSON-RPC 2.0 to search and read files.',
-            skill: 'Use gdrive_search_files and gdrive_read_file tools to fetch content from Google Drive.'
+            description: 'Execute custom logic on card open event (openCard).',
+            skill: ''
         }
     ];
 
     let userPlugins = $state<Plugin[]>([]);
-    let activePluginIds = $state<string[]>(['bookmark-postit', 'ai-summarizer-hook']);
+    let activePluginIds = $state<string[]>([]);
     let selectedPluginId = $state<string>('');
     let selectedPluginName = $state<string>('');
     let selectedPluginDescription = $state<string>('');
@@ -1314,7 +1309,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         
         profileHypercardbookMd = metadata.hypercardbook_md || DEFAULT_HYPERCARDBOOK_MD;
         
-        activePluginIds = metadata.active_plugin_ids || ['bookmark-postit', 'ai-summarizer-hook'];
+        activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
         selectedPluginId = '';
         selectedPluginName = '';
         selectedPluginDescription = '';
