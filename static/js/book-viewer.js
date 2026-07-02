@@ -272,25 +272,26 @@
             // Keep DOM references
             this.dom = {
                 body: document.body,
-                bookBody: document.getElementById('book-body'),
-                cover: document.getElementById('cover'),
-                content: document.getElementById('book-content'),
-                pageLeft: document.getElementById('page-left'),
-                pageRight: document.getElementById('page-right'),
-                leftText: document.getElementById('left-text-area'),
-                rightText: document.getElementById('right-text-area'),
-                leftPageNum: document.getElementById('left-page-num'),
-                rightPageNum: document.getElementById('right-page-num'),
-                btnToggleView: document.getElementById('btn-toggle-view'),
-                btnToggleTheme: document.getElementById('btn-toggle-theme'),
-                btnFirst: document.getElementById('btn-first'),
-                btnPrev: document.getElementById('btn-prev'),
-                btnNext: document.getElementById('btn-next'),
-                btnLast: document.getElementById('btn-last'),
-                btnFullscreen: document.getElementById('btn-fullscreen'),
-                slider: document.getElementById('page-slider'),
-                instruction: document.getElementById('instruction-text'),
-                footerBox: document.getElementById('footer-box')
+                bookBody: container.querySelector('#book-body'),
+                cover: container.querySelector('#cover'),
+                content: container.querySelector('#book-content'),
+                pageLeft: container.querySelector('#page-left'),
+                pageRight: container.querySelector('#page-right'),
+                leftText: container.querySelector('#left-text-area'),
+                rightText: container.querySelector('#right-text-area'),
+                leftPageNum: container.querySelector('#left-page-num'),
+                rightPageNum: container.querySelector('#right-page-num'),
+                btnToggleView: container.querySelector('#btn-toggle-view'),
+                btnToggleTheme: container.querySelector('#btn-toggle-theme'),
+                btnFirst: container.querySelector('#btn-first'),
+                btnPrev: container.querySelector('#btn-prev'),
+                btnNext: container.querySelector('#btn-next'),
+                btnLast: container.querySelector('#btn-last'),
+                btnFullscreen: container.querySelector('#btn-fullscreen'),
+                slider: container.querySelector('#page-slider'),
+                instruction: container.querySelector('#instruction-text'),
+                footerBox: container.querySelector('#footer-box'),
+                controlPanel: container.querySelector('.control-panel')
             };
 
             // Setup custom renderer for marked
@@ -427,7 +428,13 @@
             
             // Click inside Book (Page turn)
             this.dom.bookBody.addEventListener('click', (e) => {
-                if (e.target.closest('a') || e.target.closest('.control-panel') || e.target.tagName === 'IMG') {
+                // Prevent page turn when user is selecting text
+                const selection = window.getSelection();
+                if (selection && selection.toString().length > 0) {
+                    return;
+                }
+
+                if (e.target.closest('a') || e.target.closest('.control-panel')) {
                     return;
                 }
                 
@@ -591,7 +598,7 @@
             }
 
             // Adjust Book opened state
-            const controlPanel = document.querySelector('.control-panel');
+            const controlPanel = this.dom.controlPanel;
             if (isOpened) {
                 this.dom.bookBody.classList.add('opened');
                 if (controlPanel) controlPanel.classList.add('opened');
@@ -625,6 +632,11 @@
 
             // Adjust Fullscreen scale
             this.adjustScale();
+
+            // Update Fullscreen Button Icon
+            if (this.dom.btnFullscreen) {
+                this.dom.btnFullscreen.textContent = this.isFullscreen ? '↩︎' : '⛶';
+            }
 
             // Render Diagrams
             this.renderMermaid();

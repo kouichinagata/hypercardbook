@@ -1636,12 +1636,13 @@
         padding: 8px 16px; border-radius: 30px;
         border: 1px solid rgba(255, 255, 255, 0.3);
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-        max-width: 494px; width: 90%; box-sizing: border-box;
+        width: 494px; max-width: 100%; box-sizing: border-box;
         transition: all 0.3s;
         z-index: 999;
     }
     .control-panel.opened {
-        max-width: 1040px;
+        width: 1040px;
+        max-width: 100%;
     }
     .book-workspace[data-theme="dark"] .control-panel {
         background: rgba(0, 0, 0, 0.4);
@@ -1666,7 +1667,7 @@
         transform: scale(0.95);
     }
     .page-slider {
-        flex: 1; height: 4px;
+        flex: 1; width: 100%; height: 4px;
         background: rgba(0, 0, 0, 0.1);
         border-radius: 2px; outline: none;
         -webkit-appearance: none; appearance: none;
