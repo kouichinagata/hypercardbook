@@ -30,7 +30,7 @@ const username = `postgres.${projectRef}`;
 
 // Generate candidates for the connection pooler host
 const hosts = [];
-const regions = ['ap-northeast-1', 'ap-southeast-1', 'us-east-1', 'us-west-2', 'eu-west-1', 'eu-west-2'];
+const regions = ['ap-northeast-1', 'ap-southeast-1', 'ap-southeast-2', 'us-east-1', 'us-west-2', 'eu-west-1', 'eu-west-2'];
 const indices = ['aws-0', 'aws-1', 'aws-2', 'aws-3'];
 
 for (const region of regions) {
@@ -38,6 +38,9 @@ for (const region of regions) {
         hosts.push(`${idx}-${region}.pooler.supabase.com`);
     }
 }
+
+// Check with the dedicated database domain first
+hosts.unshift(`db.${projectRef}.supabase.co`);
 
 async function runMigration(client, host) {
     await client.connect();
@@ -53,6 +56,19 @@ async function runMigration(client, host) {
         ALTER TABLE books ADD COLUMN IF NOT EXISTS published_at TIMESTAMP WITH TIME ZONE;
     `);
     console.log('✅ Added published_at column (or already exists).');
+
+    await client.query(`
+        ALTER TABLE books ADD COLUMN IF NOT EXISTS is_quark_choice BOOLEAN DEFAULT false;
+    `);
+    console.log('✅ Added is_quark_choice column (or already exists).');
+
+    // Update existing target books to be in Quark's Choice
+    await client.query(`
+        UPDATE books SET is_quark_choice = true 
+        WHERE id::text IN ('empty-creative-canvas', 'hypercardbook-oss-launch') 
+        OR slug IN ('empty-creative-canvas', 'hypercardbook-oss-launch');
+    `);
+    console.log('✅ Marked empty-creative-canvas and hypercardbook-oss-launch as Quark\'s Choice.');
 
     await client.end();
     console.log('🚀 Database migration completed successfully.');
