@@ -9,21 +9,20 @@ HyperCardBook is an open-source Markdown platform for creating AI-powered intera
 
 Built with **SvelteKit**, **Supabase**, and **Google Gemini**.
 
+You can try HyperCardBook for free online at [hypercardbook.org](https://hypercardbook.org).
+
+![__________2026_07_03_21_50_19_png](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/ab758ccc-1567-4fad-9e48-217c72d8a0a3___________2026_07_03_21_50_19_png.webp)
+
 ---
 
 # Features
 
-## 📝 Markdown First
-
-Everything is stored as Markdown.
-
-Write your content once and easily maintain, version, and publish it.
-
----
 
 ## 🤖 AI-Powered Authoring
 
-Generate, rewrite, summarize, translate, and improve your content using Google Gemini.
+Generate, rewrite, summarize, translate, and improve your content using AI.
+
+![スクリーンショット 2026-07-03 21](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/c80a6481-c04d-4fb5-93ce-ba86e4345aae___________2026_07_03_21_50_56_png.webp)
 
 ---
 
@@ -38,6 +37,18 @@ Create rich interactive books with:
 * External Web Pages
 * AI Characters (PapeRobo)
 * Buttons and Interactive Links
+
+![__________2026_07_02_18_42_37_png](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/9a789f74-7fad-4f79-bd30-1203fae30fa6___________2026_07_02_18_42_37_png.webp)
+
+---
+
+## 📝 Markdown First
+
+Everything is stored as Markdown.
+
+Write your content once and easily maintain, version, and publish it.
+
+![スクリーンショット 2026-07-03 22](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/62bfd7ea-20f0-4a90-b5a4-5b64761eda1e___________2026_07_03_22_13_44_png.webp)
 
 ---
 
@@ -79,21 +90,43 @@ HyperCardBook supports two publishing styles.
 
 Interactive AI-powered books for education, storytelling, manuals, and documentation.
 
+Create interactive books with AI, videos,audio, quizzes, and embedded web content.
+
+![__________2026_07_02_18_41_39_png](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/9de129f3-0de8-4999-aaa5-2581fe7338eb___________2026_07_02_18_41_39_png.webp)
+
+![__________2026_07_02_18_43_36_png](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/5c5b11d8-f532-4547-b4b4-51ff023d222f___________2026_07_02_18_43_36_png.webp)
+
+![__________2026_07_02_18_43_52_png](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/5ad6601f-dfac-4e5e-9c2d-3d2663e2edf9___________2026_07_02_18_43_52_png.webp)
+
 ### HyperCard
 
 Interactive Markdown-based web applications and websites.
+
+Build interactive websites, documentation, dashboards, and lightweight web applications entirely in Markdown.
+
+![スクリーンショット 2026-07-03 22](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/eb0f0a08-911a-4cb1-87b9-95754d7e2ff4___________2026_07_03_22_12_23_png.webp)
+
+A sample created using HyperCard in HyperCardBook
+
+[View Live Sample](https://www.hypercardbook.org/published/d9841327-418b-41fd-8657-59c3b7f7fb19/hypercardbook.html)
+
+![スクリーンショット 2026-07-03 22](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/18ace540-4d57-4600-8a8c-38f8e97f4fce___________2026_07_03_22_14_37_png.webp)
 
 ---
 
 ## 🤝 PapeRobo Integration
 
+![スクリーンショット 2026-07-02 18](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/b5d067ac-a7b3-4864-ae21-f5c130c9610e___________2026_07_02_18_47_00_png.webp)
+
 HyperCardBook can connect books with AI characters from PapeRobo.
 
-PapeRobo is a separate AI character call system. It is not required to use HyperCardBook.
+PapeRobo is an AI Avatar Agent creation tool developed by MarkdownAI. Designed with a deep focus on a telephone-like interface, it is a tool that anyone of all generations can easily use. PapeRobo is a separate system and is not required to use HyperCardBook.
 
 When configured, published PapeRobo characters can appear on the HyperCardBook bookshelf, and readers can open them from interactive books.
 
 To enable this integration, set `HYPERCARDBOOK_SHARED_SECRET` to the same value on both HyperCardBook and PapeRobo.
+
+![__________2026_07_02_18_46_29_png](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/36272d0b-7300-4e69-844e-f5523a5ec6d6___________2026_07_02_18_46_29_png.webp)
 
 ---
 
@@ -162,13 +195,7 @@ Create a public Storage Bucket named:
 HyperCardBookBucket
 ```
 
-Run
-
-```
-supabase_migration_translations.sql
-```
-
-inside the Supabase SQL Editor.
+Copy and run the SQL queries from `supabase_migration_translations.sql` inside the Supabase SQL Editor.
 
 ---
 
@@ -182,8 +209,11 @@ node scripts/exec_ddl.js
 
 Import existing Markdown books.
 
+> [!NOTE]
+> Before running the import script, you need to register at least one user in your Supabase project (e.g., by launching the app, clicking "Login" -> "Sign Up" and completing the registration).
+
 ```bash
-node scripts/migrate.js
+npm run db:migrate
 ```
 
 ---
@@ -228,6 +258,14 @@ npm run preview
 * Markdown
 * JavaScript
 * PostgreSQL
+
+---
+
+## 👤 About the Creator
+
+**Kouichi Nagata**
+- An incubator who has built a corporate group of 200 companies, starting from his role as the president of a subsidiary of SoftBank Group in Japan.
+- A picture book author who has written and published over 60 picture books sold in major bookstores across Japan.
 
 ---
 
