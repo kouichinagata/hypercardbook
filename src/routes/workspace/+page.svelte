@@ -9,8 +9,9 @@
     let { data } = $props();
 
     // Chat and Markdown states
-    let markdown = $state('');
-    let bookUuid = $state('');
+    let markdown = $state(data.markdown || '');
+    let bookUuid = $state(data.bookId || '');
+    let lastProcessedMarkdown = $state(data.markdown || '');
     let activeTab = $state('preview'); // 'preview' or 'source'
     let mode = $state('book'); // 'book' or 'card'
     let replaceTargetIsCover = $state(false);
@@ -859,9 +860,13 @@ ${markdown}
     let saveTimeout: NodeJS.Timeout | null = null;
     let saveStatus = $state('Synced'); // 'Synced', 'Saving...', 'Error', 'Read Only'
 
-    // Watch markdown changes and trigger debounced auto-save
+    // ユーザーやAIによる markdown の変更を検知して自動保存する
     $effect(() => {
         if (markdown && data.session?.user) {
+            // ロードされた直後の値、またはすでに保存された値と同じであれば自動保存しない
+            if (markdown === lastProcessedMarkdown) {
+                return;
+            }
             triggerAutoSave();
         }
     });
@@ -880,6 +885,7 @@ ${markdown}
                 if (response.ok) {
                     const resData = await response.json();
                     saveStatus = 'Synced';
+                    lastProcessedMarkdown = markdown;
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookUuid || '');
                     if (resData.id && (!bookUuid || !isUuid)) {
                         bookUuid = resData.id;
@@ -1126,8 +1132,19 @@ ${markdown}
         return marked.parse(processed) as string;
     }
 
-    onMount(() => {
+    onMount(async () => {
         document.body.classList.add('scroll-locked');
+        
+        // ナビゲーションキャッシュによる古いデータの使用を防ぐため、強制的に最新データを再ロードする
+        await invalidateAll();
+
+        // 取得した最新データをエディタの各ステートに同期する（マウント時に1度だけ実行されます）
+        if (data.markdown !== markdown) {
+            markdown = data.markdown || '';
+        }
+        bookUuid = data.bookId || '';
+        chatHistory = data.initialChatHistory || [];
+        lastProcessedMarkdown = data.markdown || '';
 
         // Setup custom renderer for marked in workspace
         const renderer = new marked.Renderer();
@@ -1161,9 +1178,6 @@ ${markdown}
         const metadata = data.session?.user?.user_metadata || {};
         userPlugins = metadata.user_plugins || [];
         activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
-        markdown = data.markdown || '';
-        bookUuid = data.bookId || '';
-        chatHistory = data.initialChatHistory || [];
 
         const urlMode = page.url.searchParams.get('mode');
         if (urlMode === 'card') {

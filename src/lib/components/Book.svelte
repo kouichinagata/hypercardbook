@@ -1050,10 +1050,11 @@
             const isFS = !!document.fullscreenElement;
             
             // Adjust available height subtraction for non-fullscreen (deduct header, control panel, padding)
-            const availableHeight = viewportHeight - (isFS ? 75 : 180);
+            const availableHeight = viewportHeight - (isFS ? 75 : 150);
             const availableWidth = viewportWidth - 40;
             
-            const bookWidth = isOpened ? 1040 : 494;
+            // Scale is computed using spread width (1040px) to prevent layout jumping when opening
+            const bookWidth = 1040;
             const bookHeight = 715;
             const scaleX = availableWidth / bookWidth;
             const scaleY = availableHeight / bookHeight;
@@ -1067,7 +1068,12 @@
             if (scale < 1 || isFS) {
                 bookEl.style.transform = `scale(${scale})`;
                 bookEl.style.transformOrigin = 'center center';
-                bookEl.style.margin = '0';
+                
+                // Offset scaling margins using negative values based on current actual width
+                const currentWidth = isOpened ? 1040 : 494;
+                const marginY = (bookHeight * (scale - 1)) / 2;
+                const marginX = (currentWidth * (scale - 1)) / 2;
+                bookEl.style.margin = `${marginY}px ${marginX}px`;
             } else {
                 bookEl.style.transform = '';
                 bookEl.style.transformOrigin = '';
