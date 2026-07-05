@@ -426,6 +426,7 @@
         (window.history.length > 1) && 
         document.referrer !== ''
     );
+    let isIframe = $derived(browser && window.self !== window.top);
     let uiTheme = $state('light'); // 'light' or 'dark' (for UI background)
     let insertToc = $state(false);
     let isFullscreen = $state(false);
@@ -1435,7 +1436,7 @@
     </div>
 
     <!-- ページダイレクトナビゲーション (目次) -->
-    {#if hasToc}
+    {#if hasToc && !isIframe}
         <div class="footer-box">
             <div style="max-width: 494px; margin: 0 auto; text-align: center;">
                 <button 
@@ -1738,6 +1739,13 @@
         width: 90%;
         max-width: 1040px;
         text-align: center;
+    }
+
+    /* 画面の高さが低い（800px未満）時は、本のスペースを確保するため下部目次を非表示にする */
+    @media (max-height: 800px) {
+        .footer-box {
+            display: none !important;
+        }
     }
 
     .toc-checkbox-label {
