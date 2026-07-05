@@ -21,6 +21,15 @@
     let iframeSource: MessageEventSource | null = null;
     let iframeOrigin = '';
 
+    // iframe や直接アクセス時は非表示にするための判定
+    let showBackBtn = $derived(
+        browser && 
+        backUrl && 
+        (window.self === window.top) && 
+        (window.history.length > 1) && 
+        document.referrer !== ''
+    );
+
     // Extract frontmatter-free raw markdown text
     let cleanMarkdownText = $derived.by(() => {
         if (!markdown) return '';
@@ -379,7 +388,7 @@
 </script>
 
 <div class="card-reader-container" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} class:embed-mode={isEmbed}>
-    {#if !isEmbed}
+    {#if !isEmbed && showBackBtn}
         <div class="reader-header-bar">
             <a class="back-btn" href={backUrl} onclick={(e) => { if (window.history.length === 1 || window.opener) { e.preventDefault(); window.close(); } }}>back</a>
         </div>

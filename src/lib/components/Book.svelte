@@ -418,6 +418,14 @@
     let currentSubPage = $state(0); // 0 = Left page, 1 = Right page (for vertical smartphone mode)
     let isOpened = $state(false);
     let viewMode = $state('spread'); // 'spread' or 'vertical'
+    let userSwitchedMode = $state(false);
+    let showBackBtn = $derived(
+        browser && 
+        backUrl && 
+        (window.self === window.top) && 
+        (window.history.length > 1) && 
+        document.referrer !== ''
+    );
     let uiTheme = $state('light'); // 'light' or 'dark' (for UI background)
     let insertToc = $state(false);
     let isFullscreen = $state(false);
@@ -616,6 +624,9 @@
         } else {
             isOpened = true;
         }
+        tick().then(() => {
+            adjustBookScale();
+        });
     });
 
     // Watch viewMode and trigger resize scale adjust
@@ -987,6 +998,7 @@
     function toggleViewMode() {
         const isVertical = viewMode === 'spread' ? 'vertical' : 'spread';
         viewMode = isVertical;
+        userSwitchedMode = true;
         if (isVertical === 'vertical') {
             currentSubPage = 0;
         }
@@ -1012,6 +1024,17 @@
         }
     }
 
+    function handleResize() {
+        if (browser && !userSwitchedMode) {
+            const isPortrait = window.innerHeight > window.innerWidth;
+            const targetMode = isPortrait ? 'vertical' : 'spread';
+            if (viewMode !== targetMode) {
+                viewMode = targetMode;
+            }
+        }
+        adjustBookScale();
+    }
+
     function adjustBookScale() {
         if (!bookEl) return;
         const isVertical = viewMode === 'vertical';
@@ -1021,24 +1044,35 @@
             bookEl.style.margin = '';
             return;
         }
-        if (browser && document.fullscreenElement) {
+        if (browser) {
             const viewportHeight = window.innerHeight;
             const viewportWidth = window.innerWidth;
-            const availableHeight = viewportHeight - 75;
+            const isFS = !!document.fullscreenElement;
+            
+            // Adjust available height subtraction for non-fullscreen (deduct header, control panel, padding)
+            const availableHeight = viewportHeight - (isFS ? 75 : 180);
             const availableWidth = viewportWidth - 40;
-            const bookWidth = 1040;
+            
+            const bookWidth = isOpened ? 1040 : 494;
             const bookHeight = 715;
             const scaleX = availableWidth / bookWidth;
             const scaleY = availableHeight / bookHeight;
-            const scale = Math.min(scaleX, scaleY);
+            let scale = Math.min(scaleX, scaleY);
             
-            bookEl.style.transform = `scale(${scale})`;
-            bookEl.style.transformOrigin = 'center center';
-            bookEl.style.margin = '0';
-        } else {
-            bookEl.style.transform = '';
-            bookEl.style.transformOrigin = '';
-            bookEl.style.margin = '';
+            // Limit scale up when not in fullscreen mode to avoid pixelation
+            if (!isFS) {
+                scale = Math.min(1, scale);
+            }
+            
+            if (scale < 1 || isFS) {
+                bookEl.style.transform = `scale(${scale})`;
+                bookEl.style.transformOrigin = 'center center';
+                bookEl.style.margin = '0';
+            } else {
+                bookEl.style.transform = '';
+                bookEl.style.transformOrigin = '';
+                bookEl.style.margin = '';
+            }
         }
     }
 
@@ -1141,9 +1175,9 @@
         };
         document.addEventListener('error', handleImageError, true);
 
-        // Apply viewMode based on width
-        const isNarrow = window.innerWidth <= 768;
-        viewMode = isNarrow ? 'vertical' : 'spread';
+        // Apply viewMode based on orientation (portrait vs landscape)
+        const isPortrait = window.innerHeight > window.innerWidth;
+        viewMode = isPortrait ? 'vertical' : 'spread';
         currentSubPage = 0;
 
         // Setup custom renderer for marked
@@ -1167,7 +1201,7 @@
             });
         }
 
-        window.addEventListener('resize', adjustBookScale);
+        window.addEventListener('resize', handleResize);
         const handleFullscreenChange = () => {
             isFullscreen = !!document.fullscreenElement;
             adjustBookScale();
@@ -1218,7 +1252,7 @@
         window.addEventListener('message', handleMessage);
 
         return () => {
-            window.removeEventListener('resize', adjustBookScale);
+            window.removeEventListener('resize', handleResize);
             document.removeEventListener('fullscreenchange', handleFullscreenChange);
             document.removeEventListener('error', handleImageError, true);
             window.removeEventListener('message', handleMessage);
@@ -1236,7 +1270,7 @@
 </svelte:head>
 
 <div class="book-workspace" data-theme={uiTheme} data-book-theme={['white', 'black', 'blue', 'pink', 'gold'].includes(themeColor) ? themeColor : 'black'} class:vertical-mode={viewMode === 'vertical'}>
-    {#if backUrl}
+    {#if showBackBtn}
         <button 
             id="backToShelfBtn"
             class="theme-switch" 
@@ -1850,7 +1884,8 @@
         aspect-ratio: auto !important;
     }
     .book-workspace.vertical-mode .cover-overlay {
-        display: none !important;
+        transform: none !important;
+        border-radius: 0 !important;
     }
     .book-workspace.vertical-mode .book-content {
         display: flex !important;
