@@ -432,6 +432,7 @@
     let isFullscreen = $state(false);
 
     let bookEl: HTMLDivElement | null = $state(null);
+    let bookViewportEl: HTMLDivElement | null = $state(null);
     let pageSliderEl: HTMLInputElement | null = $state(null);
 
     // Watch markdown changes, handle translation if needed, and parse displayMarkdown
@@ -1043,6 +1044,7 @@
             bookEl.style.transform = '';
             bookEl.style.transformOrigin = '';
             bookEl.style.margin = '';
+            if (bookViewportEl) bookViewportEl.style.height = '';
             return;
         }
         if (browser) {
@@ -1050,8 +1052,8 @@
             const viewportWidth = window.innerWidth;
             const isFS = !!document.fullscreenElement;
             
-            // Adjust available height subtraction for non-fullscreen (deduct header, control panel, padding)
-            const availableHeight = viewportHeight - (isFS ? 75 : 150);
+            // Adjust available height using ratios (90% for FS, 85% for non-FS) to optimize space
+            const availableHeight = viewportHeight * (isFS ? 0.9 : 0.85);
             const availableWidth = viewportWidth - 40;
             
             // Scale is computed using spread width (1040px) to prevent layout jumping when opening
@@ -1069,16 +1071,18 @@
             if (scale < 1 || isFS) {
                 bookEl.style.transform = `scale(${scale})`;
                 bookEl.style.transformOrigin = 'center center';
+                bookEl.style.margin = '0';
                 
-                // Offset scaling margins using negative values based on current actual width
-                const currentWidth = isOpened ? 1040 : 494;
-                const marginY = (bookHeight * (scale - 1)) / 2;
-                const marginX = (currentWidth * (scale - 1)) / 2;
-                bookEl.style.margin = `${marginY}px ${marginX}px`;
+                if (bookViewportEl) {
+                    bookViewportEl.style.height = `${bookHeight * scale}px`;
+                }
             } else {
                 bookEl.style.transform = '';
                 bookEl.style.transformOrigin = '';
                 bookEl.style.margin = '';
+                if (bookViewportEl) {
+                    bookViewportEl.style.height = '';
+                }
             }
         }
     }
@@ -1307,7 +1311,7 @@
         </div>
     </div>
 
-    <div class="book-viewport" style="position: relative;">
+    <div class="book-viewport" style="position: relative;" bind:this={bookViewportEl}>
         {#if isLoadingTranslation}
             <div class="translation-loader" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; color: #fff; border-radius: 8px; backdrop-filter: blur(4px);">
                 <div class="spinner" style="border: 4px solid rgba(255, 255, 255, 0.1); border-left-color: #8b5cf6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 12px;"></div>
@@ -1546,6 +1550,7 @@
     /* --- 本の本体 --- */
     .book-viewport {
         width: 100%; display: flex; justify-content: center;
+        align-items: center;
         perspective: 2000px; padding-bottom: 20px;
     }
 
