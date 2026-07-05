@@ -1052,8 +1052,8 @@
             const viewportWidth = window.innerWidth;
             const isFS = !!document.fullscreenElement;
             
-            // Apply 100% ratio for heights under 800px, otherwise keep 100% for FS and 90% for non-FS
-            const baseRatio = isFS ? 1.0 : 0.9;
+            // Apply 100% ratio for heights under 800px, otherwise keep 95% for FS and 90% for non-FS
+            const baseRatio = isFS ? 0.95 : 0.9;
             const ratio = viewportHeight < 800 ? 1.0 : baseRatio;
             const availableHeight = viewportHeight * ratio;
             const availableWidth = viewportWidth - 40;
