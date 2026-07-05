@@ -1052,8 +1052,8 @@
             const viewportWidth = window.innerWidth;
             const isFS = !!document.fullscreenElement;
             
-            // Adjust available height using ratios (90% for FS, 85% for non-FS) to optimize space
-            const availableHeight = viewportHeight * (isFS ? 0.9 : 0.85);
+            // Adjust available height using ratios (95% for FS, 90% for non-FS) to optimize space
+            const availableHeight = viewportHeight * (isFS ? 0.95 : 0.9);
             const availableWidth = viewportWidth - 40;
             
             // Scale is computed using spread width (1040px) to prevent layout jumping when opening
