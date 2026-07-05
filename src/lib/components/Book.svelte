@@ -626,19 +626,9 @@
         } else {
             isOpened = true;
         }
-        tick().then(() => {
-            adjustBookScale();
-        });
     });
 
-    // Watch viewMode and trigger resize scale adjust
-    $effect(() => {
-        if (viewMode) {
-            tick().then(() => {
-                adjustBookScale();
-            });
-        }
-    });
+
 
     // Trigger mermaid rendering when page content updates
     $effect(() => {
@@ -1004,7 +994,6 @@
         if (isVertical === 'vertical') {
             currentSubPage = 0;
         }
-        adjustBookScale();
     }
 
     function toggleTheme() {
@@ -1034,60 +1023,9 @@
                 viewMode = targetMode;
             }
         }
-        adjustBookScale();
     }
 
-    function adjustBookScale() {
-        if (!bookEl) return;
-        const isVertical = viewMode === 'vertical';
-        if (isVertical) {
-            bookEl.style.transform = '';
-            bookEl.style.transformOrigin = '';
-            bookEl.style.margin = '';
-            if (bookViewportEl) bookViewportEl.style.height = '';
-            return;
-        }
-        if (browser) {
-            const viewportHeight = window.innerHeight;
-            const viewportWidth = window.innerWidth;
-            const isFS = !!document.fullscreenElement;
-            
-            // Apply 100% ratio for heights under 800px, otherwise keep 95% for FS and 90% for non-FS
-            const baseRatio = isFS ? 0.95 : 0.9;
-            const ratio = viewportHeight < 800 ? 1.0 : baseRatio;
-            const availableHeight = viewportHeight * ratio;
-            const availableWidth = viewportWidth - 40;
-            
-            // Scale is computed using spread width (1040px) to prevent layout jumping when opening
-            const bookWidth = 1040;
-            const bookHeight = 715;
-            const scaleX = availableWidth / bookWidth;
-            const scaleY = availableHeight / bookHeight;
-            let scale = Math.min(scaleX, scaleY);
-            
-            // Limit scale up when not in fullscreen mode to avoid pixelation
-            if (!isFS) {
-                scale = Math.min(1, scale);
-            }
-            
-            if (scale < 1 || isFS) {
-                bookEl.style.transform = `scale(${scale})`;
-                bookEl.style.transformOrigin = 'center center';
-                bookEl.style.margin = '0';
-                
-                if (bookViewportEl) {
-                    bookViewportEl.style.height = `${bookHeight * scale}px`;
-                }
-            } else {
-                bookEl.style.transform = '';
-                bookEl.style.transformOrigin = '';
-                bookEl.style.margin = '';
-                if (bookViewportEl) {
-                    bookViewportEl.style.height = '';
-                }
-            }
-        }
-    }
+
 
     function handleBookClick(e: MouseEvent) {
         // Prevent page turn when user is selecting text
@@ -1217,7 +1155,6 @@
         window.addEventListener('resize', handleResize);
         const handleFullscreenChange = () => {
             isFullscreen = !!document.fullscreenElement;
-            adjustBookScale();
         };
         document.addEventListener('fullscreenchange', handleFullscreenChange);
 
@@ -1313,7 +1250,7 @@
         </div>
     </div>
 
-    <div class="book-viewport" style="position: relative;" bind:this={bookViewportEl}>
+    <div class="book-viewport" style="position: relative;" class:opened={isOpened} bind:this={bookViewportEl}>
         {#if isLoadingTranslation}
             <div class="translation-loader" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; color: #fff; border-radius: 8px; backdrop-filter: blur(4px);">
                 <div class="spinner" style="border: 4px solid rgba(255, 255, 255, 0.1); border-left-color: #8b5cf6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 12px;"></div>
@@ -1491,6 +1428,8 @@
         --link-blue: #2a5ca8;
         --card-bg: rgba(0, 0, 0, 0.03);
         --card-border: rgba(0, 0, 0, 0.08);
+        /* header-area + control-panel など、本の上下に常に確保しておくべきおおよその高さ */
+        --book-chrome-height: 160px;
 
         margin: 0; padding: 0;
         background: var(--bg-color);
@@ -1550,10 +1489,18 @@
     }
 
     /* --- 本の本体 --- */
+    /* 埋め込み先の高さが低い場合でも本がコンテナからはみ出さないよう、
+       横幅だけでなく「使える高さ」からも上限を計算してどちらか小さい方を採用する */
     .book-viewport {
-        width: 100%; display: flex; justify-content: center;
+        width: min(494px, 100%, calc((100vh - var(--book-chrome-height, 160px)) * 494 / 715));
+        max-width: 100%;
+        display: flex; justify-content: center;
         align-items: center;
         perspective: 2000px; padding-bottom: 20px;
+    }
+    .book-viewport.opened {
+        width: min(1040px, 100%, calc((100vh - var(--book-chrome-height, 160px)) * 1040 / 715));
+        max-width: 100%;
     }
 
     .bookmark-slot {
@@ -1566,7 +1513,7 @@
 
     .book-body {
         position: relative;
-        width: 494px;
+        width: min(494px, 100%, calc((100vh - var(--book-chrome-height, 160px)) * 494 / 715));
         max-width: 100%;
         height: auto;
         aspect-ratio: 494 / 715;
@@ -1580,7 +1527,8 @@
     }
 
     .book-body.opened {
-        width: 1040px;
+        width: min(1040px, 100%, calc((100vh - var(--book-chrome-height, 160px)) * 1040 / 715));
+        max-width: 100%;
         aspect-ratio: 1040 / 715;
     }
 
