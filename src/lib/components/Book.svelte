@@ -1550,16 +1550,17 @@
     }
 
     /* --- 本の本体 --- */
+    /* max-width:100% を付けない: JSのtransform:scale()だけがサイズを決める。
+       CSSで先に幅を縮めると、その縮んだ幅に対してさらにJSが縮小をかける
+       "二重縮小"が発生するため。はみ出しは .book-workspace の overflow-x:hidden で隠す */
     .book-viewport {
         width: 494px;
-        max-width: 100%;
         display: flex; justify-content: center;
         align-items: center;
         perspective: 2000px; padding-bottom: 20px;
     }
     .book-viewport.opened {
         width: 1040px;
-        max-width: 100%;
     }
 
     .bookmark-slot {
@@ -1573,7 +1574,6 @@
     .book-body {
         position: relative;
         width: 494px;
-        max-width: 100%;
         height: auto;
         aspect-ratio: 494 / 715;
         background-color: var(--page-color);
@@ -1587,7 +1587,6 @@
 
     .book-body.opened {
         width: 1040px;
-        max-width: 100%;
         aspect-ratio: 1040 / 715;
     }
 
