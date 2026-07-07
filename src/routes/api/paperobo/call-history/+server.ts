@@ -50,6 +50,13 @@ type PapeRoboCallHistoryPayload = {
 	metadata?: Record<string, unknown>;
 };
 
+type CallHistoryBookRow = {
+	id: string;
+	markdown_content?: string | null;
+	created_at?: string | null;
+	updated_at?: string | null;
+};
+
 export const POST: RequestHandler = async ({ request, url }) => {
 	try {
 		const authHeader = request.headers.get('Authorization') || '';
@@ -87,21 +94,21 @@ export const POST: RequestHandler = async ({ request, url }) => {
 		});
 
 		const ownerUserId = validated.ownerUserId;
-		const bookSlug = `${sourceApp}-${specialBookKey}-${ownerUserId}`;
+		const bookSlug = 'paperobo-call-history';
 		const now = new Date().toISOString();
 
-		const { data: existingBook, error: findBookError } = await supabase
+		const { data: exactBooks, error: findBookError } = await supabase
 			.from('books')
-			.select('id, markdown_content')
+			.select('id, markdown_content, created_at, updated_at')
 			.eq('user_id', ownerUserId)
-			.eq('slug', bookSlug)
-			.maybeSingle();
+			.eq('slug', bookSlug);
 
 		if (findBookError) {
 			console.error('Failed to load call history book:', findBookError);
 			return jsonError('database_error', findBookError.message, 500);
 		}
 
+		const existingBook = chooseCanonicalBook(exactBooks || []);
 		const previousMarkdown = existingBook?.markdown_content || buildInitialBookMarkdown();
 		const { markdown, created } = upsertCallPage(previousMarkdown, validated.payload);
 		const bookData = {
@@ -110,7 +117,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			title: 'Call history',
 			author: 'PapeRobo',
 			cover_image: null,
-			theme_color: 'white',
+			theme_color: 'green',
 			markdown_content: markdown,
 			is_public: false,
 			published_at: null
@@ -251,7 +258,7 @@ function buildInitialBookMarkdown() {
 	return `---
 title: Call history
 author: PapeRobo
-theme_color: white
+theme_color: green
 play_mode: book
 id: paperobo-call-history
 source_app: paperobo
@@ -259,6 +266,14 @@ special_book_key: call_history
 is_public: false
 ---
 `;
+}
+
+function chooseCanonicalBook(books: CallHistoryBookRow[]) {
+	return [...books].sort((left, right) => {
+		const leftTime = Date.parse(left.created_at || left.updated_at || '');
+		const rightTime = Date.parse(right.created_at || right.updated_at || '');
+		return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0);
+	})[0];
 }
 
 function upsertCallPage(markdown: string, payload: NormalizedPayload) {
@@ -272,7 +287,7 @@ function upsertCallPage(markdown: string, payload: NormalizedPayload) {
 			: [page, ...parts.pages];
 
 	return {
-		markdown: [parts.frontmatter, ...pages].filter(Boolean).join('\n\n****\n\n'),
+		markdown: [parts.frontmatter, ...pages].filter(Boolean).join('\n\n***\n\n'),
 		created: existingIndex < 0
 	};
 }
@@ -283,7 +298,7 @@ function splitBookMarkdown(markdown: string) {
 	const frontmatter = frontmatterMatch ? frontmatterMatch[1].trim() : buildInitialBookMarkdown().trim();
 	const body = frontmatterMatch ? frontmatterMatch[2].trim() : trimmed;
 	const pages = body
-		.split(/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/)
+		.split(/(?:^|\n)\s*\*\*\s*(?:\n|$)/)
 		.map((page) => page.trim())
 		.filter(Boolean);
 
