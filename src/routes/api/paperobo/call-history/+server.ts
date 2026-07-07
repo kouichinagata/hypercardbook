@@ -17,6 +17,7 @@ type PapeRoboCallHistoryPayload = {
 		durationSeconds?: unknown;
 		endReason?: unknown;
 		locale?: unknown;
+		timeZone?: unknown;
 	};
 	historyOwner?: {
 		type?: unknown;
@@ -141,7 +142,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			ok: true,
 			bookId: savedBook.id,
 			pageId: validated.payload.call.callId,
-			openUrl: `${url.origin}/hyperbook/${savedBook.id}?page=1`,
+			openUrl: `${url.origin}/hyperbook/${savedBook.id}?call=${encodeURIComponent(validated.payload.call.callId)}`,
 			created,
 			updatedAt: now
 		});
@@ -198,7 +199,8 @@ function validatePayload(payload: PapeRoboCallHistoryPayload):
 				endedAt,
 				durationSeconds: numberValue(payload.call?.durationSeconds),
 				endReason: stringValue(payload.call?.endReason),
-				locale: stringValue(payload.call?.locale)
+				locale: stringValue(payload.call?.locale),
+				timeZone: stringValue(payload.call?.timeZone)
 			},
 			user: {
 				paperoboUserId: stringValue(payload.user?.paperoboUserId),
@@ -228,6 +230,7 @@ type NormalizedPayload = {
 		durationSeconds: number;
 		endReason: string;
 		locale: string;
+		timeZone: string;
 	};
 	user: {
 		paperoboUserId: string;
@@ -298,7 +301,7 @@ function splitBookMarkdown(markdown: string) {
 	const frontmatter = frontmatterMatch ? frontmatterMatch[1].trim() : buildInitialBookMarkdown().trim();
 	const body = frontmatterMatch ? frontmatterMatch[2].trim() : trimmed;
 	const pages = body
-		.split(/(?:^|\n)\s*\*\*\s*(?:\n|$)/)
+		.split(/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/)
 		.map((page) => page.trim())
 		.filter(Boolean);
 
@@ -306,8 +309,8 @@ function splitBookMarkdown(markdown: string) {
 }
 
 function buildCallPage(payload: NormalizedPayload) {
-	const started = formatDateTime(payload.call.startedAt);
-	const ended = formatDateTime(payload.call.endedAt);
+	const started = formatDateTime(payload.call.startedAt, payload.call.locale, payload.call.timeZone);
+	const ended = formatDateTime(payload.call.endedAt, payload.call.locale, payload.call.timeZone);
 	const duration = formatDuration(payload.call.durationSeconds);
 	const title = `${payload.agent.name}との通話 - ${started}`;
 	const transcript = payload.transcript
@@ -337,16 +340,38 @@ function callMarker(callId: string) {
 	return `<!-- paperobo_call_id: ${callId} -->`;
 }
 
-function formatDateTime(value: string) {
+function formatDateTime(value: string, localeValue: string, timeZoneValue: string) {
 	const date = new Date(value);
 	if (Number.isNaN(date.getTime())) return value;
-	return new Intl.DateTimeFormat('ja-JP', {
+	const options: Intl.DateTimeFormatOptions = {
 		year: 'numeric',
 		month: '2-digit',
 		day: '2-digit',
 		hour: '2-digit',
 		minute: '2-digit'
-	}).format(date);
+	};
+	const timeZone = normalizeTimeZone(timeZoneValue);
+	if (timeZone) options.timeZone = timeZone;
+	return new Intl.DateTimeFormat(normalizeDateLocale(localeValue), options).format(date);
+}
+
+function normalizeDateLocale(value: string) {
+	if (!value) return 'ja-JP';
+	try {
+		return new Intl.Locale(value).toString();
+	} catch {
+		return 'ja-JP';
+	}
+}
+
+function normalizeTimeZone(value: string) {
+	if (!value) return undefined;
+	try {
+		new Intl.DateTimeFormat('en-US', { timeZone: value }).format(new Date(0));
+		return value;
+	} catch {
+		return undefined;
+	}
 }
 
 function formatDuration(seconds: number) {

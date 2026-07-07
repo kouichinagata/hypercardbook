@@ -11,6 +11,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
     const logoParam = url.searchParams.get('logo');
     const fromParam = url.searchParams.get('from');
     const pageParam = Number(url.searchParams.get('page'));
+    const callParam = url.searchParams.get('call');
 
     let markdownContent = '';
     let ownerId = 'global';
@@ -97,12 +98,30 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
         }
 
         const isEmbed = url.searchParams.get('embed') === 'true';
+        const initialPageIndex = callParam
+            ? initialSpreadIndexForCall(markdownContent, callParam)
+            : Number.isInteger(pageParam) && pageParam > 0 ? pageParam - 1 : -1;
+
         return {
             markdown: markdownContent,
             id,
             backUrl,
             isEmbed,
             currentUserId: ownerId,
-            initialPageIndex: Number.isInteger(pageParam) && pageParam > 0 ? pageParam - 1 : -1
+            initialPageIndex
         };
 };
+
+function initialSpreadIndexForCall(markdown: string, callId: string) {
+    const marker = `<!-- paperobo_call_id: ${callId} -->`;
+    const pageIndex = splitMarkdownPages(markdown).findIndex((page) => page.includes(marker));
+    return pageIndex >= 0 ? Math.floor(pageIndex / 2) : -1;
+}
+
+function splitMarkdownPages(markdown: string) {
+    const body = markdown.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
+    return body
+        .split(/(?:Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i)
+        .map((page) => page.trim())
+        .filter(Boolean);
+}
