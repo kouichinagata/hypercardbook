@@ -92,6 +92,7 @@ body[data-theme="dark"] {
 
 .book-body.opened {
     width: 1040px;
+    max-width: 100%;
     aspect-ratio: 1040 / 715;
 }
 

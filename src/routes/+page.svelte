@@ -1815,7 +1815,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             {:else}
                 <Bookshelf
                     books={displayedBooksLocalized}
-                    currentUserId={data.currentUserId}
+                    currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
                     onPromptSelect={handlePromptSelect}
@@ -1846,7 +1846,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 </div>
                 <Bookshelf
                     books={quarksChoiceListLocalized}
-                    currentUserId={data.currentUserId}
+                    currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     isPublicShelf={true}
                     bind:selectedBookId={selectedBookId}
@@ -1878,7 +1878,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 </div>
                 <Bookshelf
                     books={myBooksListLocalized}
-                    currentUserId={data.currentUserId}
+                    currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
                     onPromptSelect={handlePromptSelect}
@@ -1907,7 +1907,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 </div>
                 <Bookshelf
                     books={sampleBooksListLocalized}
-                    currentUserId={data.currentUserId}
+                    currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
                     onPromptSelect={handlePromptSelect}
@@ -1947,7 +1947,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 </div>
                 <Bookshelf
                     books={publicBooksListLocalized}
-                    currentUserId={data.currentUserId}
+                    currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     isPublicShelf={true}
                     bind:selectedBookId={selectedBookId}
@@ -2700,7 +2700,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                             title="PapeRobo" 
                             class="split-iframe"
                             allow="microphone; camera; autoplay"
-                            allowtransparency="true"
+                            allowtransparency={true}
                             style="background: transparent; color-scheme: normal;"
                         ></iframe>
                     {/await}
@@ -2726,7 +2726,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 backUrl="" 
                                 activePluginIds={[]} 
                                 language="ja"
-                                currentUserId={data.currentUserId}
+                                currentUserId={data.currentUserId ?? 'global'}
                             />
                         {/if}
                     {/if}

@@ -128,7 +128,7 @@ ${markdown}
                 return line;
             }).join('\n');
 
-            processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+            processed = processed.replace(/(\n{2,})/g, (match: string, p1: string, offset: number, string: string) => {
                 const before = string.substring(0, offset).trimEnd();
                 const after = string.substring(offset + match.length).trimStart();
                 if (before.endsWith('>') || after.startsWith('<') || after === '') {

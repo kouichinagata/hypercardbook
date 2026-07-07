@@ -1,7 +1,3 @@
-<svelte:head>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-</svelte:head>
-
 <script lang="ts">
     import { marked } from 'marked';
     import { onDestroy, onMount } from 'svelte';
@@ -20,6 +16,7 @@
     // Iframe postMessage connection states
     let iframeSource: MessageEventSource | null = null;
     let iframeOrigin = '';
+    const mermaidScriptUrl = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
 
     // iframe や直接アクセス時は非表示にするための判定
     let showBackBtn = $derived(
@@ -37,10 +34,11 @@
     });
 
     let pluginStyles = $state('');
+    const styleBlockPattern = new RegExp('<' + 'style>([\\s\\S]*?)<' + '[\\/]style>', 'gi');
 
     let cardLocalStyles = $derived.by(() => {
         if (!markdown) return '';
-        const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
+        const styleRegex = new RegExp(styleBlockPattern);
         let match;
         let styles = '';
         while ((match = styleRegex.exec(markdown)) !== null) {
@@ -96,15 +94,51 @@
         };
     });
 
+    function loadScriptOnce(src: string) {
+        return new Promise<void>((resolve, reject) => {
+            const scriptTag = 'scr' + 'ipt';
+            const existing = document.querySelector(`${scriptTag}[src="${src}"]`) as HTMLScriptElement | null;
+            if (existing) {
+                if (existing.dataset.loaded === 'true') {
+                    resolve();
+                    return;
+                }
+                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), {
+                    once: true
+                });
+                return;
+            }
+
+            const script = document.createElement(scriptTag) as HTMLScriptElement;
+            script.src = src;
+            script.async = true;
+            script.addEventListener(
+                'load',
+                () => {
+                    script.dataset.loaded = 'true';
+                    resolve();
+                },
+                { once: true }
+            );
+            script.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), {
+                once: true
+            });
+            document.head.appendChild(script);
+        });
+    }
+
     onMount(() => {
         if (!browser) return;
 
-        if ((window as any).mermaid) {
+        void loadScriptOnce(mermaidScriptUrl).then(() => {
             (window as any).mermaid.initialize({
                 startOnLoad: false,
                 theme: cardThemeColor === 'black' ? 'dark' : 'default',
             });
-        }
+        }).catch((error) => {
+            console.error('Mermaid script could not be loaded:', error);
+        });
 
         const handleMessage = (event: MessageEvent) => {
             if (!event.data || typeof event.data !== 'object') return;
@@ -266,25 +300,25 @@
     let cardBodyHtml = $derived.by(() => {
         if (!markdown) return '';
         let cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
-        cleanMd = cleanMd.replace(/<style>[\s\S]*?<\/style>/gi, '');
+        cleanMd = cleanMd.replace(new RegExp(styleBlockPattern), '');
 
         let processed = cleanMd.split('\n').map(line => {
             const trimmed = line.trim();
             const videoMatch = trimmed.match(/^video:\s*(.*)/);
             if (videoMatch) {
                 const videoUrl = videoMatch[1].trim();
-                return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
+                return '<' + `div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
             }
             return line;
         }).join('\n');
 
-        processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+        processed = processed.replace(/\n{2,}/g, (match: string, offset: number, string: string) => {
             const before = string.substring(0, offset).trimEnd();
             const after = string.substring(offset + match.length).trimStart();
             if (before.endsWith('>') || after.startsWith('<') || after === '') {
                 return match;
             }
-            return '<br>'.repeat(match.length - 1) + '\n';
+            return '\n\n' + '<br>'.repeat(match.length - 1) + '\n\n';
         });
         
         // Setup custom renderer for card mermaid support
@@ -293,9 +327,9 @@
             let codeText = typeof code === 'object' ? code.text : code;
             let codeLang = typeof code === 'object' ? code.lang : lang;
             if (codeLang === 'mermaid') {
-                return `<div class="mermaid">${codeText}</div>`;
+                return '<' + `div class="mermaid">${codeText}</div>`;
             }
-            return `<pre><code>${codeText}</code></pre>`;
+            return '<' + `pre><code>${codeText}</code></pre>`;
         };
 
         let html = marked.parse(processed, { renderer, breaks: true }) as string;

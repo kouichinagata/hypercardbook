@@ -524,7 +524,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                             );
                         }
 
-                        const tools = [{ functionDeclarations: toolDeclarations }];
+                        const tools = [{ functionDeclarations: toolDeclarations }] as any;
 
                         const responseStream = await ai.models.generateContentStream({
                             model: 'gemini-3.5-flash',

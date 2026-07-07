@@ -630,8 +630,7 @@
             // Render Footer TOC or Toc Controller
             this.renderFooterToc();
 
-            // Adjust Fullscreen scale
-            this.adjustScale();
+
 
             // Update Fullscreen Button Icon
             if (this.dom.btnFullscreen) {
@@ -778,35 +777,7 @@
             }
         }
 
-        adjustScale() {
-            if (!this.dom.bookBody) return;
-            if (this.viewMode === 'vertical') {
-                this.dom.bookBody.style.transform = '';
-                this.dom.bookBody.style.transformOrigin = '';
-                this.dom.bookBody.style.margin = '';
-                return;
-            }
 
-            if (this.isFullscreen) {
-                const viewportHeight = window.innerHeight;
-                const viewportWidth = window.innerWidth;
-                const availableHeight = viewportHeight - 75;
-                const availableWidth = viewportWidth - 40;
-                const bookWidth = 1040;
-                const bookHeight = 715;
-                const scaleX = availableWidth / bookWidth;
-                const scaleY = availableHeight / bookHeight;
-                const scale = Math.min(scaleX, scaleY);
-                
-                this.dom.bookBody.style.transform = `scale(${scale})`;
-                this.dom.bookBody.style.transformOrigin = 'center center';
-                this.dom.bookBody.style.margin = '0';
-            } else {
-                this.dom.bookBody.style.transform = '';
-                this.dom.bookBody.style.transformOrigin = '';
-                this.dom.bookBody.style.margin = '';
-            }
-        }
 
         renderMermaid() {
             if (window.mermaid) {

@@ -12,8 +12,11 @@
     let markdown = $state(data.markdown || '');
     let bookUuid = $state(data.bookId || '');
     let lastProcessedMarkdown = $state(data.markdown || '');
-    let activeTab = $state('preview'); // 'preview' or 'source'
-    let mode = $state('book'); // 'book' or 'card'
+
+    // URLパラメータや markdown コンテンツから初期モードを判定
+    const initialIsCard = (page.url?.searchParams?.get('mode') === 'card') || !!(data.markdown && data.markdown.includes('play_mode: card'));
+    let mode = $state(initialIsCard ? 'card' : 'book'); // 'book' or 'card'
+    let activeTab = $state(initialIsCard ? 'source' : 'preview'); // 'preview' or 'source'
     let replaceTargetIsCover = $state(false);
     let uiTheme = $state('dark');
 
@@ -624,7 +627,7 @@ ${markdown}
             let cardBodyHtml = '';
             if (markdown) {
                 const cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
-                let processed = cleanMd.split('\n').map(line => {
+                let processed = cleanMd.split('\n').map((line: string) => {
                     const trimmed = line.trim();
                     const videoMatch = trimmed.match(/^video:\s*(.*)/);
                     if (videoMatch) {
@@ -633,7 +636,7 @@ ${markdown}
                     }
                     return line;
                 }).join('\n');
-                processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+                processed = processed.replace(/(\n{2,})/g, (match: string, p1: string, offset: number, string: string) => {
                     const before = string.substring(0, offset).trimEnd();
                     const after = string.substring(offset + match.length).trimStart();
                     if (before.endsWith('>') || after.startsWith('<') || after === '') {
@@ -1132,19 +1135,40 @@ ${markdown}
         return marked.parse(processed) as string;
     }
 
-    onMount(async () => {
+    onMount(() => {
         document.body.classList.add('scroll-locked');
         
-        // ナビゲーションキャッシュによる古いデータの使用を防ぐため、強制的に最新データを再ロードする
-        await invalidateAll();
+        // 非同期処理を内部のIIFEで実行
+        (async () => {
+            // ナビゲーションキャッシュによる古いデータの使用を防ぐため、強制的に最新データを再ロードする
+            await invalidateAll();
 
-        // 取得した最新データをエディタの各ステートに同期する（マウント時に1度だけ実行されます）
-        if (data.markdown !== markdown) {
-            markdown = data.markdown || '';
-        }
-        bookUuid = data.bookId || '';
-        chatHistory = data.initialChatHistory || [];
-        lastProcessedMarkdown = data.markdown || '';
+            // 取得した最新データをエディタの各ステートに同期する（マウント時に1度だけ実行されます）
+            if (data.markdown !== markdown) {
+                markdown = data.markdown || '';
+            }
+            bookUuid = data.bookId || '';
+            chatHistory = data.initialChatHistory || [];
+            lastProcessedMarkdown = data.markdown || '';
+
+            let initPrompt = page.url.searchParams.get('prompt');
+            if (!initPrompt) {
+                try {
+                    initPrompt = sessionStorage.getItem('workspace_init_prompt');
+                    if (initPrompt) {
+                        sessionStorage.removeItem('workspace_init_prompt');
+                    }
+                } catch (err) {
+                    console.error('Failed to read prompt from sessionStorage:', err);
+                }
+            }
+
+            if (initPrompt) {
+                await sendPrompt(initPrompt);
+            } else if (!data.bookId) {
+                errorMsg = 'Please enter a prompt first.';
+            }
+        })();
 
         // Setup custom renderer for marked in workspace
         const renderer = new marked.Renderer();
@@ -1193,26 +1217,6 @@ ${markdown}
         } else {
             activeTab = 'preview';
         }
-
-        let initPrompt = page.url.searchParams.get('prompt');
-        if (!initPrompt) {
-            try {
-                initPrompt = sessionStorage.getItem('workspace_init_prompt');
-                if (initPrompt) {
-                    sessionStorage.removeItem('workspace_init_prompt');
-                }
-            } catch (err) {
-                console.error('Failed to read prompt from sessionStorage:', err);
-            }
-        }
-
-        (async () => {
-            if (initPrompt) {
-                await sendPrompt(initPrompt);
-            } else if (!data.bookId) {
-                errorMsg = 'Please enter a prompt first.';
-            }
-        })();
 
         return () => {
             document.body.classList.remove('scroll-locked');
@@ -1319,7 +1323,7 @@ ${markdown}
                 if (fmMatch) {
                     const fmLines = fmMatch[1].split('\n');
                     let coverImageFound = false;
-                    const updatedLines = fmLines.map(line => {
+                    const updatedLines = fmLines.map((line: string) => {
                         const parts = line.split(':');
                         if (parts.length >= 2 && parts[0].trim() === 'cover_image') {
                             coverImageFound = true;
@@ -1372,7 +1376,7 @@ ${markdown}
         const regex = new RegExp(`!\\[${escapedAlt || '.*?'}\\]\\((.*?)\\)`, 'g');
         let found = false;
         
-        const newMarkdown = markdown.replace(regex, (match, url) => {
+        const newMarkdown = markdown.replace(regex, (match: string, url: string) => {
             const normUrl = url.trim().replace(/^\//, '').replace(/^books\//, '');
             const normTarget = replaceTargetUrl.trim().replace(/^\//, '').replace(/^books\//, '');
             
@@ -1388,7 +1392,7 @@ ${markdown}
         } else {
             const regexAltOnly = new RegExp(`!\\[${escapedAlt}\\]\\((.*?)\\)`, 'g');
             let foundAlt = false;
-            const newMarkdownAlt = markdown.replace(regexAltOnly, (match) => {
+            const newMarkdownAlt = markdown.replace(regexAltOnly, (match: string) => {
                 foundAlt = true;
                 return `![${replaceTargetAlt}](${newUrl})`;
             });

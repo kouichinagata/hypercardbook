@@ -25,6 +25,7 @@
 
     // Text to Speech states & methods
     let isSpeaking = $state(false);
+    const mermaidScriptUrl = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
 
     function handleToggleSpeak() {
         if (!browser || !window.speechSynthesis) return;
@@ -202,6 +203,7 @@
     let bookmarkHtml = $state('');
     let hooks = $state<{ [key: string]: string }>({});
     let pageHooks = $state<{ [pageIndex: number]: Array<{ eventName: string, skillName: string, args: string[] }> }>({});
+    const styleBlockPattern = new RegExp('<' + 'style>([\\s\\S]*?)<' + '[\\/]style>', 'gi');
 
     // Dynamic ES Module Skill runner using Blob URL
     async function runPageSkill(skillName: string, args: string[]) {
@@ -729,12 +731,12 @@
         let contentWithoutFm = trimmedMd.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
 
         // Extract user style blocks from body
-        const styleRegex = /<style>([\s\S]*?)<\/style>/gi;
+        const styleRegex = new RegExp(styleBlockPattern);
         let styleMatch;
         while ((styleMatch = styleRegex.exec(contentWithoutFm)) !== null) {
             parsedUserStyles += styleMatch[1] + '\n';
         }
-        contentWithoutFm = contentWithoutFm.replace(/<style>[\s\S]*?<\/style>/gi, '');
+        contentWithoutFm = contentWithoutFm.replace(new RegExp(styleBlockPattern), '');
 
         let pagesRaw = contentWithoutFm.split(/(?:Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
         pagesRaw = pagesRaw.map(p => p.trim()).filter(p => p.length > 0);
@@ -1175,6 +1177,40 @@
         }
     }
 
+    function loadScriptOnce(src: string) {
+        return new Promise<void>((resolve, reject) => {
+            const scriptTag = 'scr' + 'ipt';
+            const existing = document.querySelector(`${scriptTag}[src="${src}"]`) as HTMLScriptElement | null;
+            if (existing) {
+                if (existing.dataset.loaded === 'true') {
+                    resolve();
+                    return;
+                }
+                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), {
+                    once: true
+                });
+                return;
+            }
+
+            const script = document.createElement(scriptTag) as HTMLScriptElement;
+            script.src = src;
+            script.async = true;
+            script.addEventListener(
+                'load',
+                () => {
+                    script.dataset.loaded = 'true';
+                    resolve();
+                },
+                { once: true }
+            );
+            script.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), {
+                once: true
+            });
+            document.head.appendChild(script);
+        });
+    }
+
     onMount(() => {
         const savedTheme = document.documentElement.getAttribute('data-theme') || 'light';
         uiTheme = savedTheme;
@@ -1205,14 +1241,16 @@
         };
         marked.use({ renderer, breaks: true });
 
-        // Initialize mermaid globally
-        if ((window as any).mermaid) {
+        void loadScriptOnce(mermaidScriptUrl).then(() => {
             (window as any).mermaid.initialize({
                 startOnLoad: false,
                 theme: uiTheme === 'dark' ? 'dark' : 'default',
                 securityLevel: 'loose'
             });
-        }
+            renderMermaid();
+        }).catch((error) => {
+            console.error('Mermaid script could not be loaded:', error);
+        });
 
         window.addEventListener('resize', handleResize);
         const handleFullscreenChange = () => {
@@ -1275,12 +1313,6 @@
         };
     });
 </script>
-
-<svelte:head>
-    <!-- Marked and Mermaid load -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-</svelte:head>
 
 <div class="book-workspace" data-theme={uiTheme} data-book-theme={['white', 'black', 'blue', 'pink', 'gold'].includes(themeColor) ? themeColor : 'black'} class:vertical-mode={viewMode === 'vertical'}>
     {#if showBackBtn}
