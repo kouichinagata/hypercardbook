@@ -9,6 +9,7 @@
     let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || ['hypercard-hook']);
     
     let currentLanguage = $state('ja');
+    let currentIndex = $state(data.initialPageIndex ?? -1);
 
     onMount(() => {
         const savedLang = localStorage.getItem('reader-lang');
@@ -35,7 +36,6 @@
         activePluginIds={activePluginIds}
     />
 {:else}
-    <Book markdown={data.markdown} id={data.id} backUrl={data.isEmbed ? '' : data.backUrl} activePluginIds={activePluginIds} language={currentLanguage} currentUserId={data.currentUserId} />
+    <Book markdown={data.markdown} id={data.id} backUrl={data.isEmbed ? '' : data.backUrl} activePluginIds={activePluginIds} language={currentLanguage} currentUserId={data.currentUserId} bind:currentIndex />
 {/if}
-
 

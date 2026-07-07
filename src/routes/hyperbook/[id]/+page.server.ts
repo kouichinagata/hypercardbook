@@ -10,6 +10,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
     const titleParam = url.searchParams.get('title');
     const logoParam = url.searchParams.get('logo');
     const fromParam = url.searchParams.get('from');
+    const pageParam = Number(url.searchParams.get('page'));
 
     let markdownContent = '';
     let ownerId = 'global';
@@ -101,6 +102,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
             id,
             backUrl,
             isEmbed,
-            currentUserId: ownerId
+            currentUserId: ownerId,
+            initialPageIndex: Number.isInteger(pageParam) && pageParam > 0 ? pageParam - 1 : -1
         };
 };
