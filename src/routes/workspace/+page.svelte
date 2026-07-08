@@ -196,6 +196,12 @@
     let isGenerating = $state(false);
     let errorMsg = $state('');
 
+    // Web Search toggle
+    let webSearchEnabled = $state(false);
+    let isPaidPlan = $derived(
+        ['standard', 'pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
+    );
+
     // Monaco Editor states
     let useMonaco = $state(false);
     let monacoContainerEl = $state<HTMLDivElement | null>(null);
@@ -987,7 +993,8 @@ ${markdown}
                     bookId: bookUuid,
                     mode: mode,
                     currentCardIndex: currentCardIndex,
-                    activePluginIds: $state.snapshot(activePluginIds)
+                    activePluginIds: $state.snapshot(activePluginIds),
+                    webSearchEnabled: webSearchEnabled && isPaidPlan
                 })
             });
 
@@ -1158,6 +1165,12 @@ ${markdown}
                     if (initPrompt) {
                         sessionStorage.removeItem('workspace_init_prompt');
                     }
+                    // Restore web search state from top page
+                    const storedWebSearch = sessionStorage.getItem('workspace_web_search');
+                    if (storedWebSearch === 'true' && isPaidPlan) {
+                        webSearchEnabled = true;
+                    }
+                    sessionStorage.removeItem('workspace_web_search');
                 } catch (err) {
                     console.error('Failed to read prompt from sessionStorage:', err);
                 }
@@ -1757,15 +1770,29 @@ ${markdown}
                             rows="2"
                         ></textarea>
                         <div class="chat-actions-row">
-                            <button
-                                type="button"
-                                class="inner-attach-btn"
-                                onclick={() => fileInputEl?.click()}
-                                disabled={!data.session?.user || isGenerating}
-                                title="Attach files"
-                            >
-                                ＋
-                            </button>
+                            <div class="chat-actions-left">
+                                <button
+                                    type="button"
+                                    class="inner-attach-btn"
+                                    onclick={() => fileInputEl?.click()}
+                                    disabled={!data.session?.user || isGenerating}
+                                    title="Attach files"
+                                >
+                                    ＋
+                                </button>
+                                <!-- Web Search Toggle -->
+                                <button
+                                    type="button"
+                                    class="web-search-btn"
+                                    class:active={webSearchEnabled && isPaidPlan}
+                                    disabled={!isPaidPlan || !data.session?.user || isGenerating}
+                                    onclick={() => { webSearchEnabled = !webSearchEnabled; }}
+                                    title={!isPaidPlan ? 'Available on Standard plan or above' : (webSearchEnabled ? 'Web Search: ON' : 'Web Search: OFF')}
+                                    aria-label="Toggle Web Search"
+                                >
+                                    🔍 Web
+                                </button>
+                            </div>
                             <button 
                                 type="submit" 
                                 class="inner-run-btn"
@@ -3045,6 +3072,12 @@ ${markdown}
         margin-top: 4px;
     }
 
+    .chat-actions-left {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
     .inner-attach-btn {
         background: transparent;
         border: none;
@@ -3094,6 +3127,53 @@ ${markdown}
         opacity: 0.4;
         cursor: not-allowed;
         transform: none;
+    }
+
+    /* Web Search Toggle Button (Workspace) */
+    .web-search-toggle-wrapper {
+        display: flex;
+        align-items: center;
+    }
+    .web-search-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        color: rgba(255, 255, 255, 0.55);
+        cursor: pointer;
+        transition: background 0.18s, border-color 0.18s, color 0.18s;
+        white-space: nowrap;
+    }
+    .web-search-btn:hover:not(.disabled-plan):not(:disabled) {
+        background: rgba(255, 255, 255, 0.13);
+        color: rgba(255, 255, 255, 0.85);
+    }
+    .web-search-btn.active {
+        background: rgba(66, 133, 244, 0.22);
+        border-color: rgba(66, 133, 244, 0.55);
+        color: #8ab4f8;
+    }
+    .web-search-btn.active:hover:not(.disabled-plan) {
+        background: rgba(66, 133, 244, 0.32);
+    }
+    .web-search-btn.disabled-plan {
+        opacity: 0.35;
+        cursor: not-allowed;
+    }
+    .workspace-layout[data-theme="light"] .web-search-btn {
+        background: rgba(0, 0, 0, 0.05);
+        border-color: rgba(0, 0, 0, 0.12);
+        color: rgba(0, 0, 0, 0.45);
+    }
+    .workspace-layout[data-theme="light"] .web-search-btn.active {
+        background: rgba(66, 133, 244, 0.12);
+        border-color: rgba(66, 133, 244, 0.4);
+        color: #1a73e8;
     }
 
     /* Attached files preview bar */

@@ -1,0 +1,748 @@
+
+> hypercardbook@0.0.1 check
+> svelte-kit sync && svelte-check --tsconfig ./tsconfig.json
+
+Loading svelte-check in workspace: /Users/kouichinagata/src/hypercardbook
+Getting Svelte diagnostics...
+
+/Users/kouichinagata/src/hypercardbook/src/routes/api/export-html/+server.ts:131:57
+Error: Parameter 'match' implicitly has an 'any' type. 
+
+            processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+                const before = string.substring(0, offset).trimEnd();
+
+/Users/kouichinagata/src/hypercardbook/src/routes/api/export-html/+server.ts:131:64
+Error: Parameter 'p1' implicitly has an 'any' type. 
+
+            processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+                const before = string.substring(0, offset).trimEnd();
+
+/Users/kouichinagata/src/hypercardbook/src/routes/api/export-html/+server.ts:131:68
+Error: Parameter 'offset' implicitly has an 'any' type. 
+
+            processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+                const before = string.substring(0, offset).trimEnd();
+
+/Users/kouichinagata/src/hypercardbook/src/routes/api/export-html/+server.ts:131:76
+Error: Parameter 'string' implicitly has an 'any' type. 
+
+            processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+                const before = string.substring(0, offset).trimEnd();
+
+/Users/kouichinagata/src/hypercardbook/src/routes/api/generate/+server.ts:536:33
+Error: Type '{ functionDeclarations: ({ name: string; description: string; parameters: { type: string; properties: { page_index: { type: string; description: string; }; action: { type: string; description: string; }; ... 4 more ...; content?: undefined; }; required: string[]; }; } | { ...; } | { ...; } | { ...; })[]; }[]' is not assignable to type 'ToolUnion[]'.
+  Type '{ functionDeclarations: ({ name: string; description: string; parameters: { type: string; properties: { page_index: { type: string; description: string; }; action: { type: string; description: string; }; ... 4 more ...; content?: undefined; }; required: string[]; }; } | { ...; } | { ...; } | { ...; })[]; }' is not assignable to type 'ToolUnion'.
+    Type '{ functionDeclarations: ({ name: string; description: string; parameters: { type: string; properties: { page_index: { type: string; description: string; }; action: { type: string; description: string; }; ... 4 more ...; content?: undefined; }; required: string[]; }; } | { ...; } | { ...; } | { ...; })[]; }' is not assignable to type 'Tool'.
+      Types of property 'functionDeclarations' are incompatible.
+        Type '({ name: string; description: string; parameters: { type: string; properties: { page_index: { type: string; description: string; }; action: { type: string; description: string; }; new_content: { type: string; description: string; }; query?: undefined; fileId?: undefined; name?: undefined; content?: undefined; }; req...' is not assignable to type 'FunctionDeclaration[]'.
+          Type '{ name: string; description: string; parameters: { type: string; properties: { page_index: { type: string; description: string; }; action: { type: string; description: string; }; new_content: { type: string; description: string; }; query?: undefined; fileId?: undefined; name?: undefined; content?: undefined; }; requ...' is not assignable to type 'FunctionDeclaration'.
+            Type '{ name: string; description: string; parameters: { type: string; properties: { page_index: { type: string; description: string; }; action: { type: string; description: string; }; new_content: { type: string; description: string; }; query?: undefined; fileId?: undefined; name?: undefined; content?: undefined; }; requ...' is not assignable to type 'FunctionDeclaration'.
+              The types of 'parameters.properties' are incompatible between these types.
+                Type '{ page_index: { type: string; description: string; }; action: { type: string; description: string; }; new_content: { type: string; description: string; }; query?: undefined; fileId?: undefined; name?: undefined; content?: undefined; }' is not assignable to type 'Record<string, Schema>'.
+                  Property 'page_index' is incompatible with index signature.
+                    Type '{ type: string; description: string; }' is not assignable to type 'Schema'.
+                      Types of property 'type' are incompatible.
+                        Type 'string' is not assignable to type 'Type | undefined'. 
+                                maxOutputTokens: 65536,
+                                tools: tools
+                            }
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte:1281:21
+Warn: `this` should be an `{expression}`. Using a string attribute value will cause an error in future versions of Svelte
+https://svelte.dev/e/svelte_element_invalid_this (svelte)
+    <!-- Marked and Mermaid load -->
+    <svelte:element this="script" src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></svelte:element>
+    <svelte:element this="script" src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></svelte:element>
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte:1282:21
+Warn: `this` should be an `{expression}`. Using a string attribute value will cause an error in future versions of Svelte
+https://svelte.dev/e/svelte_element_invalid_this (svelte)
+    <svelte:element this="script" src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></svelte:element>
+    <svelte:element this="script" src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></svelte:element>
+</svelte:head>
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte:1368:29
+Warn: Screenreaders already announce `<img>` elements as an image
+https://svelte.dev/e/a11y_img_redundant_alt (svelte)
+                        <div class="image-container" id="imageArea" style:display="flex">
+                            <img src={normalizePath(authorImage || 'author_avatar.png')} alt="Photo" style="width: auto !important; height: auto !important; max-width: 100% !important; max-height: 100% !important; border-radius: 50%; object-fit: cover; box-shadow: 0 6px 15px rgba(0,0,0,0.15);" />
+                        </div>
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte:1398:48
+Warn: 'javascript:void(0)' is not a valid href attribute
+https://svelte.dev/e/a11y_invalid_attribute (svelte)
+                                        <li>
+                                            <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); jumpToPage(item.jumpIndex); }}>
+                                                <span class="toc-title">{item.title}</span>
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte:1470:32
+Warn: 'javascript:void(0)' is not a valid href attribute
+https://svelte.dev/e/a11y_invalid_attribute (svelte)
+                        <li>
+                            <a href="javascript:void(0)" onclick={(e) => { e.preventDefault(); jumpToPage(item.jumpIndex); }}>
+                                <span class="toc-title">{item.title}</span>
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte:1742:5
+Warn: Unused CSS selector ".page-progress"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .page-progress {
+        font-size: 0.85rem; font-weight: bold; min-width: 60px; text-align: center;
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte:1832:5
+Warn: Unused CSS selector ".author-photo-container"
+https://svelte.dev/e/css_unused_selector (svelte)
+    /* --- Author Biography Page Stylings --- */
+    .author-photo-container {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte:2107:9
+Error: `<script>` was left open
+https://svelte.dev/e/element_unclosed (ts)
+    }
+</style>
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Bookshelf.svelte:566:5
+Warn: Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events (svelte)
+{#if menuVisible && activeMenuBook}
+    <div 
+        class="custom-context-menu" 
+        style="top: {menuY}px; left: {menuX}px;"
+        onclick={(e) => e.stopPropagation()}
+    >
+        <button 
+            type="button" 
+            class="context-menu-item" 
+            onclick={() => {
+                downloadCoverImage(activeMenuBook, activeMenuElement);
+                closeMenu();
+            }}
+        >
+            📥 Download Icon
+        </button>
+    </div>
+{/if}
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Bookshelf.svelte:566:5
+Warn: `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions (svelte)
+{#if menuVisible && activeMenuBook}
+    <div 
+        class="custom-context-menu" 
+        style="top: {menuY}px; left: {menuX}px;"
+        onclick={(e) => e.stopPropagation()}
+    >
+        <button 
+            type="button" 
+            class="context-menu-item" 
+            onclick={() => {
+                downloadCoverImage(activeMenuBook, activeMenuElement);
+                closeMenu();
+            }}
+        >
+            📥 Download Icon
+        </button>
+    </div>
+{/if}
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Bookshelf.svelte:1224:9
+Warn: Unused CSS selector ".shelf-stack-mode-btn"
+https://svelte.dev/e/css_unused_selector (svelte)
+    @media (max-width: 600px) {
+        .shelf-stack-mode-btn {
+            top: 10px;
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Bookshelf.svelte:763:9
+Warn: Also define the standard property 'line-clamp' for compatibility (css)
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Bookshelf.svelte:790:9
+Warn: Also define the standard property 'line-clamp' for compatibility (css)
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Bookshelf.svelte:830:9
+Warn: Also define the standard property 'line-clamp' for compatibility (css)
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Bookshelf.svelte:1614:9
+Warn: Also define the standard property 'line-clamp' for compatibility (css)
+        display: -webkit-box;
+        -webkit-line-clamp: 4;
+        -webkit-box-orient: vertical;
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Card.svelte:2:21
+Warn: `this` should be an `{expression}`. Using a string attribute value will cause an error in future versions of Svelte
+https://svelte.dev/e/svelte_element_invalid_this (svelte)
+<svelte:head>
+    <svelte:element this="script" src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></svelte:element>
+</svelte:head>
+
+/Users/kouichinagata/src/hypercardbook/src/lib/components/Card.svelte:670:9
+Error: `<script>` was left open
+https://svelte.dev/e/element_unclosed (ts)
+    }
+</style>
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2022:21
+Warn: A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control (svelte)
+                <div class="stack-listbox-container">
+                    <label class="listbox-label">HyperCard or HyperBook</label>
+                    <div class="stack-listbox">
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2134:21
+Warn: A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control (svelte)
+                <div class="stack-listbox-container">
+                    <label class="listbox-label">Selected Items</label>
+                    <div class="stack-listbox">
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2495:45
+Warn: A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control (svelte)
+                                        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Skill Name</label>
+                                            <input
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2508:45
+Warn: A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control (svelte)
+                                        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Description</label>
+                                            <input
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2521:45
+Warn: A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control (svelte)
+                                        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Skill Prompt</label>
+                                            <textarea
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2640:9
+Warn: `<div>` with a click or keydown handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions (svelte)
+    {#if isFreeCallOpen}
+        <div class="free-call-overlay" onclick={() => isFreeCallOpen = false} onkeydown={(e) => { if (e.key === 'Escape') isFreeCallOpen = false }}>
+            <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
+                <button type="button" class="free-call-close-btn" onclick={() => isFreeCallOpen = false}>✕</button>
+                <div class="free-call-iframe-container">
+                    {#await getFreeCallUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="Free Call" 
+                            class="free-call-iframe"
+                            allow="microphone; camera; autoplay"
+                        ></iframe>
+                    {/await}
+                </div>
+            </div>
+        </div>
+    {/if}
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2641:13
+Warn: Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events (svelte)
+        <div class="free-call-overlay" onclick={() => isFreeCallOpen = false} onkeydown={(e) => { if (e.key === 'Escape') isFreeCallOpen = false }}>
+            <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
+                <button type="button" class="free-call-close-btn" onclick={() => isFreeCallOpen = false}>✕</button>
+                <div class="free-call-iframe-container">
+                    {#await getFreeCallUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="Free Call" 
+                            class="free-call-iframe"
+                            allow="microphone; camera; autoplay"
+                        ></iframe>
+                    {/await}
+                </div>
+            </div>
+        </div>
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2641:13
+Warn: `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions (svelte)
+        <div class="free-call-overlay" onclick={() => isFreeCallOpen = false} onkeydown={(e) => { if (e.key === 'Escape') isFreeCallOpen = false }}>
+            <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
+                <button type="button" class="free-call-close-btn" onclick={() => isFreeCallOpen = false}>✕</button>
+                <div class="free-call-iframe-container">
+                    {#await getFreeCallUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="Free Call" 
+                            class="free-call-iframe"
+                            allow="microphone; camera; autoplay"
+                        ></iframe>
+                    {/await}
+                </div>
+            </div>
+        </div>
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2658:9
+Warn: Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events (svelte)
+    {#if isPromptCallOpen}
+        <div 
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; z-index: 2000;" 
+            onclick={() => isPromptCallOpen = false}
+        >
+            <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
+                <button type="button" class="free-call-close-btn" onclick={() => isPromptCallOpen = false}>✕</button>
+                <div class="free-call-iframe-container">
+                    {#await getFreeCallUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="Free Call" 
+                            class="free-call-iframe"
+                            allow="microphone; camera; autoplay"
+                        ></iframe>
+                    {/await}
+                </div>
+            </div>
+        </div>
+    {/if}
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2658:9
+Warn: `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions (svelte)
+    {#if isPromptCallOpen}
+        <div 
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; z-index: 2000;" 
+            onclick={() => isPromptCallOpen = false}
+        >
+            <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
+                <button type="button" class="free-call-close-btn" onclick={() => isPromptCallOpen = false}>✕</button>
+                <div class="free-call-iframe-container">
+                    {#await getFreeCallUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="Free Call" 
+                            class="free-call-iframe"
+                            allow="microphone; camera; autoplay"
+                        ></iframe>
+                    {/await}
+                </div>
+            </div>
+        </div>
+    {/if}
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2662:13
+Warn: Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events (svelte)
+        >
+            <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
+                <button type="button" class="free-call-close-btn" onclick={() => isPromptCallOpen = false}>✕</button>
+                <div class="free-call-iframe-container">
+                    {#await getFreeCallUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="Free Call" 
+                            class="free-call-iframe"
+                            allow="microphone; camera; autoplay"
+                        ></iframe>
+                    {/await}
+                </div>
+            </div>
+        </div>
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2662:13
+Warn: `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions (svelte)
+        >
+            <div class="free-call-dialog" onclick={(e) => e.stopPropagation()}>
+                <button type="button" class="free-call-close-btn" onclick={() => isPromptCallOpen = false}>✕</button>
+                <div class="free-call-iframe-container">
+                    {#await getFreeCallUrl() then src}
+                        <iframe 
+                            {src} 
+                            title="Free Call" 
+                            class="free-call-iframe"
+                            allow="microphone; camera; autoplay"
+                        ></iframe>
+                    {/await}
+                </div>
+            </div>
+        </div>
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3187:5
+Warn: Unused CSS selector ".form-group input[type="password"]"
+https://svelte.dev/e/css_unused_selector (svelte)
+    .form-group input[type="email"],
+    .form-group input[type="password"],
+    .form-group select,
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3207:5
+Warn: Unused CSS selector ".landing-container[data-theme="light"] .form-group input[type="password"]"
+https://svelte.dev/e/css_unused_selector (svelte)
+    .landing-container[data-theme="light"] .form-group input[type="email"],
+    .landing-container[data-theme="light"] .form-group input[type="password"],
+    .landing-container[data-theme="light"] .form-group select,
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3249:5
+Warn: Unused CSS selector ".avatar-upload-btn"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .avatar-upload-btn {
+        background: rgba(255,255,255,0.05);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3260:5
+Warn: Unused CSS selector ".avatar-upload-btn:hover"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .avatar-upload-btn:hover {
+        background: rgba(255,255,255,0.1);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3580:5
+Warn: Unused CSS selector ".password-change-zone"
+https://svelte.dev/e/css_unused_selector (svelte)
+    /* Password change zone styles */
+    .password-change-zone {
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3587:5
+Warn: Unused CSS selector ".landing-container[data-theme="light"] .password-change-zone"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .landing-container[data-theme="light"] .password-change-zone {
+        border-top-color: rgba(61, 37, 22, 0.1);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3590:5
+Warn: Unused CSS selector ".password-change-zone h3"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .password-change-zone h3 {
+        color: var(--text-color);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3597:5
+Warn: Unused CSS selector ".password-change-form"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .password-change-form {
+        display: flex;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3603:5
+Warn: Unused CSS selector ".form-group-compact input"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .form-group-compact input {
+        width: 100%;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3614:5
+Warn: Unused CSS selector ".landing-container[data-theme="light"] .form-group-compact input"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .landing-container[data-theme="light"] .form-group-compact input {
+        background: #ffffff;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3619:5
+Warn: Unused CSS selector ".form-group-compact input:focus"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .form-group-compact input:focus {
+        border-color: #8b5cf6;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3622:5
+Warn: Unused CSS selector ".password-actions"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .password-actions {
+        display: flex;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3626:5
+Warn: Unused CSS selector ".save-btn-compact"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .save-btn-compact {
+        background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3637:5
+Warn: Unused CSS selector ".save-btn-compact:hover:not(:disabled)"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .save-btn-compact:hover:not(:disabled) {
+        filter: brightness(1.1);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3640:5
+Warn: Unused CSS selector ".save-btn-compact:disabled"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .save-btn-compact:disabled {
+        opacity: 0.5;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3653:5
+Warn: Unused CSS selector ".success-msg"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .success-msg {
+        color: #a7f3d0;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3659:5
+Warn: Unused CSS selector ".landing-container[data-theme="light"] .success-msg"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .landing-container[data-theme="light"] .success-msg {
+        color: #059669;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3663:5
+Warn: Unused CSS selector ".stack-view-header"
+https://svelte.dev/e/css_unused_selector (svelte)
+    /* --- Stack View Header --- */
+    .stack-view-header {
+        width: 90%;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3672:5
+Warn: Unused CSS selector ".back-to-home-btn"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .back-to-home-btn {
+        background: rgba(255, 255, 255, 0.08);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3683:5
+Warn: Unused CSS selector ".back-to-home-btn:hover"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .back-to-home-btn:hover {
+        background: rgba(255, 255, 255, 0.18);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3687:5
+Warn: Unused CSS selector ".stack-view-title"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .stack-view-title {
+        margin: 0;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3694:5
+Warn: Unused CSS selector ".landing-container[data-theme="light"] .back-to-home-btn"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .landing-container[data-theme="light"] .back-to-home-btn {
+        background: rgba(61, 37, 22, 0.06);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3699:5
+Warn: Unused CSS selector ".landing-container[data-theme="light"] .back-to-home-btn:hover"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .landing-container[data-theme="light"] .back-to-home-btn:hover {
+        background: rgba(61, 37, 22, 0.12);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:3702:5
+Warn: Unused CSS selector ".landing-container[data-theme="light"] .stack-view-title"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .landing-container[data-theme="light"] .stack-view-title {
+        color: #3d2516;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:4649:5
+Warn: Unused CSS selector ".right-pane .split-iframe"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .right-pane .split-iframe {
+        width: 100%;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:4702:5
+Warn: Unused CSS selector ".publish-btn"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .publish-btn {
+        background: #0070f3;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:4714:5
+Warn: Unused CSS selector ".publish-btn:hover"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    .publish-btn:hover {
+        background: #0060d3;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:4718:5
+Warn: Unused CSS selector ":global([data-theme="light"]) .publish-btn"
+https://svelte.dev/e/css_unused_selector (svelte)
+    }
+    :global([data-theme="light"]) .publish-btn {
+        background: #0070f3;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:7:12
+Error: Module '"/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte"' has no default export. (ts)
+    import Bookshelf from '$lib/components/Bookshelf.svelte';
+    import Book from '$lib/components/Book.svelte';
+    import Card from '$lib/components/Card.svelte';
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:8:12
+Error: Module '"/Users/kouichinagata/src/hypercardbook/src/lib/components/Card.svelte"' has no default export. (ts)
+    import Book from '$lib/components/Book.svelte';
+    import Card from '$lib/components/Card.svelte';
+    import { LANGUAGES } from '$lib/languages';
+
+/Users/kouichinagata/src/hypercardbook/src/routes/+page.svelte:2703:29
+Error: Type 'string' is not assignable to type 'boolean | null | undefined'. (ts)
+                            allow="microphone; camera; autoplay"
+                            allowtransparency="true"
+                            style="background: transparent; color-scheme: normal;"
+
+/Users/kouichinagata/src/hypercardbook/src/routes/hyperbook/[id]/+page.svelte:3:12
+Error: Module '"/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte"' has no default export. (ts)
+    import { onMount } from 'svelte';
+    import Book from '$lib/components/Book.svelte';
+    import Card from '$lib/components/Card.svelte';
+
+/Users/kouichinagata/src/hypercardbook/src/routes/hyperbook/[id]/+page.svelte:4:12
+Error: Module '"/Users/kouichinagata/src/hypercardbook/src/lib/components/Card.svelte"' has no default export. (ts)
+    import Book from '$lib/components/Book.svelte';
+    import Card from '$lib/components/Card.svelte';
+
+/Users/kouichinagata/src/hypercardbook/src/routes/hypercard/[id]/+page.svelte:2:12
+Error: Module '"/Users/kouichinagata/src/hypercardbook/src/lib/components/Card.svelte"' has no default export. (ts)
+<script lang="ts">
+    import Card from '$lib/components/Card.svelte';
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:12:27
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+    // Chat and Markdown states
+    let markdown = $state(data.markdown || '');
+    let bookUuid = $state(data.bookId || '');
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:13:27
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+    let markdown = $state(data.markdown || '');
+    let bookUuid = $state(data.bookId || '');
+    let lastProcessedMarkdown = $state(data.markdown || '');
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:14:40
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+    let bookUuid = $state(data.bookId || '');
+    let lastProcessedMarkdown = $state(data.markdown || '');
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:17:82
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+    // URLパラメータや markdown コンテンツから初期モードを判定
+    const initialIsCard = (page.url?.searchParams?.get('mode') === 'card') || !!(data.markdown && data.markdown.includes('play_mode: card'));
+    let mode = $state(initialIsCard ? 'card' : 'book'); // 'book' or 'card'
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:17:99
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+    // URLパラメータや markdown コンテンツから初期モードを判定
+    const initialIsCard = (page.url?.searchParams?.get('mode') === 'card') || !!(data.markdown && data.markdown.includes('play_mode: card'));
+    let mode = $state(initialIsCard ? 'card' : 'book'); // 'book' or 'card'
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2310:5
+Warn: Unused CSS selector ".insert-media-btn"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .insert-media-btn {
+        background: rgba(139, 92, 246, 0.15);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2324:5
+Warn: Unused CSS selector ".insert-media-btn:hover"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .insert-media-btn:hover {
+        background: rgba(139, 92, 246, 0.25);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2330:5
+Warn: Unused CSS selector ".insert-media-btn:disabled"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .insert-media-btn:disabled {
+        opacity: 0.4;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2339:5
+Warn: Unused CSS selector ".media-panel"
+https://svelte.dev/e/css_unused_selector (svelte)
+    /* Media Panel (Drawer) */
+    .media-panel {
+        display: flex;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2350:5
+Warn: Unused CSS selector ".media-panel-header"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .media-panel-header {
+        display: flex;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2358:5
+Warn: Unused CSS selector ".media-panel-header h3"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .media-panel-header h3 {
+        font-family: 'Outfit', sans-serif;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2366:5
+Warn: Unused CSS selector ".close-media-btn"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .close-media-btn {
+        background: none;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2376:5
+Warn: Unused CSS selector ".close-media-btn:hover"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .close-media-btn:hover {
+        color: #ffffff;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2609:5
+Warn: Unused CSS selector ".toggle-monaco-btn:hover"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .toggle-monaco-btn:hover {
+        background: rgba(255, 255, 255, 0.12) !important;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2638:5
+Warn: Unused CSS selector ".animate-pulse"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .animate-pulse {
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2836:5
+Warn: Unused CSS selector ".workspace-layout[data-theme="light"] .panel-header h3"
+https://svelte.dev/e/css_unused_selector (svelte)
+    .workspace-layout[data-theme="light"] .panel-header h2,
+    .workspace-layout[data-theme="light"] .panel-header h3 {
+        color: #000000;
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2850:5
+Warn: Unused CSS selector ".workspace-layout[data-theme="light"] .save-status"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .workspace-layout[data-theme="light"] .save-status {
+        color: rgba(61, 37, 22, 0.6);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2879:5
+Warn: Unused CSS selector ".workspace-layout[data-theme="light"] .insert-media-btn"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .workspace-layout[data-theme="light"] .insert-media-btn {
+        background: rgba(139, 92, 246, 0.1);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:2885:5
+Warn: Unused CSS selector ".workspace-layout[data-theme="light"] .insert-media-btn:hover:not(:disabled)"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+    .workspace-layout[data-theme="light"] .insert-media-btn:hover:not(:disabled) {
+        background: rgba(139, 92, 246, 0.2);
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:5:12
+Error: Module '"/Users/kouichinagata/src/hypercardbook/src/lib/components/Book.svelte"' has no default export. (ts)
+    import { goto, invalidateAll } from '$app/navigation';
+    import Book from '$lib/components/Book.svelte';
+    import Card from '$lib/components/Card.svelte';
+
+/Users/kouichinagata/src/hypercardbook/src/routes/workspace/+page.svelte:6:12
+Error: Module '"/Users/kouichinagata/src/hypercardbook/src/lib/components/Card.svelte"' has no default export. (ts)
+    import Book from '$lib/components/Book.svelte';
+    import Card from '$lib/components/Card.svelte';
+    import { marked } from 'marked';
+
+====================================
+svelte-check found 15 errors and 74 warnings in 9 files

@@ -358,7 +358,7 @@ function handleGdriveMcpRequest(req: { jsonrpc: string; method: string; params: 
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
-        const { prompt, history = [], currentMarkdown = '', bookId, mode = 'book', currentCardIndex = -1, activePluginIds = [] } = await request.json();
+        const { prompt, history = [], currentMarkdown = '', bookId, mode = 'book', currentCardIndex = -1, activePluginIds = [], webSearchEnabled = false } = await request.json();
         const session = locals.session;
         const supabase = locals.supabase;
 
@@ -399,6 +399,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const custompromptMd = userMetadata.customprompt_md || '';
         const authorBio = userMetadata.author_bio || '';
         const authorName = userMetadata.nickname || userMetadata.full_name || 'Anonymous';
+
+        // Plan-based feature gating
+        const userPlan = userMetadata.plan || 'free';
+        const isPaidPlan = ['standard', 'pro', 'enterprise'].includes(userPlan);
+        const useWebSearch = webSearchEnabled && isPaidPlan;
 
         let activeSystemInstruction = mode === 'card' ? cardSystemInstruction : systemInstruction;
 
@@ -448,6 +453,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             activeSystemInstruction += `\n\nGOOGLE DRIVE MCP TOOL INSTRUCTIONS:\n- You have direct access to the user's Google Drive via 'gdrive_search_files', 'gdrive_read_file', and 'gdrive_write_file' tools.\n- If the user asks about files, summaries, or content stored in Google Drive, you MUST search for files or read files using these tools FIRST to gather facts before responding. Do NOT invent/hallucinate the contents of their Google Drive.\n- CRITICAL RULE: You MUST NOT edit the book contents, delete pages, or overwrite the book with external information unless the user explicitly requested you to edit, write, or save that information to the book. If they only ask a question about their Google Drive (e.g. "Googleドライブの概要を教えて"), just answer their question in a conversational message, do NOT call 'edit_page' or overwrite the book.`;
         }
 
+        activeSystemInstruction += `\n\nGITHUB INTEGRATION INSTRUCTIONS:\n- You have direct access to the user's GitHub repository via the 'github_push' tool.\n- If the user asks to "push to github", "save to github", or "githubにpushして", you MUST call the 'github_push' tool. Tell the user once it has succeeded and provide the repository file URL returned by the tool.`;
+
         const stream = new ReadableStream({
             async start(controller) {
                 const encoder = new TextEncoder();
@@ -482,6 +489,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                                         }
                                     },
                                     required: ['page_index', 'action', 'new_content']
+                                }
+                            });
+
+                            toolDeclarations.push({
+                                name: 'github_push',
+                                description: 'Push the current book to the user\'s configured GitHub repository as a Markdown file.',
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        commit_message: {
+                                            type: 'STRING',
+                                            description: 'Optional commit message describing the changes.'
+                                        }
+                                    }
                                 }
                             });
                         }
@@ -524,7 +545,19 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                             );
                         }
 
-                        const tools = [{ functionDeclarations: toolDeclarations }] as any;
+                        // 2-phase approach for web search:
+                        // - Turn 0 with useWebSearch=true  → googleSearch only (gather web info into context)
+                        // - Turn 1+ with useWebSearch=true → functionDeclarations (edit_page etc. using gathered info)
+                        // - useWebSearch=false (all turns)  → functionDeclarations as usual
+                        const isWebSearchPhase = useWebSearch && turn === 0;
+                        let tools: any[] | undefined;
+                        if (isWebSearchPhase) {
+                            tools = [{ googleSearch: {} }];
+                            // Notify the client that a web search is in progress
+                            controller.enqueue(encoder.encode('🔍 Searching the web...\n\n'));
+                        } else if (toolDeclarations.length > 0) {
+                            tools = [{ functionDeclarations: toolDeclarations }];
+                        }
 
                         const responseStream = await ai.models.generateContentStream({
                             model: 'gemini-3.5-flash',
@@ -606,6 +639,79 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                                         id: Date.now()
                                     });
                                     resultData = jsonRpcResponse.result;
+                                } else if (fc.name === 'github_push') {
+                                    const commitMsg = fc.args?.commit_message || 'Update book via HyperCardBook AI';
+                                    const token = userMetadata.github_token;
+                                    const owner = userMetadata.github_owner;
+                                    const repo = userMetadata.github_repo;
+                                    
+                                    const plan = userMetadata.plan || 'free';
+                                    const isPaidPlan = ['standard', 'pro', 'enterprise'].includes(plan);
+
+                                    if (!isPaidPlan) {
+                                        resultData = { success: false, error: 'GitHub Integration is only available on Standard plan or above.' };
+                                    } else if (!token || !owner || !repo) {
+                                        resultData = { success: false, error: 'GitHub is not configured in settings. Please connect your GitHub account and repository first.' };
+                                    } else {
+                                        try {
+                                            let slug = `book-${Date.now()}`;
+                                            const fmMatch = updatedMarkdown.match(/^---\s*([\s\S]*?)\s*---/);
+                                            if (fmMatch) {
+                                                const fmLines = fmMatch[1].split('\n');
+                                                fmLines.forEach((line: string) => {
+                                                    const parts = line.split(':');
+                                                    if (parts.length >= 2 && parts[0].trim() === 'id') {
+                                                        slug = parts.slice(1).join(':').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
+                                                    }
+                                                });
+                                            }
+                                            const filename = `${slug}.md`;
+                                            const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filename}`;
+                                            
+                                            const getRes = await fetch(url, {
+                                                headers: {
+                                                    'Authorization': `Bearer ${token}`,
+                                                    'Accept': 'application/vnd.github+json',
+                                                    'X-GitHub-Api-Version': '2022-11-28'
+                                                }
+                                            });
+                                            let sha: string | undefined = undefined;
+                                            if (getRes.ok) {
+                                                const fileData = await getRes.json();
+                                                sha = fileData.sha;
+                                            }
+
+                                            const contentBase64 = Buffer.from(updatedMarkdown).toString('base64');
+                                            const putRes = await fetch(url, {
+                                                method: 'PUT',
+                                                headers: {
+                                                    'Authorization': `Bearer ${token}`,
+                                                    'Content-Type': 'application/json',
+                                                    'Accept': 'application/vnd.github+json',
+                                                    'X-GitHub-Api-Version': '2022-11-28'
+                                                },
+                                                body: JSON.stringify({
+                                                    message: commitMsg,
+                                                    content: contentBase64,
+                                                    sha
+                                                })
+                                            });
+
+                                            if (!putRes.ok) {
+                                                const errText = await putRes.text();
+                                                resultData = { success: false, error: `GitHub API error: ${errText}` };
+                                            } else {
+                                                const putData = await putRes.json();
+                                                resultData = { 
+                                                    success: true, 
+                                                    message: `Successfully pushed to GitHub!`,
+                                                    file_url: putData.content.html_url
+                                                };
+                                            }
+                                        } catch (err: any) {
+                                            resultData = { success: false, error: err.message };
+                                        }
+                                    }
                                 }
 
                                 functionResponses.push({
@@ -621,6 +727,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                                 parts: functionResponses
                             });
 
+                        } else if (isWebSearchPhase) {
+                            // Web search turn returned text (no function calls) — push the model
+                            // response into context so the next turn can use it with edit_page.
+                            if (firstCandidate?.content?.parts) {
+                                localContents.push({
+                                    role: 'model',
+                                    parts: firstCandidate.content.parts
+                                });
+                            }
+                            // Continue to next turn (do NOT break)
                         } else {
                             break;
                         }

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, tick } from 'svelte';
+    import { onMount, tick, onDestroy } from 'svelte';
     import { goto, invalidateAll } from '$app/navigation';
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
@@ -32,6 +32,12 @@
     let selectedMode = $state('book'); // 'book' or 'card'
     let textareaEl = $state<HTMLTextAreaElement | null>(null);
     let formEl = $state<HTMLFormElement | null>(null);
+
+    // Web Search toggle
+    let webSearchEnabled = $state(false);
+    let isPaidPlan = $derived(
+        ['standard', 'pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
+    );
 
     // Attached files state
     interface AttachedFile {
@@ -419,6 +425,7 @@
         isSubmitting = true;
         try {
             sessionStorage.setItem('workspace_init_prompt', finalPrompt);
+            sessionStorage.setItem('workspace_web_search', String(webSearchEnabled && isPaidPlan));
         } catch (err) {
             console.error('Failed to store prompt in sessionStorage:', err);
         }
@@ -1063,7 +1070,46 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
     // Settings modal states
     let showSettingsModal = $state(false);
-    let settingsActiveTab = $state('profile'); // 'profile', 'hypercardbook', 'plugin'
+    let settingsActiveTab = $state('profile'); // 'profile', 'hypercardbook', 'plugin', 'plan'
+    
+    // Pricing states
+    let currentPlan = $derived(data.session?.user?.user_metadata?.plan || 'free');
+    let isAdminUser = $derived.by(() => {
+        const email = data.session?.user?.email || '';
+        const adminList = ['kouichi.nagata@gmail.com'];
+        return adminList.includes(email.toLowerCase());
+    });
+    let activeInputPlan = $state<'standard' | 'pro' | 'enterprise' | null>(null);
+    let activationCodeInput = $state('');
+    let isActivating = $state(false);
+    let activationError = $state('');
+
+    async function handlePlanSwitch(plan: string, code?: string) {
+        if (isActivating) return;
+        isActivating = true;
+        activationError = '';
+
+        try {
+            const res = await fetch('/api/plan/activate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan, code })
+            });
+
+            const result = await res.json();
+            if (!res.ok) {
+                throw new Error(result.error || 'Failed to activate plan.');
+            }
+
+            window.location.reload();
+        } catch (err: any) {
+            console.error('Failed to change plan:', err);
+            activationError = err.message || 'An unexpected error occurred.';
+            alert(activationError);
+        } finally {
+            isActivating = false;
+        }
+    }
     
     // User profile states
     let profileNickname = $state('');
@@ -1073,6 +1119,17 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     
     // Config files states
     let profileHypercardbookMd = $state('');
+
+    // GitHub integration states
+    let githubToken = $derived(data.session?.user?.user_metadata?.github_token || '');
+    let githubOwner = $state('');
+    let githubRepo = $state('');
+    let githubConnecting = $state(false);
+    let githubUserCode = $state('');
+    let githubVerifyUrl = $state('');
+    let githubDeviceCode = $state('');
+    let githubPollInterval: any = null;
+    let githubPollSeconds = 5;
 
     // Plugins management states
     interface Plugin {
@@ -1309,6 +1366,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         
         profileHypercardbookMd = metadata.hypercardbook_md || DEFAULT_HYPERCARDBOOK_MD;
         
+        githubOwner = metadata.github_owner || '';
+        githubRepo = metadata.github_repo || '';
+        
         activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
         selectedPluginId = '';
         selectedPluginName = '';
@@ -1370,7 +1430,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     language: profileLanguage,
                     hypercardbook_md: profileHypercardbookMd,
                     user_plugins: $state.snapshot(userPlugins),
-                    active_plugin_ids: $state.snapshot(activePluginIds)
+                    active_plugin_ids: $state.snapshot(activePluginIds),
+                    github_owner: githubOwner,
+                    github_repo: githubRepo
                 }
             });
             
@@ -1389,6 +1451,127 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             isSavingSettings = false;
         }
     }
+
+    async function startGitHubConnect() {
+        if (githubConnecting) return;
+        githubConnecting = true;
+        githubUserCode = '';
+        githubVerifyUrl = '';
+        githubDeviceCode = '';
+
+        try {
+            const res = await fetch('/api/github-auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'start' })
+            });
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.error || 'Failed to start GitHub connection.');
+
+            githubUserCode = result.user_code;
+            githubVerifyUrl = result.verification_uri;
+            githubDeviceCode = result.device_code;
+            githubPollSeconds = result.interval || 5;
+
+            // Start polling
+            if (githubPollInterval) clearInterval(githubPollInterval);
+            githubPollInterval = setInterval(pollGitHubToken, githubPollSeconds * 1000);
+        } catch (err: any) {
+            alert(err.message || err);
+            githubConnecting = false;
+        }
+    }
+
+    async function pollGitHubToken() {
+        try {
+            const res = await fetch('/api/github-auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'poll', deviceCode: githubDeviceCode })
+            });
+            const result = await res.json();
+            if (result.error) {
+                if (result.error === 'authorization_pending') {
+                    // Still waiting for user interaction, continue polling
+                    return;
+                }
+                if (result.error === 'slow_down') {
+                    // Poll interval was too small, increase interval by 5 seconds
+                    githubPollSeconds += 5;
+                    if (githubPollInterval) clearInterval(githubPollInterval);
+                    githubPollInterval = setInterval(pollGitHubToken, githubPollSeconds * 1000);
+                    return;
+                }
+                // Other error (expired_token, access_denied, etc.)
+                clearInterval(githubPollInterval);
+                githubPollInterval = null;
+                githubConnecting = false;
+                githubUserCode = '';
+                alert(`GitHub Authentication failed: ${result.error_description || result.error}`);
+                return;
+            }
+
+            if (result.access_token) {
+                // Success! Save token using supabase.auth.updateUser
+                clearInterval(githubPollInterval);
+                githubPollInterval = null;
+                githubConnecting = false;
+                githubUserCode = '';
+
+                const { error } = await supabase.auth.updateUser({
+                    data: {
+                        github_token: result.access_token
+                    }
+                });
+
+                if (error) {
+                    alert(`Failed to save token to database: ${error.message}`);
+                } else {
+                    await invalidateAll();
+                }
+            }
+        } catch (err: any) {
+            console.error('Error polling token:', err);
+        }
+    }
+
+    async function disconnectGitHub() {
+        if (!confirm('Are you sure you want to disconnect GitHub?')) return;
+        try {
+            const { error } = await supabase.auth.updateUser({
+                data: {
+                    github_token: null,
+                    github_owner: null,
+                    github_repo: null
+                }
+            });
+            if (error) throw error;
+            githubOwner = '';
+            githubRepo = '';
+            await invalidateAll();
+        } catch (err: any) {
+            alert(`Failed to disconnect: ${err.message}`);
+        }
+    }
+
+    $effect(() => {
+        if (!showSettingsModal) {
+            if (githubPollInterval) {
+                clearInterval(githubPollInterval);
+                githubPollInterval = null;
+            }
+            githubConnecting = false;
+            githubUserCode = '';
+            githubVerifyUrl = '';
+            githubDeviceCode = '';
+        }
+    });
+
+    onDestroy(() => {
+        if (githubPollInterval) {
+            clearInterval(githubPollInterval);
+        }
+    });
 
     async function handleAvatarUpload(e: Event) {
         const input = e.target as HTMLInputElement;
@@ -1767,6 +1950,18 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                             title="Attach files (Image/Text)"
                         >
                             ➕
+                        </button>
+                        <!-- Web Search Toggle -->
+                        <button
+                            type="button"
+                            class="web-search-btn"
+                            class:active={webSearchEnabled && isPaidPlan}
+                            disabled={!isPaidPlan || !data.currentUserId || isSubmitting}
+                            onclick={() => { webSearchEnabled = !webSearchEnabled; }}
+                            title={!isPaidPlan ? 'Available on Standard plan or above' : (webSearchEnabled ? 'Web Search: ON' : 'Web Search: OFF')}
+                            aria-label="Toggle Web Search"
+                        >
+                            🔍 Web
                         </button>
                         <div class="toggle-and-split-wrapper">
                             <div class="mode-toggle-container">
@@ -2309,7 +2504,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
     {#if showSettingsModal}
         <div class="modal-overlay" onclick={() => showSettingsModal = false} onkeydown={(e) => e.key === 'Escape' && (showSettingsModal = false)} role="presentation">
-            <div class="settings-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
+            <div class="settings-modal-card" class:pricing-modal={settingsActiveTab === 'plan'} onclick={(e) => e.stopPropagation()} role="presentation">
                 <div class="modal-header">
                     <h2>Settings</h2>
                     <button class="close-btn" onclick={() => showSettingsModal = false}>✕</button>
@@ -2336,6 +2531,20 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                         onclick={() => settingsActiveTab = 'plugin'}
                     >
                         Plugin
+                    </button>
+                    <button 
+                        class="tab-link" 
+                        class:active={settingsActiveTab === 'github'} 
+                        onclick={() => settingsActiveTab = 'github'}
+                    >
+                        GitHub
+                    </button>
+                    <button 
+                        class="tab-link" 
+                        class:active={settingsActiveTab === 'plan'} 
+                        onclick={() => settingsActiveTab = 'plan'}
+                    >
+                        Plan
                     </button>
                 </div>
                 
@@ -2602,6 +2811,288 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 </div>
                             {/if}
                         </div>
+                    {:else if settingsActiveTab === 'github'}
+                        <div class="tab-pane">
+                            <h3 style="margin-top: 0; margin-bottom: 8px;">GitHub Integration</h3>
+                            <p style="margin: 0 0 16px 0; font-size: 14px; color: #9ca3af;">
+                                Connect your repository to push your books as Markdown files directly via the AI assistant. (Requires Standard plan or above)
+                            </p>
+                            
+                            <div class="form-group">
+                                <label for="setting-github-owner">GitHub Owner (Username or Organization)</label>
+                                <input 
+                                    type="text" 
+                                    id="setting-github-owner" 
+                                    bind:value={githubOwner} 
+                                    disabled={!isPaidPlan} 
+                                    placeholder="e.g., kouichinagata" 
+                                />
+                            </div>
+
+                            <div class="form-group" style="margin-top: 12px;">
+                                <label for="setting-github-repo">GitHub Repository</label>
+                                <input 
+                                    type="text" 
+                                    id="setting-github-repo" 
+                                    bind:value={githubRepo} 
+                                    disabled={!isPaidPlan} 
+                                    placeholder="e.g., my-hyperbooks" 
+                                />
+                            </div>
+
+                            <div class="form-group" style="margin-top: 16px;">
+                                <label>GitHub Connection</label>
+                                {#if githubToken}
+                                    <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
+                                        <span style="color: #22c55e; font-weight: 500;">✓ Connected to GitHub</span>
+                                        <button 
+                                            type="button" 
+                                            class="plan-btn" 
+                                            style="background: #ef4444; border-color: #ef4444; color: white; padding: 6px 12px; font-size: 14px; width: auto;"
+                                            onclick={disconnectGitHub}
+                                            disabled={!isPaidPlan}
+                                        >
+                                            Disconnect
+                                        </button>
+                                    </div>
+                                {:else if githubUserCode}
+                                    <div style="margin-top: 8px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                                        <p style="margin: 0 0 8px 0; font-size: 14px;">
+                                            1. Open <a href={githubVerifyUrl} target="_blank" rel="noopener noreferrer" style="color: #a78bfa; text-decoration: underline;">{githubVerifyUrl}</a> in your browser.
+                                        </p>
+                                        <p style="margin: 0 0 12px 0; font-size: 14px;">
+                                            2. Enter code: <strong style="font-size: 18px; color: #a78bfa; letter-spacing: 1px;">{githubUserCode}</strong>
+                                        </p>
+                                        <p style="margin: 0; font-size: 12px; color: #9ca3af; display: flex; align-items: center; gap: 6px;">
+                                            Waiting for GitHub authorization...
+                                        </p>
+                                    </div>
+                                {:else}
+                                    <button 
+                                        type="button" 
+                                        class="plan-btn" 
+                                        style="margin-top: 8px; background: #24292f; border-color: #24292f; color: white; width: auto; padding: 8px 16px;"
+                                        onclick={startGitHubConnect}
+                                        disabled={!isPaidPlan || githubConnecting}
+                                    >
+                                        {githubConnecting ? 'Connecting...' : 'Connect to GitHub'}
+                                    </button>
+                                {/if}
+                            </div>
+                        </div>
+                    {:else if settingsActiveTab === 'plan'}
+                        <div class="tab-pane plan-tab-pane">
+                            <h3 class="plan-tab-title">MarkdownAI Price Plans</h3>
+                            
+                            {#if activationError}
+                                <div class="activation-error-banner">{activationError}</div>
+                            {/if}
+                            
+                            <div class="pricing-grid">
+                                <!-- Free Plan -->
+                                <div class="pricing-card" class:current={currentPlan === 'free'}>
+                                    <div class="card-header free-header">Free</div>
+                                    <div class="card-price">$0</div>
+                                    <ul class="card-features">
+                                        <li>All free features of HyperCardBook and PapeRobo</li>
+                                        <li>Images up to 20MB</li>
+                                        <li>PapeRobo limit: up to 3 minutes</li>
+                                    </ul>
+                                    <div class="card-action">
+                                        {#if currentPlan === 'free' || (!currentPlan && 'free')}
+                                            <span class="current-plan-badge">Current Plan</span>
+                                        {:else}
+                                            <button 
+                                                class="plan-btn free-btn" 
+                                                onclick={() => handlePlanSwitch('free')}
+                                                disabled={isActivating}
+                                            >
+                                                Switch to Free
+                                            </button>
+                                        {/if}
+                                    </div>
+                                </div>
+                                
+                                <!-- Standard Plan -->
+                                <div class="pricing-card" class:current={currentPlan === 'standard'}>
+                                    <div class="card-header standard-header">Standard</div>
+                                    <div class="card-price">$8</div>
+                                    <ul class="card-features">
+                                        <li>Everything in Free, plus:</li>
+                                        <li>AI internet search</li>
+                                        <li>GitHub support</li>
+                                        <li>App download (Vision support)</li>
+                                        <li>Images up to 200MB</li>
+                                        <li>PapeRobo limit: up to 20 minutes</li>
+                                    </ul>
+                                    <div class="card-action">
+                                        {#if currentPlan === 'standard'}
+                                            <span class="current-plan-badge">Current Plan</span>
+                                        {:else}
+                                            {#if isAdminUser}
+                                                <button 
+                                                    class="plan-btn standard-btn" 
+                                                    onclick={() => handlePlanSwitch('standard')}
+                                                    disabled={isActivating}
+                                                >
+                                                    Switch to Standard
+                                                </button>
+                                            {:else}
+                                                {#if activeInputPlan !== 'standard'}
+                                                    <button 
+                                                        class="plan-btn standard-btn" 
+                                                        onclick={() => { activeInputPlan = 'standard'; activationCodeInput = ''; }}
+                                                        disabled={isActivating}
+                                                    >
+                                                        Upgrade
+                                                    </button>
+                                                {/if}
+                                            {/if}
+                                        {/if}
+                                    </div>
+                                    
+                                    {#if !isAdminUser && currentPlan !== 'standard' && activeInputPlan === 'standard'}
+                                        <div class="code-activation-panel">
+                                            <label for="standard-code">Enter activation code</label>
+                                            <div class="code-input-row">
+                                                <input 
+                                                    type="password" 
+                                                    id="standard-code" 
+                                                    bind:value={activationCodeInput} 
+                                                    placeholder="Code" 
+                                                />
+                                                <button 
+                                                    onclick={() => handlePlanSwitch('standard', activationCodeInput)}
+                                                    disabled={isActivating || !activationCodeInput.trim()}
+                                                >
+                                                    Apply
+                                                </button>
+                                            </div>
+                                            <button class="cancel-activation-btn" onclick={() => activeInputPlan = null}>Cancel</button>
+                                        </div>
+                                    {/if}
+                                </div>
+                                
+                                <!-- Pro Plan -->
+                                <div class="pricing-card" class:current={currentPlan === 'pro'}>
+                                    <div class="card-header pro-header">Pro</div>
+                                    <div class="card-price">$20</div>
+                                    <ul class="card-features">
+                                        <li>Everything in Standard, plus:</li>
+                                        <li>Custom AI API key support</li>
+                                        <li>Custom URL support</li>
+                                        <li>Google Analytics support</li>
+                                        <li>Images up to 1GB</li>
+                                        <li>PapeRobo limit: up to 60 minutes</li>
+                                    </ul>
+                                    <div class="card-action">
+                                        {#if currentPlan === 'pro'}
+                                            <span class="current-plan-badge">Current Plan</span>
+                                        {:else}
+                                            {#if isAdminUser}
+                                                <button 
+                                                    class="plan-btn pro-btn" 
+                                                    onclick={() => handlePlanSwitch('pro')}
+                                                    disabled={isActivating}
+                                                >
+                                                    Switch to Pro
+                                                </button>
+                                            {:else}
+                                                {#if activeInputPlan !== 'pro'}
+                                                    <button 
+                                                        class="plan-btn pro-btn" 
+                                                        onclick={() => { activeInputPlan = 'pro'; activationCodeInput = ''; }}
+                                                        disabled={isActivating}
+                                                    >
+                                                        Upgrade
+                                                    </button>
+                                                {/if}
+                                            {/if}
+                                        {/if}
+                                    </div>
+                                    
+                                    {#if !isAdminUser && currentPlan !== 'pro' && activeInputPlan === 'pro'}
+                                        <div class="code-activation-panel">
+                                            <label for="pro-code">Enter activation code</label>
+                                            <div class="code-input-row">
+                                                <input 
+                                                    type="password" 
+                                                    id="pro-code" 
+                                                    bind:value={activationCodeInput} 
+                                                    placeholder="Code" 
+                                                />
+                                                <button 
+                                                    onclick={() => handlePlanSwitch('pro', activationCodeInput)}
+                                                    disabled={isActivating || !activationCodeInput.trim()}
+                                                >
+                                                    Apply
+                                                </button>
+                                            </div>
+                                            <button class="cancel-activation-btn" onclick={() => activeInputPlan = null}>Cancel</button>
+                                        </div>
+                                    {/if}
+                                </div>
+                                
+                                <!-- Enterprise Plan -->
+                                <div class="pricing-card" class:current={currentPlan === 'enterprise'}>
+                                    <div class="card-header enterprise-header">Enterprise</div>
+                                    <div class="card-price">Ask</div>
+                                    <ul class="card-features">
+                                        <li>Everything in Pro, plus:</li>
+                                        <li>Custom storage support</li>
+                                        <li>Custom server support</li>
+                                        <li>User permission management</li>
+                                        <li>PapeRobo limit: up to 2 hours</li>
+                                    </ul>
+                                    <div class="card-action">
+                                        {#if currentPlan === 'enterprise'}
+                                            <span class="current-plan-badge">Current Plan</span>
+                                        {:else}
+                                            {#if isAdminUser}
+                                                <button 
+                                                    class="plan-btn enterprise-btn" 
+                                                    onclick={() => handlePlanSwitch('enterprise')}
+                                                    disabled={isActivating}
+                                                >
+                                                    Switch to Enterprise
+                                                </button>
+                                            {:else}
+                                                {#if activeInputPlan !== 'enterprise'}
+                                                    <button 
+                                                        class="plan-btn enterprise-btn" 
+                                                        onclick={() => { activeInputPlan = 'enterprise'; activationCodeInput = ''; }}
+                                                        disabled={isActivating}
+                                                    >
+                                                        Contact
+                                                    </button>
+                                                {/if}
+                                            {/if}
+                                        {/if}
+                                    </div>
+                                    
+                                    {#if !isAdminUser && currentPlan !== 'enterprise' && activeInputPlan === 'enterprise'}
+                                        <div class="code-activation-panel">
+                                            <label for="enterprise-code">Enter activation code</label>
+                                            <div class="code-input-row">
+                                                <input 
+                                                    type="password" 
+                                                    id="enterprise-code" 
+                                                    bind:value={activationCodeInput} 
+                                                    placeholder="Code" 
+                                                />
+                                                <button 
+                                                    onclick={() => handlePlanSwitch('enterprise', activationCodeInput)}
+                                                    disabled={isActivating || !activationCodeInput.trim()}
+                                                >
+                                                    Apply
+                                                </button>
+                                            </div>
+                                            <button class="cancel-activation-btn" onclick={() => activeInputPlan = null}>Cancel</button>
+                                        </div>
+                                    {/if}
+                                </div>
+                            </div>
+                        </div>
                     {/if}
                 </div>
                 
@@ -2737,6 +3228,252 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 </div>
 
 <style>
+    /* Pricing Plans Styles */
+    .plan-tab-pane {
+        padding: 10px 5px;
+        color: #1f2937;
+    }
+    .plan-tab-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 25px;
+        color: #1f2937;
+        text-align: center;
+        font-family: 'Outfit', sans-serif;
+    }
+    .activation-error-banner {
+        background-color: #fee2e2;
+        border: 1px solid #fca5a5;
+        color: #b91c1c;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        text-align: center;
+        font-size: 0.95rem;
+    }
+    .settings-modal-card.pricing-modal {
+        max-width: 1080px;
+        width: 95%;
+        height: auto;
+        max-height: 92vh;
+        transition: all 0.3s ease;
+    }
+    .pricing-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    @media (max-width: 1024px) {
+        .pricing-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    @media (max-width: 600px) {
+        .pricing-grid {
+            grid-template-columns: 1fr;
+        }
+        .settings-modal-card.pricing-modal {
+            max-height: 95vh;
+        }
+    }
+    .pricing-card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        position: relative;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    }
+    .pricing-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 15px 20px -5px rgba(0, 0, 0, 0.1), 0 8px 8px -5px rgba(0, 0, 0, 0.04);
+        border-color: #d1d5db;
+    }
+    .pricing-card.current {
+        border: 2.5px solid #0d9488;
+        box-shadow: 0 10px 15px -3px rgba(13, 148, 136, 0.15), 0 4px 6px -2px rgba(13, 148, 136, 0.05);
+        background: linear-gradient(180deg, #ffffff 0%, #f0fdfa 100%);
+    }
+    .pricing-card.current:hover {
+        border-color: #0f766e;
+    }
+    .current-plan-badge {
+        display: inline-block;
+        background-color: #0d9488;
+        color: #ffffff;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 4px 12px;
+        border-radius: 9999px;
+        text-align: center;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .card-header {
+        font-size: 1.15rem;
+        font-weight: 700;
+        margin-bottom: 6px;
+        font-family: 'Outfit', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .free-header { color: #6b7280; }
+    .standard-header { color: #0d9488; }
+    .pro-header { color: #8b5cf6; }
+    .enterprise-header { color: #1f2937; }
+    
+    .card-price {
+        font-size: 2rem;
+        font-weight: 800;
+        margin-bottom: 10px;
+        color: #111827;
+        font-family: 'Outfit', sans-serif;
+    }
+    .card-features {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 12px 0;
+        flex-grow: 1;
+    }
+    .card-features li {
+        font-size: 0.82rem;
+        color: #4b5563;
+        margin-bottom: 6px;
+        position: relative;
+        padding-left: 20px;
+        line-height: 1.4;
+        text-align: left;
+    }
+    .card-features li::before {
+        content: "✓";
+        position: absolute;
+        left: 0;
+        color: #10b981;
+        font-weight: bold;
+    }
+    .pricing-card.current .card-features li {
+        color: #374151;
+    }
+    .plan-btn {
+        width: 100%;
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+    }
+    .plan-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .free-btn {
+        background-color: #f3f4f6;
+        color: #374151;
+    }
+    .free-btn:hover:not(:disabled) {
+        background-color: #e5e7eb;
+    }
+    .standard-btn {
+        background-color: #0d9488;
+        color: #ffffff;
+    }
+    .standard-btn:hover:not(:disabled) {
+        background-color: #0f766e;
+    }
+    .pro-btn {
+        background-color: #8b5cf6;
+        color: #ffffff;
+    }
+    .pro-btn:hover:not(:disabled) {
+        background-color: #7c3aed;
+    }
+    .enterprise-btn {
+        background-color: #1f2937;
+        color: #ffffff;
+    }
+    .enterprise-btn:hover:not(:disabled) {
+        background-color: #111827;
+    }
+    .code-activation-panel {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px dashed #e5e7eb;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        animation: slideDown 0.25s ease-out;
+    }
+    .code-activation-panel label {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #4b5563;
+        text-align: left;
+    }
+    .code-input-row {
+        display: flex;
+        gap: 8px;
+    }
+    .code-input-row input {
+        flex-grow: 1;
+        padding: 8px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        color: #1f2937;
+        background: #ffffff;
+    }
+    .code-input-row button {
+        padding: 8px 16px;
+        background-color: #10b981;
+        color: #ffffff;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .code-input-row button:hover:not(:disabled) {
+        background-color: #059669;
+    }
+    .code-input-row button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .cancel-activation-btn {
+        background: none;
+        border: none;
+        color: #6b7280;
+        font-size: 0.75rem;
+        cursor: pointer;
+        text-align: right;
+        padding: 0;
+        margin-top: 2px;
+        text-decoration: underline;
+    }
+    .cancel-activation-btn:hover {
+        color: #374151;
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
     .landing-container {
         --bg-color: #0b0c10;
         --shelf-back-color: #1e130c;
@@ -3489,6 +4226,53 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     .attach-trigger-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+
+    /* Web Search Toggle Button */
+    .web-search-toggle-wrapper {
+        display: flex;
+        align-items: center;
+    }
+    .web-search-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        color: rgba(255, 255, 255, 0.55);
+        cursor: pointer;
+        transition: background 0.18s, border-color 0.18s, color 0.18s;
+        white-space: nowrap;
+    }
+    .web-search-btn:hover:not(.disabled-plan):not(:disabled) {
+        background: rgba(255, 255, 255, 0.13);
+        color: rgba(255, 255, 255, 0.85);
+    }
+    .web-search-btn.active {
+        background: rgba(66, 133, 244, 0.22);
+        border-color: rgba(66, 133, 244, 0.55);
+        color: #8ab4f8;
+    }
+    .web-search-btn.active:hover:not(.disabled-plan) {
+        background: rgba(66, 133, 244, 0.32);
+    }
+    .web-search-btn.disabled-plan {
+        opacity: 0.35;
+        cursor: not-allowed;
+    }
+    .landing-container[data-theme="light"] .web-search-btn {
+        background: rgba(0, 0, 0, 0.05);
+        border-color: rgba(0, 0, 0, 0.12);
+        color: rgba(0, 0, 0, 0.45);
+    }
+    .landing-container[data-theme="light"] .web-search-btn.active {
+        background: rgba(66, 133, 244, 0.12);
+        border-color: rgba(66, 133, 244, 0.4);
+        color: #1a73e8;
     }
 
     /* Attached files preview bar */
