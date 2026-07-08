@@ -118,7 +118,7 @@
         window.open(`${path}?${params.toString()}`, '_blank');
     }
 
-    function handleItemClick(book: any) {
+    async function handleItemClick(book: any) {
         if (isStackSelection) {
             onToggleSelection?.(book);
             return;
@@ -134,7 +134,24 @@
         } else if (book.playMode === 'hyperrobo') {
             onHyperRoboClick?.(book);
         } else if (book.playMode === 'paperobo' && book.launchUrl) {
-            window.open(book.launchUrl, '_blank');
+            await supabase.auth.getUser();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                const accessToken = session.access_token;
+                const refreshToken = session.refresh_token;
+                const hashIndex = book.launchUrl.indexOf('#');
+                let base = book.launchUrl;
+                let existingHash = '';
+                if (hashIndex !== -1) {
+                    base = book.launchUrl.substring(0, hashIndex);
+                    existingHash = book.launchUrl.substring(hashIndex + 1);
+                }
+                const tokenParams = `access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
+                const newHash = existingHash ? `${existingHash}&${tokenParams}` : tokenParams;
+                window.open(`${base}#${newHash}`, '_blank');
+            } else {
+                window.open(book.launchUrl, '_blank');
+            }
         } else {
             handleBookClick(book);
         }
@@ -150,6 +167,8 @@
     );
 
     async function handlePapeRoboLaunch() {
+        // Force refresh the session by calling getUser first
+        await supabase.auth.getUser();
         const { data: { session } } = await supabase.auth.getSession();
         let targetUrl = 'https://paperobo.hypercardbook.org/ai'; // Production URL
 
