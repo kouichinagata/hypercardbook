@@ -98,71 +98,111 @@ export const load: PageServerLoad = async ({ url, locals }) => {
         }
     }).filter(b => b !== null) as any[];
 
-    // Load database books from Supabase if user is logged in
-    let formattedBooks: any[] = [];
+    // Load database books from Supabase
+    let dbBooksList: any[] = [];
+
+    // 1. Load logged-in user's books (if logged in)
     if (session?.user?.id && supabase) {
-        const { data: dbBooks, error } = await supabase
+        const { data: myBooks, error } = await supabase
             .from('books')
             .select('id, slug, title, author, cover_image, theme_color, user_id, markdown_content, updated_at')
-            .eq('user_id', session.user.id)
-            .order('updated_at', { ascending: false });
+            .eq('user_id', session.user.id);
 
         if (error) {
-            console.error('Failed to fetch books from Supabase:', error);
-        } else if (dbBooks) {
-            formattedBooks = dbBooks.map(b => {
-                const markdown = b.markdown_content || '';
-                let playMode = 'book';
-                let subTitle = '';
-                let launchUrl = '';
-                let paperoboSlug = '';
-                let hyperbookId = '';
-                let description = '';
-                let hideHyperbook = false;
-
-                const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
-                if (fmMatch) {
-                    const fmLines = fmMatch[1].split('\n');
-                    fmLines.forEach((line: string) => {
-                        const parts = line.split(':');
-                        if (parts.length >= 2) {
-                            const k = parts[0].trim();
-                            const v = parts.slice(1).join(':').trim();
-                            if (k === 'play_mode') playMode = v;
-                            if (k === 'sub_title') subTitle = v;
-                            if (k === 'launch_url') launchUrl = v;
-                            if (k === 'paperobo_slug') paperoboSlug = v;
-                            if (k === 'hyperbook_id') hyperbookId = v;
-                            if (k === 'description') description = v.replace(/^["']|["']$/g, '');
-                            if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
-                        }
-                    });
-                }
-
-                const isCard = playMode === 'card';
-                const isStack = playMode === 'stack';
-
-                return {
-                    id: b.id,
-                    slug: b.slug,
-                    title: b.title,
-                    author: b.author,
-                    coverImage: b.cover_image,
-                    themeColor: b.theme_color || (isCard ? 'white' : 'black'),
-                    userId: b.user_id,
-                    isCard,
-                    isStack,
-                    playMode,
-                    launchUrl,
-                    paperoboSlug,
-                    hyperbookId,
-                    subTitle,
-                    description,
-                    hideHyperbook,
-                    markdownContent: markdown
-                };
-            });
+            console.error('Failed to fetch user books from Supabase:', error);
+        } else if (myBooks) {
+            dbBooksList = [...myBooks];
         }
+    }
+
+    // 2. Load public books matching booksParam (if provided)
+    if (booksParam && supabase) {
+        const allowedIds = booksParam.split(',').map(id => id.trim());
+        const uuids = allowedIds.filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+        const slugs = allowedIds.filter(id => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+
+        let orConditions: string[] = [];
+        if (uuids.length > 0) {
+            orConditions.push(`id.in.(${uuids.map(id => `"${id}"`).join(',')})`);
+        }
+        if (slugs.length > 0) {
+            orConditions.push(`slug.in.(${slugs.map(slug => `"${slug}"`).join(',')})`);
+        }
+
+        if (orConditions.length > 0) {
+            const { data: pubBooks, error: pubError } = await supabase
+                .from('books')
+                .select('id, slug, title, author, cover_image, theme_color, user_id, markdown_content, updated_at')
+                .eq('is_public', true)
+                .or(orConditions.join(','));
+
+            if (pubError) {
+                console.error('Failed to fetch public books for bookshelf:', pubError);
+            } else if (pubBooks) {
+                // Merge with dbBooksList, avoiding duplicates
+                pubBooks.forEach(pb => {
+                    if (!dbBooksList.some(db => db.id === pb.id)) {
+                        dbBooksList.push(pb);
+                    }
+                });
+            }
+        }
+    }
+
+    let formattedBooks: any[] = [];
+    if (dbBooksList.length > 0) {
+        formattedBooks = dbBooksList.map(b => {
+            const markdown = b.markdown_content || '';
+            let playMode = 'book';
+            let subTitle = '';
+            let launchUrl = '';
+            let paperoboSlug = '';
+            let hyperbookId = '';
+            let description = '';
+            let hideHyperbook = false;
+
+            const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+            if (fmMatch) {
+                const fmLines = fmMatch[1].split('\n');
+                fmLines.forEach((line: string) => {
+                    const parts = line.split(':');
+                    if (parts.length >= 2) {
+                        const k = parts[0].trim();
+                        const v = parts.slice(1).join(':').trim();
+                        if (k === 'play_mode') playMode = v;
+                        if (k === 'sub_title') subTitle = v;
+                        if (k === 'launch_url') launchUrl = v;
+                        if (k === 'paperobo_slug') paperoboSlug = v;
+                        if (k === 'hyperbook_id') hyperbookId = v;
+                        if (k === 'description') description = v.replace(/^["']|["']$/g, '');
+                        if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
+                    }
+                });
+            }
+
+            const isCard = playMode === 'card';
+            const isStack = playMode === 'stack';
+
+            return {
+                id: b.id,
+                slug: b.slug,
+                title: b.title,
+                author: b.author,
+                coverImage: b.cover_image,
+                themeColor: b.theme_color || (isCard ? 'white' : 'black'),
+                userId: b.user_id,
+                isCard,
+                isStack,
+                playMode,
+                launchUrl,
+                paperoboSlug,
+                hyperbookId,
+                subTitle,
+                description,
+                hideHyperbook,
+                markdownContent: markdown
+            };
+        });
     }
 
     let allBooks = [...formattedBooks, ...staticBooks];

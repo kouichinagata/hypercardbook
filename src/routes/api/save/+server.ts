@@ -106,7 +106,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                     for (const line of lines) {
                         const trimmed = line.trim();
                         // book, card, paperobo, hyperrobo のすべてのリンクからIDを抽出
-                        const match = trimmed.match(/^-\s*\[(.*?)\]\((book|card|paperobo|hyperrobo):(.*)\)/);
+                        const match = trimmed.match(/^-\s*\[(.*?)\]\((book|card|paperobo|hyperrobo|stack):(.*)\)/);
                         if (match) {
                             const subId = match[3].trim();
                             if (subId && !idsToPublish.has(subId)) {
