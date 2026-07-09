@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, tick } from 'svelte';
     import { goto } from '$app/navigation';
+    import { page } from '$app/state';
     import * as htmlToImage from 'html-to-image';
 
     let {
@@ -134,8 +135,7 @@
         } else if (book.playMode === 'hyperrobo') {
             onHyperRoboClick?.(book);
         } else if (book.playMode === 'paperobo' && book.launchUrl) {
-            await supabase.auth.getUser();
-            const { data: { session } } = await supabase.auth.getSession();
+            const session = page.data.session;
             if (session) {
                 const accessToken = session.access_token;
                 const refreshToken = session.refresh_token;
@@ -157,19 +157,8 @@
         }
     }
 
-    // Initialize Supabase browser client for authentication sharing
-    import { createBrowserClient } from '@supabase/ssr';
-    import { env } from '$env/dynamic/public';
-
-    const supabase = createBrowserClient(
-        env.PUBLIC_SUPABASE_URL || '',
-        env.PUBLIC_SUPABASE_ANON_KEY || ''
-    );
-
     async function handlePapeRoboLaunch() {
-        // Force refresh the session by calling getUser first
-        await supabase.auth.getUser();
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = page.data.session;
         let targetUrl = 'https://paperobo.hypercardbook.org/ai'; // Production URL
 
         if (typeof window !== 'undefined') {
@@ -250,13 +239,14 @@
 
 
 <div class="shelf-container" id="shelfContainer">
-    {#if currentUserId && (showPapeRoboBtn || showHyperRoboBtn || showStackBtn)}
+    {#if showPapeRoboBtn || showHyperRoboBtn || showStackBtn}
         <div class="top-shelf-actions">
             {#if showPapeRoboBtn}
                 <button 
                     type="button" 
                     class="top-shelf-paperobo-btn" 
                     onclick={handlePapeRoboLaunch}
+                    disabled={!currentUserId || currentUserId === 'global'}
                 >
                     🧸 PapeRobo
                 </button>
@@ -267,6 +257,7 @@
                     type="button" 
                     class="top-shelf-hyperrobo-btn" 
                     onclick={() => onToggleHyperRoboSelectionMode?.()}
+                    disabled={!currentUserId || currentUserId === 'global'}
                 >
                     {isHyperRoboSelection ? 'Cancel' : '🤖 HyperRobo'}
                 </button>
@@ -277,6 +268,7 @@
                     type="button" 
                     class="top-shelf-stack-btn" 
                     onclick={() => onToggleStackSelectionMode?.()}
+                    disabled={!currentUserId || currentUserId === 'global'}
                 >
                     {isStackSelection ? 'Cancel' : '🗒️ Stack'}
                 </button>
@@ -1077,6 +1069,13 @@
         display: flex;
         align-items: center;
         gap: 8px;
+    }
+
+    .top-shelf-actions button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        pointer-events: none;
+        box-shadow: none;
     }
 
     .top-shelf-stack-btn {
