@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
+import { getActiveGeminiApiKey } from '$lib/server/plan';
 
 const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
@@ -62,9 +63,10 @@ export const POST: RequestHandler = async ({ request, locals, fetch }) => {
         }
 
         // 3. Gemini APIによる翻訳
-        const apiKey = env.GEMINI_API_KEY;
+        const session = locals.session;
+        const apiKey = getActiveGeminiApiKey(session, request.headers.get('x-user-gemini-api-key'));
         if (!apiKey) {
-            return json({ error: 'GEMINI_API_KEY is not configured.' }, { status: 500 });
+            return json({ error: 'GEMINI_API_KEY is not set.' }, { status: 500 });
         }
 
         const ai = new GoogleGenAI({ apiKey });

@@ -318,9 +318,13 @@
     async function executeAiHook(eventName: string, instruction: string, payload: any) {
         try {
             const cardText = getCardText(currentIndex);
+            const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
             const res = await fetch('/api/hook-ai', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
+                },
                 body: JSON.stringify({
                     eventName,
                     instruction,
@@ -468,9 +472,13 @@
 
         isLoadingTranslation = true;
         try {
+            const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
             const res = await fetch('/api/translate', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
+                },
                 body: JSON.stringify({
                     bookId: id,
                     targetLanguage: language

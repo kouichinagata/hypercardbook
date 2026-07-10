@@ -2,18 +2,20 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
+import { getActiveGeminiApiKey } from '$lib/server/plan';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
     try {
         const { title, author, targetLanguage } = await request.json();
+        const session = locals.session;
 
         if (!title || !targetLanguage) {
             return json({ error: 'Missing title or targetLanguage' }, { status: 400 });
         }
 
-        const apiKey = env.GEMINI_API_KEY;
+        const apiKey = getActiveGeminiApiKey(session, request.headers.get('x-user-gemini-api-key'));
         if (!apiKey) {
-            return json({ error: 'GEMINI_API_KEY is not configured.' }, { status: 500 });
+            return json({ error: 'GEMINI_API_KEY is not set.' }, { status: 500 });
         }
 
         const ai = new GoogleGenAI({ apiKey });

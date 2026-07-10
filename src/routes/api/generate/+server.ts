@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
+import { getActiveGeminiApiKey } from '$lib/server/plan';
 import fs from 'fs';
 import path from 'path';
 
@@ -366,9 +367,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized. Please login first.' }, { status: 401 });
         }
 
-        const apiKey = env.GEMINI_API_KEY;
+        const apiKey = getActiveGeminiApiKey(session, request.headers.get('x-user-gemini-api-key'));
         if (!apiKey) {
-            return json({ error: 'GEMINI_API_KEY is not set in environment variables or .env file.' }, { status: 500 });
+            return json({ error: 'GEMINI_API_KEY is not set.' }, { status: 500 });
         }
 
         const ai = new GoogleGenAI({ apiKey });
@@ -646,10 +647,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                                     const repo = userMetadata.github_repo;
                                     
                                     const plan = userMetadata.plan || 'free';
-                                    const isPaidPlan = ['standard', 'pro', 'enterprise'].includes(plan);
+                                    const isProPlan = ['pro', 'enterprise'].includes(plan);
 
-                                    if (!isPaidPlan) {
-                                        resultData = { success: false, error: 'GitHub Integration is only available on Standard plan or above.' };
+                                    if (!isProPlan) {
+                                        resultData = { success: false, error: 'GitHub Integration is only available on Pro plan or above.' };
                                     } else if (!token || !owner || !repo) {
                                         resultData = { success: false, error: 'GitHub is not configured in settings. Please connect your GitHub account and repository first.' };
                                     } else {

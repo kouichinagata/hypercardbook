@@ -167,15 +167,27 @@
             }
         }
 
+        let userOpenAiApiKey = '';
+        if (typeof window !== 'undefined') {
+            userOpenAiApiKey = localStorage.getItem('user_openai_api_key') || '';
+        }
+
+        let hashParams = [];
         if (session) {
-            const accessToken = session.access_token;
-            const refreshToken = session.refresh_token;
-            // Append token in hash fragment to securely pass it to PapeRobo
-            window.open(`${targetUrl}#access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`, '_blank');
+            hashParams.push(`access_token=${encodeURIComponent(session.access_token)}`);
+            hashParams.push(`refresh_token=${encodeURIComponent(session.refresh_token)}`);
+        }
+        if (userOpenAiApiKey) {
+            hashParams.push(`sync_openai_api_key=${encodeURIComponent(userOpenAiApiKey)}`);
+        }
+
+        if (hashParams.length > 0) {
+            window.open(`${targetUrl}#${hashParams.join('&')}`, '_blank');
         } else {
             window.open(targetUrl, '_blank');
         }
     }
+
 
     // Context Menu States
     let menuVisible = $state(false);

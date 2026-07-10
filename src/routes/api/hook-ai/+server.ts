@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
+import { getActiveGeminiApiKey } from '$lib/server/plan';
 
 const systemInstruction = `You are an AI assistant executing a HyperHook for a HyperCardBook.
 The user is reading a page (Card) in a book (Stack).
@@ -33,9 +34,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized. Please login first.' }, { status: 401 });
         }
 
-        const apiKey = env.GEMINI_API_KEY;
+        const apiKey = getActiveGeminiApiKey(session, request.headers.get('x-user-gemini-api-key'));
         if (!apiKey) {
-            return json({ error: 'GEMINI_API_KEY is not set in environment variables.' }, { status: 500 });
+            return json({ error: 'GEMINI_API_KEY is not set.' }, { status: 500 });
         }
 
         const ai = new GoogleGenAI({ apiKey });

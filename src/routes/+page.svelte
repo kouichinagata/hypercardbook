@@ -38,6 +38,23 @@
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
     );
+    let isProPlan = $derived(
+        ['pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
+    );
+    let maxStorageBytes = $derived.by(() => {
+        const plan = data.session?.user?.user_metadata?.plan || 'free';
+        if (plan === 'enterprise') return 1 * 1024 * 1024 * 1024; // 1GB
+        if (plan === 'pro') return 1 * 1024 * 1024 * 1024; // 1GB
+        if (plan === 'standard') return 200 * 1024 * 1024; // 200MB
+        return 20 * 1024 * 1024; // 20MB
+    });
+    let maxStorageText = $derived.by(() => {
+        const plan = data.session?.user?.user_metadata?.plan || 'free';
+        if (plan === 'enterprise') return '1GB';
+        if (plan === 'pro') return '1GB';
+        if (plan === 'standard') return '200MB';
+        return '20MB';
+    });
 
     // Attached files state
     interface AttachedFile {
@@ -69,9 +86,9 @@
                 for (const f of files) {
                     totalSize += f.metadata?.size || 0;
                 }
-                const limitBytes = 20 * 1024 * 1024; // 20MB
+                const limitBytes = maxStorageBytes;
                 if (totalSize + compressedBlob.size > limitBytes) {
-                    throw new Error('Storage limit (20MB) reached. Cannot upload.');
+                    throw new Error(`Storage limit (${maxStorageText}) reached. Cannot upload.`);
                 }
             }
         }
@@ -348,9 +365,13 @@
             }
             
             try {
+                const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
                 const res = await fetch('/api/translate-metadata', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
+                    },
                     body: JSON.stringify({
                         title: book.title,
                         author: book.author || '',
@@ -1070,7 +1091,13 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
     // Settings modal states
     let showSettingsModal = $state(false);
-    let settingsActiveTab = $state('profile'); // 'profile', 'hypercardbook', 'plugin', 'plan'
+    let settingsActiveTab = $state('profile'); // 'profile', 'hypercardbook', 'plugin', 'github', 'apiKey', 'plan'
+    let userGeminiApiKey = $state('');
+    let userOpenAiApiKey = $state('');
+    let showPapeRoboSyncBtn = $state(false);
+    let geminiSaveSuccess = $state(false);
+    let openaiSaveSuccess = $state(false);
+
     
     // Pricing states
     let currentPlan = $derived(data.session?.user?.user_metadata?.plan || 'free');
@@ -1315,9 +1342,13 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         }
         isGeneratingSkill = true;
         try {
+            const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
             const res = await fetch('/api/generate-skill', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
+                },
                 body: JSON.stringify({
                     name: selectedPluginName,
                     description: selectedPluginDescription,
@@ -1395,8 +1426,49 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             userPlugins = metadata.user_plugins || [];
         }
         
+        if (typeof window !== 'undefined') {
+            userGeminiApiKey = localStorage.getItem('user_gemini_api_key') || '';
+            userOpenAiApiKey = localStorage.getItem('user_openai_api_key') || '';
+        }
+        showPapeRoboSyncBtn = false;
+        geminiSaveSuccess = false;
+        openaiSaveSuccess = false;
+
         showSettingsModal = true;
     }
+
+    function saveGeminiKey() {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('user_gemini_api_key', userGeminiApiKey);
+            geminiSaveSuccess = true;
+            setTimeout(() => { geminiSaveSuccess = false; }, 3000);
+        }
+    }
+
+    function saveOpenAiKey() {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('user_openai_api_key', userOpenAiApiKey);
+            openaiSaveSuccess = true;
+            showPapeRoboSyncBtn = true;
+            setTimeout(() => { openaiSaveSuccess = false; }, 3000);
+        }
+    }
+
+    function launchPapeRoboSync() {
+        let targetUrl = 'https://paperobo.hypercardbook.org/ai';
+        if (typeof window !== 'undefined') {
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                targetUrl = 'http://localhost:5180/ai';
+            }
+            const session = data.session;
+            let syncUrl = `${targetUrl}#sync_openai_api_key=${encodeURIComponent(userOpenAiApiKey)}`;
+            if (session) {
+                syncUrl += `&access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`;
+            }
+            window.open(syncUrl, '_blank');
+        }
+    }
+
 
     let isSavingSettings = $state(false);
     async function saveSettings() {
@@ -1595,9 +1667,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     for (const f of files) {
                         totalSize += f.metadata?.size || 0;
                     }
-                    const limitBytes = 20 * 1024 * 1024; // 20MB
+                    const limitBytes = maxStorageBytes;
                     if (totalSize + compressedBlob.size > limitBytes) {
-                        throw new Error('Storage limit (20MB) reached. Cannot upload.');
+                        throw new Error(`Storage limit (${maxStorageText}) reached. Cannot upload.`);
                     }
                 }
             }
@@ -1839,7 +1911,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     />
                 {/if}
                 <span class="user-name">
-                    {data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name || 'User'}
+                    {data.session.user.user_metadata?.nickname || data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name || 'User'}
                 </span>
             </div>
             <button class="theme-switch logout-btn" onclick={handleLogout}>
@@ -1940,6 +2012,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     </div>
                 {/if}
 
+
                 <div class="prompt-bottom-row">
                     <div class="prompt-bottom-left">
                         <button
@@ -1994,6 +2067,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                         {/if}
                     </button>
                 </div>
+            </div>
+            <!-- Plan Mode Display -->
+            <div class="prompt-plan-mode">
+                Plan mode: {currentPlan === 'enterprise' ? 'Enterprise' : currentPlan === 'pro' ? 'Pro' : currentPlan === 'standard' ? 'Standard' : 'Free'}
             </div>
         </form>
     </div>
@@ -2541,6 +2618,13 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     </button>
                     <button 
                         class="tab-link" 
+                        class:active={settingsActiveTab === 'apiKey'} 
+                        onclick={() => settingsActiveTab = 'apiKey'}
+                    >
+                        API Key
+                    </button>
+                    <button 
+                        class="tab-link" 
                         class:active={settingsActiveTab === 'plan'} 
                         onclick={() => settingsActiveTab = 'plan'}
                     >
@@ -2564,6 +2648,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         role="button"
                                         tabindex="0"
                                     />
+                                    <span class="avatar-google-name">
+                                        {data.session?.user?.user_metadata?.full_name || data.session?.user?.user_metadata?.name || ''}
+                                    </span>
                                     <input 
                                         type="file" 
                                         accept="image/*" 
@@ -2815,7 +2902,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                         <div class="tab-pane">
                             <h3 style="margin-top: 0; margin-bottom: 8px;">GitHub Integration</h3>
                             <p style="margin: 0 0 16px 0; font-size: 14px; color: #9ca3af;">
-                                Connect your repository to push your books as Markdown files directly via the AI assistant. (Requires Standard plan or above)
+                                Connect your repository to push your books as Markdown files directly via the AI assistant. (Requires Pro plan or above)
                             </p>
                             
                             <div class="form-group">
@@ -2824,7 +2911,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     type="text" 
                                     id="setting-github-owner" 
                                     bind:value={githubOwner} 
-                                    disabled={!isPaidPlan} 
+                                    disabled={!isProPlan} 
                                     placeholder="e.g., kouichinagata" 
                                 />
                             </div>
@@ -2835,7 +2922,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     type="text" 
                                     id="setting-github-repo" 
                                     bind:value={githubRepo} 
-                                    disabled={!isPaidPlan} 
+                                    disabled={!isProPlan} 
                                     placeholder="e.g., my-hyperbooks" 
                                 />
                             </div>
@@ -2850,7 +2937,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                             class="plan-btn" 
                                             style="background: #ef4444; border-color: #ef4444; color: white; padding: 6px 12px; font-size: 14px; width: auto;"
                                             onclick={disconnectGitHub}
-                                            disabled={!isPaidPlan}
+                                            disabled={!isProPlan}
                                         >
                                             Disconnect
                                         </button>
@@ -2873,10 +2960,97 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         class="plan-btn" 
                                         style="margin-top: 8px; background: #24292f; border-color: #24292f; color: white; width: auto; padding: 8px 16px;"
                                         onclick={startGitHubConnect}
-                                        disabled={!isPaidPlan || githubConnecting}
+                                        disabled={!isProPlan || githubConnecting}
                                     >
                                         {githubConnecting ? 'Connecting...' : 'Connect to GitHub'}
                                     </button>
+                                {/if}
+                            </div>
+                        </div>
+                    {:else if settingsActiveTab === 'apiKey'}
+                        <div class="tab-pane">
+                            <h3 style="margin-top: 0; margin-bottom: 8px;">API Key Configuration</h3>
+                            <p style="margin: 0 0 16px 0; font-size: 14px; color: #9ca3af;">
+                                Input your personal API keys to bypass default usage limits. Keys are stored locally in your browser.
+                            </p>
+                            
+                            <!-- Gemini API Key Section -->
+                            <div class="form-group" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px; margin-bottom: 20px;">
+                                <label for="setting-gemini-key">Gemini API Key</label>
+                                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                    <input 
+                                        type="password" 
+                                        id="setting-gemini-key" 
+                                        bind:value={userGeminiApiKey} 
+                                        placeholder="Enter your Gemini API key" 
+                                        style="flex: 1;"
+                                        disabled={!isProPlan} 
+                                    />
+                                    <button 
+                                        type="button" 
+                                        class="plan-btn" 
+                                        style="width: auto; padding: 0 16px; background: #a78bfa; border-color: #a78bfa; color: white;"
+                                        onclick={saveGeminiKey}
+                                        disabled={!isProPlan} 
+                                    >
+                                        Save for Gemini
+                                    </button>
+                                </div>
+                                <p style="margin: 8px 0 0 0; font-size: 12px; color: #9ca3af; line-height: 1.4;">
+                                    For security, your API key is saved only in your local browser and is never stored on our servers.
+                                </p>
+                                {#if geminiSaveSuccess}
+                                    <p style="margin: 8px 0 0 0; font-size: 12px; color: #22c55e;">
+                                        ✓ Saved successfully!
+                                    </p>
+                                {/if}
+                            </div>
+
+                            <!-- OpenAI API Key Section -->
+                            <div class="form-group">
+                                <label for="setting-openai-key">OpenAI API Key (for PapeRobo)</label>
+                                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                    <input 
+                                        type="password" 
+                                        id="setting-openai-key" 
+                                        bind:value={userOpenAiApiKey} 
+                                        placeholder="Enter your OpenAI API key" 
+                                        style="flex: 1;"
+                                        disabled={!isProPlan} 
+                                    />
+                                    <button 
+                                        type="button" 
+                                        class="plan-btn" 
+                                        style="width: auto; padding: 0 16px; background: #a78bfa; border-color: #a78bfa; color: white;"
+                                        onclick={saveOpenAiKey}
+                                        disabled={!isProPlan} 
+                                    >
+                                        Save with PapeRobo
+                                    </button>
+                                </div>
+                                <p style="margin: 8px 0 0 0; font-size: 12px; color: #9ca3af; line-height: 1.4;">
+                                    For security, your API key is saved only in your local browser and is never stored on our servers.
+                                </p>
+                                {#if openaiSaveSuccess}
+                                    <p style="margin: 8px 0 0 0; font-size: 12px; color: #22c55e;">
+                                        ✓ Saved locally! Please synchronize with PapeRobo.
+                                    </p>
+                                {/if}
+
+                                {#if showPapeRoboSyncBtn}
+                                    <div style="margin-top: 16px; padding: 16px; background: rgba(167, 139, 250, 0.1); border: 1px solid rgba(167, 139, 250, 0.2); border-radius: 6px;">
+                                        <p style="margin: 0 0 12px 0; font-size: 13px; color: #e9d5ff; line-height: 1.4;">
+                                            To complete syncing your OpenAI API key with PapeRobo, click the button below to launch PapeRobo and store it securely.
+                                        </p>
+                                        <button 
+                                            type="button" 
+                                            class="plan-btn" 
+                                            style="width: auto; padding: 8px 16px; background: #7c3aed; border-color: #7c3aed; color: white;"
+                                            onclick={launchPapeRoboSync}
+                                        >
+                                            Launch PapeRobo to Sync
+                                        </button>
+                                    </div>
                                 {/if}
                             </div>
                         </div>
@@ -2920,10 +3094,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     <ul class="card-features">
                                         <li>Everything in Free, plus:</li>
                                         <li>AI internet search</li>
-                                        <li>GitHub support</li>
-                                        <li>App download (Vision support)</li>
                                         <li>Images up to 200MB</li>
-                                        <li>PapeRobo limit: up to 20 minutes</li>
+                                        <li>PapeRobo limit: up to 12 minutes</li>
                                     </ul>
                                     <div class="card-action">
                                         {#if currentPlan === 'standard'}
@@ -2979,11 +3151,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     <div class="card-price">$20</div>
                                     <ul class="card-features">
                                         <li>Everything in Standard, plus:</li>
+                                        <li>GitHub support</li>
                                         <li>Custom AI API key support</li>
-                                        <li>Custom URL support</li>
-                                        <li>Google Analytics support</li>
                                         <li>Images up to 1GB</li>
-                                        <li>PapeRobo limit: up to 60 minutes</li>
+                                        <li>PapeRobo limit: up to 30 minutes</li>
                                     </ul>
                                     <div class="card-action">
                                         {#if currentPlan === 'pro'}
@@ -3042,7 +3213,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         <li>Custom storage support</li>
                                         <li>Custom server support</li>
                                         <li>User permission management</li>
-                                        <li>PapeRobo limit: up to 2 hours</li>
+                                        <li>PapeRobo limit: up to 60 minutes</li>
                                     </ul>
                                     <div class="card-action">
                                         {#if currentPlan === 'enterprise'}
@@ -3323,7 +3494,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         letter-spacing: 0.05em;
     }
     .free-header { color: #6b7280; }
-    .standard-header { color: #0d9488; }
+    .standard-header { color: #ea580c; }
     .pro-header { color: #8b5cf6; }
     .enterprise-header { color: #1f2937; }
     
@@ -3382,11 +3553,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         background-color: #e5e7eb;
     }
     .standard-btn {
-        background-color: #0d9488;
+        background-color: #ea580c;
         color: #ffffff;
     }
     .standard-btn:hover:not(:disabled) {
-        background-color: #0f766e;
+        background-color: #c2410c;
     }
     .pro-btn {
         background-color: #8b5cf6;
@@ -5509,5 +5680,26 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         height: 100%;
         overflow-y: auto;
         box-sizing: border-box;
+    }
+    .prompt-plan-mode {
+        font-size: 11px;
+        font-weight: 600;
+        color: #4ade80;
+        text-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+        text-align: left;
+        margin-top: -12px;
+        margin-bottom: 4px;
+        margin-left: 4px;
+        letter-spacing: 0.02em;
+    }
+    :global([data-theme="light"]) .prompt-plan-mode {
+        color: #16a34a;
+        text-shadow: 0 0 6px rgba(22, 163, 74, 0.3);
+    }
+    .avatar-google-name {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-color);
+        opacity: 0.9;
     }
 </style>

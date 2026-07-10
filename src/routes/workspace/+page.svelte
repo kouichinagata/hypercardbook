@@ -201,6 +201,20 @@
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
     );
+    let maxStorageBytes = $derived.by(() => {
+        const plan = data.session?.user?.user_metadata?.plan || 'free';
+        if (plan === 'enterprise') return 1 * 1024 * 1024 * 1024; // 1GB
+        if (plan === 'pro') return 1 * 1024 * 1024 * 1024; // 1GB
+        if (plan === 'standard') return 200 * 1024 * 1024; // 200MB
+        return 20 * 1024 * 1024; // 20MB
+    });
+    let maxStorageText = $derived.by(() => {
+        const plan = data.session?.user?.user_metadata?.plan || 'free';
+        if (plan === 'enterprise') return '1GB';
+        if (plan === 'pro') return '1GB';
+        if (plan === 'standard') return '200MB';
+        return '20MB';
+    });
 
     // Monaco Editor states
     let useMonaco = $state(false);
@@ -376,9 +390,9 @@
                 for (const f of files) {
                     totalSize += f.metadata?.size || 0;
                 }
-                const limitBytes = 20 * 1024 * 1024; // 20MB
+                const limitBytes = maxStorageBytes;
                 if (totalSize + compressedBlob.size > limitBytes) {
-                    throw new Error('Storage limit (20MB) reached. Cannot upload.');
+                    throw new Error(`Storage limit (${maxStorageText}) reached. Cannot upload.`);
                 }
             }
         }
@@ -983,9 +997,13 @@ ${markdown}
         markdownHistory = [...markdownHistory, markdown];
 
         try {
+            const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
             const response = await fetch('/api/generate', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
+                },
                 body: JSON.stringify({
                     prompt: finalPrompt,
                     history: chatHistory.slice(0, -2), // Send previous history (excluding user message and Thinking...)
