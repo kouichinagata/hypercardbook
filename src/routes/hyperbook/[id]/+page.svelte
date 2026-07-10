@@ -7,6 +7,7 @@
 
     let isCard = $derived(data.markdown.includes('play_mode: card') || (!data.markdown.includes('play_mode: book') && !/Page\s*\d+:/i.test(data.markdown) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(data.markdown)));
     let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || ['hypercard-hook']);
+    let isProPlan = $derived(['pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free'));
     
     let currentLanguage = $state('ja');
     let currentIndex = $state(data.initialPageIndex ?? -1);
@@ -36,6 +37,6 @@
         activePluginIds={activePluginIds}
     />
 {:else}
-    <Book markdown={data.markdown} id={data.id} backUrl={data.isEmbed ? '' : data.backUrl} activePluginIds={activePluginIds} language={currentLanguage} currentUserId={data.currentUserId} bind:currentIndex />
+    <Book markdown={data.markdown} id={data.id} backUrl={data.isEmbed ? '' : data.backUrl} activePluginIds={activePluginIds} language={currentLanguage} currentUserId={data.currentUserId} bind:currentIndex isProPlan={isProPlan} />
 {/if}
 

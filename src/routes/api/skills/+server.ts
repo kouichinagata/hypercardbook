@@ -12,6 +12,11 @@ export const GET: RequestHandler = async ({ locals }) => {
         }
 
         const userId = session.user.id;
+        const plan = session.user?.user_metadata?.plan || 'free';
+        const isProPlan = ['pro', 'enterprise'].includes(plan);
+        if (!isProPlan) {
+            return json({ error: 'Pro plan or above is required.' }, { status: 403 });
+        }
         const userSkillsDir = path.resolve('data/skills', userId);
 
         if (!fs.existsSync(userSkillsDir)) {
@@ -73,6 +78,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const plan = session.user?.user_metadata?.plan || 'free';
+        const isProPlan = ['pro', 'enterprise'].includes(plan);
+        if (!isProPlan) {
+            return json({ error: 'Pro plan or above is required.' }, { status: 403 });
+        }
         const { skillName, skillMd } = await request.json();
         if (!skillName || !skillMd) {
             return json({ error: 'Missing skillName or skillMd' }, { status: 400 });
@@ -115,6 +125,11 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const plan = session.user?.user_metadata?.plan || 'free';
+        const isProPlan = ['pro', 'enterprise'].includes(plan);
+        if (!isProPlan) {
+            return json({ error: 'Pro plan or above is required.' }, { status: 403 });
+        }
         const { skillName } = await request.json();
         if (!skillName) {
             return json({ error: 'Missing skillName' }, { status: 400 });

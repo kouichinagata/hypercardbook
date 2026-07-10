@@ -15,7 +15,8 @@
         onHookAiResult = null,
         currentIndex = $bindable(-1),
         currentUserId = 'global',
-        isWorkspace = false
+        isWorkspace = false,
+        isProPlan = false
     } = $props();
 
     // Iframe postMessage connection states
@@ -259,6 +260,7 @@
     }
 
     async function executePageHooks(eventName: string, plainPageIdx: number) {
+        if (!isProPlan) return;
         const hooksForPage = pageHooks[plainPageIdx];
         if (!hooksForPage) return;
         for (const h of hooksForPage) {
@@ -355,6 +357,7 @@
     }
 
     async function executeHook(eventName: string, eventPayload: any = {}) {
+        if (!isProPlan) return;
         const hookContent = hooks[eventName];
         if (!hookContent) return;
 

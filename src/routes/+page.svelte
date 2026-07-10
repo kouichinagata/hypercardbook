@@ -2604,17 +2604,17 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     </button>
                     <button 
                         class="tab-link" 
-                        class:active={settingsActiveTab === 'plugin'} 
-                        onclick={() => settingsActiveTab = 'plugin'}
-                    >
-                        Plugin
-                    </button>
-                    <button 
-                        class="tab-link" 
                         class:active={settingsActiveTab === 'github'} 
                         onclick={() => settingsActiveTab = 'github'}
                     >
                         GitHub
+                    </button>
+                    <button 
+                        class="tab-link" 
+                        class:active={settingsActiveTab === 'plugin'} 
+                        onclick={() => settingsActiveTab = 'plugin'}
+                    >
+                        Plugin
                     </button>
                     <button 
                         class="tab-link" 
@@ -2774,8 +2774,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     </div>
                                     
                                     <div class="plugin-actions-row">
-                                        <button type="button" class="plugin-action-btn" onclick={openAddPluginView}>Add</button>
-                                        <button type="button" class="plugin-action-btn" onclick={deleteSelectedPlugin} disabled={!selectedPluginId}>Delete</button>
+                                        <button type="button" class="plugin-action-btn" onclick={openAddPluginView} disabled={!isProPlan}>Add</button>
+                                        <button type="button" class="plugin-action-btn" onclick={deleteSelectedPlugin} disabled={!isProPlan || !selectedPluginId}>Delete</button>
                                     </div>
                                 </div>
 
@@ -2796,10 +2796,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                 oninput={handleNameInput} 
                                                 placeholder="e.g. polite-tone"
                                                 style="width: 100%; box-sizing: border-box;"
-                                                disabled={selectedPlugin && selectedPlugin.owner !== 'My plugin'}
+                                                disabled={!isProPlan || (selectedPlugin && selectedPlugin.owner !== 'My plugin')}
                                             />
                                         </div>
-
+ 
                                         <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
                                             <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Description</label>
                                             <input 
@@ -2809,10 +2809,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                 oninput={handleDescriptionInput} 
                                                 placeholder="e.g. Convert text to polite tone."
                                                 style="width: 100%; box-sizing: border-box;"
-                                                disabled={selectedPlugin && selectedPlugin.owner !== 'My plugin'}
+                                                disabled={!isProPlan || (selectedPlugin && selectedPlugin.owner !== 'My plugin')}
                                             />
                                         </div>
-
+ 
                                         <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
                                             <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Skill Prompt</label>
                                             <textarea 
@@ -2822,7 +2822,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                 rows="6"
                                                 placeholder="Enter skill instructions/directives..."
                                                 style="width: 100%; box-sizing: border-box; resize: vertical;"
-                                                disabled={selectedPlugin && selectedPlugin.owner !== 'My plugin'}
+                                                disabled={!isProPlan || (selectedPlugin && selectedPlugin.owner !== 'My plugin')}
                                             ></textarea>
                                         </div>
 
@@ -2839,13 +2839,13 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                                         placeholder="e.g., Translate to English, or make it more polite..."
                                                         style="flex: 1; min-width: 0;"
                                                         onkeydown={(e) => e.key === 'Enter' && runAIGenerator()}
-                                                        disabled={isGeneratingSkill}
+                                                        disabled={!isProPlan || isGeneratingSkill}
                                                     />
                                                     <button 
                                                         type="button" 
                                                         class="plugin-action-btn" 
                                                         onclick={runAIGenerator}
-                                                        disabled={isGeneratingSkill || !aiInstructionInput.trim()}
+                                                        disabled={!isProPlan || isGeneratingSkill || !aiInstructionInput.trim()}
                                                         style="background: #8b5cf6; border-color: #8b5cf6; color: #ffffff;"
                                                     >
                                                         {isGeneratingSkill ? 'Running...' : 'Run'}
@@ -2890,7 +2890,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                             type="button" 
                                             class="plugin-action-btn" 
                                             onclick={installSelectedSystemPlugin} 
-                                            disabled={!selectedAddPluginId || activePluginIds.includes(selectedAddPluginId)}
+                                            disabled={!isProPlan || !selectedAddPluginId || activePluginIds.includes(selectedAddPluginId)}
                                         >
                                             Add
                                         </button>
@@ -2902,7 +2902,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                         <div class="tab-pane">
                             <h3 style="margin-top: 0; margin-bottom: 8px;">GitHub Integration</h3>
                             <p style="margin: 0 0 16px 0; font-size: 14px; color: #9ca3af;">
-                                Connect your repository to push your books as Markdown files directly via the AI assistant. (Requires Pro plan or above)
+                                Connect your repository to push your books as Markdown files directly via the AI assistant. (Requires Standard plan or above)
                             </p>
                             
                             <div class="form-group">
@@ -2911,8 +2911,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     type="text" 
                                     id="setting-github-owner" 
                                     bind:value={githubOwner} 
-                                    disabled={!isProPlan} 
+                                    disabled={!isPaidPlan} 
                                     placeholder="e.g., kouichinagata" 
+                                    style="width: 100%; box-sizing: border-box;"
                                 />
                             </div>
 
@@ -2922,8 +2923,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     type="text" 
                                     id="setting-github-repo" 
                                     bind:value={githubRepo} 
-                                    disabled={!isProPlan} 
+                                    disabled={!isPaidPlan} 
                                     placeholder="e.g., my-hyperbooks" 
+                                    style="width: 100%; box-sizing: border-box;"
                                 />
                             </div>
 
@@ -2937,31 +2939,31 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                             class="plan-btn" 
                                             style="background: #ef4444; border-color: #ef4444; color: white; padding: 6px 12px; font-size: 14px; width: auto;"
                                             onclick={disconnectGitHub}
-                                            disabled={!isProPlan}
-                                        >
-                                            Disconnect
-                                        </button>
-                                    </div>
-                                {:else if githubUserCode}
-                                    <div style="margin-top: 8px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 6px;">
-                                        <p style="margin: 0 0 8px 0; font-size: 14px;">
-                                            1. Open <a href={githubVerifyUrl} target="_blank" rel="noopener noreferrer" style="color: #a78bfa; text-decoration: underline;">{githubVerifyUrl}</a> in your browser.
-                                        </p>
-                                        <p style="margin: 0 0 12px 0; font-size: 14px;">
-                                            2. Enter code: <strong style="font-size: 18px; color: #a78bfa; letter-spacing: 1px;">{githubUserCode}</strong>
-                                        </p>
-                                        <p style="margin: 0; font-size: 12px; color: #9ca3af; display: flex; align-items: center; gap: 6px;">
-                                            Waiting for GitHub authorization...
-                                        </p>
-                                    </div>
-                                {:else}
-                                    <button 
-                                        type="button" 
-                                        class="plan-btn" 
-                                        style="margin-top: 8px; background: #24292f; border-color: #24292f; color: white; width: auto; padding: 8px 16px;"
-                                        onclick={startGitHubConnect}
-                                        disabled={!isProPlan || githubConnecting}
+                                        disabled={!isPaidPlan}
                                     >
+                                        Disconnect
+                                    </button>
+                                </div>
+                            {:else if githubUserCode}
+                                <div style="margin-top: 8px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                                    <p style="margin: 0 0 8px 0; font-size: 14px;">
+                                        1. Open <a href={githubVerifyUrl} target="_blank" rel="noopener noreferrer" style="color: #a78bfa; text-decoration: underline;">{githubVerifyUrl}</a> in your browser.
+                                    </p>
+                                    <p style="margin: 0 0 12px 0; font-size: 14px;">
+                                        2. Enter code: <strong style="font-size: 18px; color: #a78bfa; letter-spacing: 1px;">{githubUserCode}</strong>
+                                    </p>
+                                    <p style="margin: 0; font-size: 12px; color: #9ca3af; display: flex; align-items: center; gap: 6px;">
+                                        Waiting for GitHub authorization...
+                                    </p>
+                                </div>
+                            {:else}
+                                <button 
+                                    type="button" 
+                                    class="plan-btn" 
+                                    style="margin-top: 8px; background: #24292f; border-color: #24292f; color: white; width: auto; padding: 8px 16px;"
+                                    onclick={startGitHubConnect}
+                                    disabled={!isPaidPlan || githubConnecting}
+                                >
                                         {githubConnecting ? 'Connecting...' : 'Connect to GitHub'}
                                     </button>
                                 {/if}
@@ -3094,6 +3096,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     <ul class="card-features">
                                         <li>Everything in Free, plus:</li>
                                         <li>AI internet search</li>
+                                        <li>GitHub support</li>
                                         <li>Images up to 200MB</li>
                                         <li>PapeRobo limit: up to 12 minutes</li>
                                     </ul>
@@ -3151,7 +3154,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     <div class="card-price">$20</div>
                                     <ul class="card-features">
                                         <li>Everything in Standard, plus:</li>
-                                        <li>GitHub support</li>
+                                        <li>Plugin, Skills support</li>
                                         <li>Custom AI API key support</li>
                                         <li>Images up to 1GB</li>
                                         <li>PapeRobo limit: up to 30 minutes</li>
@@ -3389,6 +3392,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 activePluginIds={[]} 
                                 language="ja"
                                 currentUserId={data.currentUserId ?? 'global'}
+                                isProPlan={isProPlan}
                             />
                         {/if}
                     {/if}

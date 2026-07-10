@@ -433,8 +433,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             activeSystemInstruction += `\n\nCUSTOM PROMPT GUIDELINES:\nFollow these custom prompt guidelines for style, formatting, and content creation:\n"""\n${custompromptMd.trim()}\n"""`;
         }
 
+        const isProPlan = ['pro', 'enterprise'].includes(userPlan);
+        const allowedActivePluginIds = isProPlan ? activePluginIds : ['hypercard-hook'];
+
         // Dynamic loading of available skills for "Progressive Disclosure"
-        const availableSkills = getAvailableSkills(session.user.id);
+        const availableSkills = isProPlan ? getAvailableSkills(session.user.id) : [];
         if (availableSkills.length > 0) {
             let skillsCatalog = '\n\nAVAILABLE SKILLS:\n';
             availableSkills.forEach(s => {
@@ -444,13 +447,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
             // Inject prompt bodies for active skills
             availableSkills.forEach(s => {
-                if (activePluginIds.includes(s.id) || activePluginIds.includes(`my-plugin-${s.id}`)) {
+                if (allowedActivePluginIds.includes(s.id) || allowedActivePluginIds.includes(`my-plugin-${s.id}`)) {
                     activeSystemInstruction += `\n\nACTIVE SKILL RULES for "${s.id}" (Apply these rules strictly when requested/relevant):\n"""\n${s.body.trim()}\n"""`;
                 }
             });
         }
 
-        if (activePluginIds.includes('gdrive-mcp')) {
+        if (allowedActivePluginIds.includes('gdrive-mcp')) {
             activeSystemInstruction += `\n\nGOOGLE DRIVE MCP TOOL INSTRUCTIONS:\n- You have direct access to the user's Google Drive via 'gdrive_search_files', 'gdrive_read_file', and 'gdrive_write_file' tools.\n- If the user asks about files, summaries, or content stored in Google Drive, you MUST search for files or read files using these tools FIRST to gather facts before responding. Do NOT invent/hallucinate the contents of their Google Drive.\n- CRITICAL RULE: You MUST NOT edit the book contents, delete pages, or overwrite the book with external information unless the user explicitly requested you to edit, write, or save that information to the book. If they only ask a question about their Google Drive (e.g. "Googleドライブの概要を教えて"), just answer their question in a conversational message, do NOT call 'edit_page' or overwrite the book.`;
         }
 
@@ -647,10 +650,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                                     const repo = userMetadata.github_repo;
                                     
                                     const plan = userMetadata.plan || 'free';
-                                    const isProPlan = ['pro', 'enterprise'].includes(plan);
+                                    const isPaidPlan = ['standard', 'pro', 'enterprise'].includes(plan);
 
-                                    if (!isProPlan) {
-                                        resultData = { success: false, error: 'GitHub Integration is only available on Pro plan or above.' };
+                                    if (!isPaidPlan) {
+                                        resultData = { success: false, error: 'GitHub Integration is only available on Standard plan or above.' };
                                     } else if (!token || !owner || !repo) {
                                         resultData = { success: false, error: 'GitHub is not configured in settings. Please connect your GitHub account and repository first.' };
                                     } else {

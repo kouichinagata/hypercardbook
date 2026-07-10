@@ -34,6 +34,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized. Please login first.' }, { status: 401 });
         }
 
+        const plan = session.user?.user_metadata?.plan || 'free';
+        const isProPlan = ['pro', 'enterprise'].includes(plan);
+        if (!isProPlan) {
+            return json({ error: 'Pro plan or above is required.' }, { status: 403 });
+        }
+
         const apiKey = getActiveGeminiApiKey(session, request.headers.get('x-user-gemini-api-key'));
         if (!apiKey) {
             return json({ error: 'GEMINI_API_KEY is not set.' }, { status: 500 });

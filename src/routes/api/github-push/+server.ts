@@ -10,9 +10,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         }
 
         const plan = session.user?.user_metadata?.plan || 'free';
-        const isProPlan = ['pro', 'enterprise'].includes(plan);
-        if (!isProPlan) {
-            return json({ error: 'GitHub Integration is only available on Pro plan or above.' }, { status: 403 });
+        const isPaidPlan = ['standard', 'pro', 'enterprise'].includes(plan);
+        if (!isPaidPlan) {
+            return json({ error: 'GitHub Integration is only available on Standard plan or above.' }, { status: 403 });
         }
 
         const { markdown, filename, commitMessage } = await request.json();

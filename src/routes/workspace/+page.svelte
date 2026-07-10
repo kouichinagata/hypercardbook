@@ -201,6 +201,9 @@
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
     );
+    let isProPlan = $derived(
+        ['pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
+    );
     let maxStorageBytes = $derived.by(() => {
         const plan = data.session?.user?.user_metadata?.plan || 'free';
         if (plan === 'enterprise') return 1 * 1024 * 1024 * 1024; // 1GB
@@ -1075,63 +1078,68 @@ ${markdown}
                 const skillName = skillMatch[1].trim();
                 const skillPrompt = skillMatch[2].trim();
                 
-                const safeSkillName = skillName.replace(/[^a-zA-Z0-9_\-]/g, '');
-                const skillDirName = safeSkillName || `skill-${Date.now()}`;
-                const newId = `my-plugin-${skillDirName}`;
-                const skillMd = `---\nname: ${skillName}\ndescription: \n---\n${skillPrompt}`;
-                
-                // Add to user plugins list
-                const newSkill = {
-                    id: newId,
-                    name: skillName,
-                    description: '',
-                    kinds: 'Skill',
-                    owner: 'My plugin',
-                    skill: skillPrompt
-                };
-                
-                const existIdx = userPlugins.findIndex(up => up.id === newId);
-                if (existIdx !== -1) {
-                    userPlugins[existIdx] = newSkill;
-                } else {
-                    userPlugins.push(newSkill);
-                }
-
-                if (!activePluginIds.includes(newId)) {
-                    activePluginIds.push(newId);
-                }
-                
-                // Call physical folder integration API via POST to save Skill on physical server
-                try {
-                    await fetch('/api/skills', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            skillName: skillDirName,
-                            skillMd: skillMd
-                        })
-                    });
-                } catch (apiErr) {
-                    console.error('Failed to call physical skill save API:', apiErr);
-                }
-                
-                // Persist user plugins and active plugins to Supabase user metadata
-                try {
-                    const { error: updateError } = await supabase.auth.updateUser({
-                        data: {
-                            user_plugins: $state.snapshot(userPlugins),
-                            active_plugin_ids: $state.snapshot(activePluginIds)
-                        }
-                    });
-                    if (updateError) throw updateError;
-                    
-                    // Show registered notice and remove raw tag from chat log display
+                if (!isProPlan) {
                     chatHistory[lastIndex].text = accumulatedText.replace(/\[CREATE_SKILL:\s*.+?\]\n?[\s\S]*?\[\/CREATE_SKILL\]/i, '').trim() + 
-                        `\n\n💡 **System: Registered new Skill "${skillName}"**`;
+                        `\n\n💡 **System: Custom skill creation requires Pro plan or above**`;
+                } else {
+                    const safeSkillName = skillName.replace(/[^a-zA-Z0-9_\-]/g, '');
+                    const skillDirName = safeSkillName || `skill-${Date.now()}`;
+                    const newId = `my-plugin-${skillDirName}`;
+                    const skillMd = `---\nname: ${skillName}\ndescription: \n---\n${skillPrompt}`;
                     
-                    await invalidateAll();
-                } catch (saveErr) {
-                    console.error('Failed to auto-save created skill:', saveErr);
+                    // Add to user plugins list
+                    const newSkill = {
+                        id: newId,
+                        name: skillName,
+                        description: '',
+                        kinds: 'Skill',
+                        owner: 'My plugin',
+                        skill: skillPrompt
+                    };
+                    
+                    const existIdx = userPlugins.findIndex(up => up.id === newId);
+                    if (existIdx !== -1) {
+                        userPlugins[existIdx] = newSkill;
+                    } else {
+                        userPlugins.push(newSkill);
+                    }
+
+                    if (!activePluginIds.includes(newId)) {
+                        activePluginIds.push(newId);
+                    }
+                    
+                    // Call physical folder integration API via POST to save Skill on physical server
+                    try {
+                        await fetch('/api/skills', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                skillName: skillDirName,
+                                skillMd: skillMd
+                            })
+                        });
+                    } catch (apiErr) {
+                        console.error('Failed to call physical skill save API:', apiErr);
+                    }
+                    
+                    // Persist user plugins and active plugins to Supabase user metadata
+                    try {
+                        const { error: updateError } = await supabase.auth.updateUser({
+                            data: {
+                                user_plugins: $state.snapshot(userPlugins),
+                                active_plugin_ids: $state.snapshot(activePluginIds)
+                            }
+                        });
+                        if (updateError) throw updateError;
+                        
+                        // Show registered notice and remove raw tag from chat log display
+                        chatHistory[lastIndex].text = accumulatedText.replace(/\[CREATE_SKILL:\s*.+?\]\n?[\s\S]*?\[\/CREATE_SKILL\]/i, '').trim() + 
+                            `\n\n💡 **System: Registered new Skill "${skillName}"**`;
+                        
+                        await invalidateAll();
+                    } catch (saveErr) {
+                        console.error('Failed to auto-save created skill:', saveErr);
+                    }
                 }
             }
         } catch (err: any) {
@@ -1915,6 +1923,7 @@ ${markdown}
                                 onHookAiResult={handleHookAiResult} 
                                 currentUserId={data.currentUserId}
                                 isWorkspace={true}
+                                isProPlan={isProPlan}
                             />
                         </div>
                     {:else}
