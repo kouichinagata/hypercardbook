@@ -268,19 +268,9 @@
         }
 
         // Subscribe to realtime changes on the books table to auto-refresh bookshelf
-        const channel = supabase
-            .channel('bookshelf-realtime')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'books' },
-                () => {
-                    invalidateAll();
-                }
-            )
-            .subscribe();
+        // (Removed to prevent high database egress from auto-refreshing markdown content)
 
         return () => {
-            supabase.removeChannel(channel);
             window.removeEventListener('focus', handleWindowFocus);
         };
     });
