@@ -54,6 +54,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
             let subTitle = '';
             let description = '';
             let hideHyperbook = false;
+            let sourceApp = '';
 
             if (fmMatch) {
                 const lines = fmMatch[1].split('\n');
@@ -71,6 +72,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                         if (k === 'sub_title') subTitle = v;
                         if (k === 'description') description = v.replace(/^["']|["']$/g, '');
                         if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
+                        if (k === 'source_app') sourceApp = v;
                     }
                 });
             }
@@ -90,6 +92,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                 subTitle,
                 description,
                 hideHyperbook,
+                sourceApp,
                 markdownContent: content
             };
         } catch (err) {
@@ -160,6 +163,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
             let hyperbookId = '';
             let description = '';
             let hideHyperbook = false;
+            let sourceApp = '';
 
             const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
             if (fmMatch) {
@@ -176,6 +180,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                         if (k === 'hyperbook_id') hyperbookId = v;
                         if (k === 'description') description = v.replace(/^["']|["']$/g, '');
                         if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
+                        if (k === 'source_app') sourceApp = v;
                     }
                 });
             }
@@ -200,6 +205,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                 subTitle,
                 description,
                 hideHyperbook,
+                sourceApp,
                 markdownContent: markdown
             };
         });

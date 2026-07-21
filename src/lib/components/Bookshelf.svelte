@@ -491,6 +491,55 @@
                                             </div>
                                         {/if}
                                     </div>
+                                {:else if book.sourceApp === 'hypertv' || book.source_app === 'hypertv'}
+                                    {@const isPreset = ['white', 'black', 'blue', 'pink', 'gold'].includes(book.themeColor)}
+                                    <div 
+                                        class="book-cover hypertv-book-cover" 
+                                        data-theme-color={isPreset ? book.themeColor : 'black'}
+                                        style={!isPreset && book.themeColor ? `background: ${book.themeColor};` : ''}
+                                    >
+                                        <div class="hypertv-frame">
+                                            <!-- アンテナ -->
+                                            <div class="hypertv-antennas">
+                                                <svg viewBox="0 0 100 30" class="antenna-svg">
+                                                    <ellipse cx="50" cy="28" rx="7" ry="3" fill="#000" />
+                                                    <line x1="50" y1="28" x2="20" y2="5" stroke="#000" stroke-width="2.5" stroke-linecap="round" />
+                                                    <circle cx="20" cy="5" r="3" fill="#000" />
+                                                    <line x1="50" y1="28" x2="80" y2="5" stroke="#000" stroke-width="2.5" stroke-linecap="round" />
+                                                    <circle cx="80" cy="5" r="3" fill="#000" />
+                                                </svg>
+                                            </div>
+                                            <!-- TVキャビネット -->
+                                            <div class="hypertv-body">
+                                                <div class="hypertv-screen">
+                                                    <div class="hypertv-title">{book.title}</div>
+                                                </div>
+                                                <div class="hypertv-controls">
+                                                    <div class="hypertv-knob"><div class="knob-inner"></div></div>
+                                                    <div class="hypertv-speaker">
+                                                        <div class="speaker-line"></div>
+                                                        <div class="speaker-line"></div>
+                                                        <div class="speaker-line"></div>
+                                                    </div>
+                                                    <div class="hypertv-knob"><div class="knob-inner"></div></div>
+                                                </div>
+                                            </div>
+                                            <!-- 脚部 -->
+                                            <div class="hypertv-legs">
+                                                <svg viewBox="0 0 100 40" class="legs-svg">
+                                                    <line x1="25" y1="0" x2="10" y2="38" stroke="#000" stroke-width="3.5" stroke-linecap="round" />
+                                                    <line x1="33" y1="0" x2="25" y2="30" stroke="#000" stroke-width="2.5" stroke-linecap="round" />
+                                                    <line x1="67" y1="0" x2="75" y2="30" stroke="#000" stroke-width="2.5" stroke-linecap="round" />
+                                                    <line x1="75" y1="0" x2="90" y2="38" stroke="#000" stroke-width="3.5" stroke-linecap="round" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                        {#if (isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
+                                            <div class="stack-select-check-overlay">
+                                                <div class="check-circle">✓</div>
+                                            </div>
+                                        {/if}
+                                    </div>
                                 {:else if book.isCard}
                                     {@const isPreset = ['white', 'black', 'blue', 'pink', 'gold'].includes(book.themeColor)}
                                     <div 
@@ -1696,5 +1745,109 @@
     .context-menu-item:hover {
         background: #8b5cf6;
         color: #ffffff;
+    }
+
+    /* --- HyperTV Retro TV Cover --- */
+    .hypertv-book-cover {
+        padding: 4px 2px !important;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+    }
+    .hypertv-frame {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .hypertv-antennas {
+        width: 100%;
+        height: 22px;
+    }
+    .antenna-svg, .legs-svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+    }
+    .hypertv-body {
+        width: 92px;
+        height: 100px;
+        background-color: #000000;
+        border-radius: 12px;
+        padding: 7px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-shadow: 2px 4px 8px rgba(0, 0, 0, 0.3);
+    }
+    .hypertv-screen {
+        width: 100%;
+        height: 64px;
+        background-color: #ffffff;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 6px;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    .hypertv-title {
+        color: #000000;
+        font-size: 0.65rem;
+        font-weight: bold;
+        text-align: center;
+        line-height: 1.25;
+        display: -webkit-box;
+        -webkit-line-clamp: 4;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+        font-family: system-ui, -apple-system, sans-serif;
+    }
+    .hypertv-controls {
+        width: 100%;
+        height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 4px;
+        box-sizing: border-box;
+    }
+    .hypertv-knob {
+        width: 12px;
+        height: 12px;
+        border: 1.5px solid #ffffff;
+        border-radius: 50%;
+        background-color: #000000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .knob-inner {
+        width: 1.5px;
+        height: 6px;
+        background-color: #ffffff;
+    }
+    .hypertv-speaker {
+        width: 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 2.5px;
+    }
+    .speaker-line {
+        width: 100%;
+        height: 1.5px;
+        background-color: #777777;
+        border-radius: 1px;
+    }
+    .hypertv-legs {
+        width: 100%;
+        height: 38px;
     }
 </style>

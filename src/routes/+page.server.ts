@@ -27,6 +27,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 let description = '';
                 let hideHyperbook = false;
 
+                let sourceApp = '';
+
                 const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
                 if (fmMatch) {
                     const fmLines = fmMatch[1].split('\n');
@@ -42,6 +44,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                             if (k === 'hyperbook_id') hyperbookId = v;
                             if (k === 'description') description = v.replace(/^["']|["']$/g, '');
                             if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
+                            if (k === 'source_app') sourceApp = v;
                         }
                     });
                 }
@@ -66,6 +69,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                     subTitle,
                     description,
                     hideHyperbook,
+                    sourceApp,
                     markdownContent: markdown
                 };
             });
@@ -118,6 +122,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                         let description = '';
                         let hideHyperbook = false;
 
+                        let sourceApp = '';
+
                         const fmMatch = content.match(/^---\s*([\s\S]*?)\s*---/);
                         if (fmMatch) {
                             const fmLines = fmMatch[1].split('\n');
@@ -133,6 +139,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                                     if (k === 'hyperbook_id') hyperbookId = v;
                                     if (k === 'description') description = v.replace(/^["']|["']$/g, '');
                                     if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
+                                    if (k === 'source_app') sourceApp = v;
                                 }
                             });
                         }
@@ -157,6 +164,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                             subTitle,
                             description,
                             hideHyperbook,
+                            sourceApp,
                             isSample: true, // Identify as a Sample Book for the front-end
                             markdownContent: content
                         };
@@ -198,6 +206,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 let description = '';
                 let hideHyperbook = false;
 
+                let sourceApp = '';
+
                 const fmMatch = content.match(/^---\s*([\s\S]*?)\s*---/);
                 if (fmMatch) {
                     const fmLines = fmMatch[1].split('\n');
@@ -213,6 +223,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                             if (k === 'hyperbook_id') hyperbookId = v;
                             if (k === 'description') description = v.replace(/^["']|["']$/g, '');
                             if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
+                            if (k === 'source_app') sourceApp = v;
                         }
                     });
                 }
@@ -237,6 +248,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                     subTitle,
                     description,
                     hideHyperbook,
+                    sourceApp,
                     isQuarkChoice: true,
                     markdownContent: content
                 };
@@ -273,6 +285,8 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
             let description = '';
             let hideHyperbook = false;
 
+            let sourceApp = '';
+
             const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
             if (fmMatch) {
                 const fmLines = fmMatch[1].split('\n');
@@ -288,6 +302,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                         if (k === 'hyperbook_id') hyperbookId = v;
                         if (k === 'description') description = v.replace(/^["']|["']$/g, '');
                         if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
+                        if (k === 'source_app') sourceApp = v;
                     }
                 });
             }
@@ -312,6 +327,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                 subTitle,
                 description,
                 hideHyperbook,
+                sourceApp,
                 markdownContent: markdown,
                 createdAt: b.created_at,
                 updatedAt: b.updated_at,
