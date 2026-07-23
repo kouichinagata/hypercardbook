@@ -258,89 +258,13 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
         console.error('Failed to load Quark\'s Choice books:', err);
     }
 
-    // Fetch initial 50 public books (ordered by published_at ASC)
-    let publicBooks: any[] = [];
-    let hasMorePublic = false;
-
-    const { data: rawPublicBooks, error: publicDbError } = await supabase
-        .from('books')
-        .select('id, slug, title, author, cover_image, theme_color, user_id, markdown_content, created_at, updated_at, is_public, published_at')
-        .eq('is_public', true)
-        .order('published_at', { ascending: true })
-        .range(0, 50);
-
-    if (publicDbError) {
-        console.error('Failed to fetch public books from Supabase:', publicDbError);
-    } else if (rawPublicBooks) {
-        hasMorePublic = rawPublicBooks.length > 50;
-        const booksToReturn = hasMorePublic ? rawPublicBooks.slice(0, 50) : rawPublicBooks;
-
-        publicBooks = booksToReturn.map(b => {
-            const markdown = b.markdown_content || '';
-            let playMode = 'book';
-            let subTitle = '';
-            let launchUrl = '';
-            let paperoboSlug = '';
-            let hyperbookId = '';
-            let description = '';
-            let hideHyperbook = false;
-
-            let sourceApp = '';
-
-            const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
-            if (fmMatch) {
-                const fmLines = fmMatch[1].split('\n');
-                fmLines.forEach((line: string) => {
-                    const parts = line.split(':');
-                    if (parts.length >= 2) {
-                        const k = parts[0].trim();
-                        const v = parts.slice(1).join(':').trim();
-                        if (k === 'play_mode') playMode = v;
-                        if (k === 'sub_title') subTitle = v;
-                        if (k === 'launch_url') launchUrl = v;
-                        if (k === 'paperobo_slug') paperoboSlug = v;
-                        if (k === 'hyperbook_id') hyperbookId = v;
-                        if (k === 'description') description = v.replace(/^["']|["']$/g, '');
-                        if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
-                        if (k === 'source_app') sourceApp = v;
-                    }
-                });
-            }
-
-            const isCard = playMode === 'card';
-            const isStack = playMode === 'stack';
-
-            return {
-                id: b.id,
-                slug: b.slug,
-                title: b.title,
-                author: b.author,
-                coverImage: b.cover_image,
-                themeColor: b.theme_color || (isCard ? 'white' : 'black'),
-                userId: b.user_id,
-                isCard,
-                isStack,
-                playMode,
-                launchUrl,
-                paperoboSlug,
-                hyperbookId,
-                subTitle,
-                description,
-                hideHyperbook,
-                sourceApp,
-                markdownContent: markdown,
-                createdAt: b.created_at,
-                updatedAt: b.updated_at,
-                isPublic: b.is_public,
-                publishedAt: b.published_at
-            };
-        });
-    }
-
     return {
         books: [...formattedBooks, ...sampleBooks, ...quarksChoiceBooks],
-        publicBooks,
-        hasMorePublic,
+        // Public books are intentionally loaded only when the user opens that shelf.
+        // Their markdown bodies are comparatively large and were previously sent on
+        // every home-page request even while the shelf was hidden.
+        publicBooks: [],
+        hasMorePublic: true,
         currentUserId: session?.user?.id || null
     };
 };

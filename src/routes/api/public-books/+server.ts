@@ -11,9 +11,10 @@ export const GET: RequestHandler = async ({ url, locals }) => {
         // We select limit + 1 records to easily determine if there are more pages
         const { data: rawBooks, error: dbError } = await supabase
             .from('books')
-            .select('*')
+            .select('id, user_id, slug, title, author, cover_image, theme_color, markdown_content, created_at, updated_at, is_public, published_at')
             .eq('is_public', true)
             .order('published_at', { ascending: true })
+            .order('id', { ascending: true })
             .range(offset, offset + limit);
 
         if (dbError) {

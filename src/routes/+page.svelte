@@ -248,12 +248,6 @@
         // Auto translate bookshelf covers on mount
         translateBookshelfCovers();
 
-        // Tab focus detection to automatically refresh the bookshelf
-        const handleWindowFocus = () => {
-            invalidateAll();
-        };
-        window.addEventListener('focus', handleWindowFocus);
-
         // Check launch_robo URL parameter and auto-launch if present
         const urlParams = new URLSearchParams(window.location.search);
         const launchRoboId = urlParams.get('launch_robo');
@@ -270,9 +264,6 @@
         // Subscribe to realtime changes on the books table to auto-refresh bookshelf
         // (Removed to prevent high database egress from auto-refreshing markdown content)
 
-        return () => {
-            window.removeEventListener('focus', handleWindowFocus);
-        };
     });
 
     async function saveOnboarding() {
@@ -563,6 +554,9 @@
 
     async function handleLoadPublicBooks() {
         showPublicSection = true;
+        if (publicBooksList.length === 0) {
+            await loadMorePublicBooks();
+        }
     }
 
     async function loadMorePublicBooks() {
@@ -570,10 +564,12 @@
         isLoadingMorePublic = true;
         try {
             const offset = publicBooksList.length;
-            const res = await fetch(`/api/public-books?offset=${offset}&limit=50`);
+            const res = await fetch(`/api/public-books?offset=${offset}&limit=100`);
             if (res.ok) {
                 const result = await res.json();
-                publicBooksList = [...publicBooksList, ...result.books];
+                const existingIds = new Set(publicBooksList.map((book: any) => book.id));
+                const newBooks = result.books.filter((book: any) => !existingIds.has(book.id));
+                publicBooksList = [...publicBooksList, ...newBooks];
                 hasMorePublic = result.hasMore;
             } else {
                 console.error('Failed to load public books:', await res.text());
@@ -2188,7 +2184,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onToggleStackSelectionMode={toggleStackSelectionMode}
                     onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
                     onHyperRoboClick={openHyperRoboView}
-                    showMoreBtn={data.publicBooks && data.publicBooks.length > 0 && !showPublicSection}
+                    showMoreBtn={!showPublicSection}
                     onMoreClick={handleLoadPublicBooks}
                 />
             {/if}

@@ -47,6 +47,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     const pathname = event.url.pathname;
     const isProtectedRoute = pathname.startsWith('/workspace');
     const isApiRoute = pathname.startsWith('/api/') &&
+                       !pathname.startsWith('/api/public-books') &&
                        !pathname.startsWith('/api/paperobo/published-notification') &&
                        !pathname.startsWith('/api/paperobo/call-history') &&
                        !pathname.startsWith('/api/hypertv/scenario') &&
