@@ -152,6 +152,23 @@
             } else {
                 window.open(book.launchUrl, '_blank');
             }
+        } else if (book.sourceApp === 'hypertv' || book.source_app === 'hypertv') {
+            const session = page.data.session;
+            const isLocal = typeof window !== 'undefined' &&
+                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+            const targetUrl = isLocal
+                ? 'http://localhost:3500/hypercardtv/hypertv'
+                : 'https://www.tatetop.com/hypercardtv/hypertv';
+
+            const params = new URLSearchParams();
+            params.set('bookId', book.id);
+
+            let hash = '';
+            if (session) {
+                const tokenParams = `access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`;
+                hash = `#${tokenParams}`;
+            }
+            window.open(`${targetUrl}?${params.toString()}${hash}`, '_blank');
         } else {
             handleBookClick(book);
         }
