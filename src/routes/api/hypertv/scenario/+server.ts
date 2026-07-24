@@ -73,8 +73,8 @@ ${markdownContent}
             cover_image: null,
             theme_color: '#AFCBEB',
             markdown_content: markdown,
-            is_public: false,
-            published_at: null
+            is_public: true,
+            published_at: new Date().toISOString()
         };
 
         const { data: existing } = await supabase

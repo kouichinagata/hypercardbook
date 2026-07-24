@@ -158,7 +158,10 @@
                             title: cardTitle,
                             totalPages: 1,
                             pages: [cleanMarkdownText],
-                            currentPageIndex: 0
+                            location: 'content',
+                            viewMode: 'single',
+                            currentPageIndex: 0,
+                            visiblePageIndices: [0]
                         }
                     }, iframeOrigin);
                     console.log(`[HyperCard] Sent HCB_INIT_BOOK to iframe as a single-page card`);

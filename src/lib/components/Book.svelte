@@ -23,6 +23,7 @@
     let iframeSource: MessageEventSource | null = null;
     let iframeOrigin = '*';
     let pages = $state<string[]>([]);
+    type PapePageLocation = 'cover' | 'contents' | 'content' | 'back_cover';
 
     // Text to Speech states & methods
     let isSpeaking = $state(false);
@@ -141,22 +142,56 @@
         return pageIdx;
     }
 
+    function getPapePageState() {
+        const mode = viewMode === 'spread' ? 'spread' : 'single';
+
+        if (currentIndex === -1) {
+            return {
+                location: 'cover' as PapePageLocation,
+                viewMode: mode,
+                currentPageIndex: null,
+                visiblePageIndices: [] as number[]
+            };
+        }
+        if (hasToc && currentIndex === 0) {
+            return {
+                location: 'contents' as PapePageLocation,
+                viewMode: mode,
+                currentPageIndex: null,
+                visiblePageIndices: [] as number[]
+            };
+        }
+        if (hasBio && currentIndex === total) {
+            return {
+                location: 'back_cover' as PapePageLocation,
+                viewMode: mode,
+                currentPageIndex: null,
+                visiblePageIndices: [] as number[]
+            };
+        }
+
+        const currentPageIndex = getPlainPageIndex();
+        const spreadStart = currentPageIndex - (currentPageIndex % 2);
+        const visiblePageIndices = mode === 'spread'
+            ? [spreadStart, spreadStart + 1].filter((pageIndex) => pageIndex < pages.length)
+            : [currentPageIndex];
+
+        return {
+            location: 'content' as PapePageLocation,
+            viewMode: mode,
+            currentPageIndex,
+            visiblePageIndices
+        };
+    }
+
     // Helper to jump to a single-page index (plain index) matching the flat pages array
     function jumpToPlainPageIndex(plainIndex: number) {
-        if (plainIndex <= 0) {
-            currentIndex = hasToc ? 0 : -1;
-            currentSubPage = 0;
-            return;
-        }
+        if (!pages.length) return;
+
+        const boundedPlainIndex = Math.min(Math.max(Math.trunc(plainIndex), 0), pages.length - 1);
         
-        if (hasBio && plainIndex >= pages.length - 1) {
-            currentIndex = total;
-            currentSubPage = 0;
-            return;
-        }
-        
-        let dataIndex = Math.floor(plainIndex / 2);
-        let subPage = plainIndex % 2;
+        let dataIndex = Math.floor(boundedPlainIndex / 2);
+        let subPage = boundedPlainIndex % 2;
         let targetIdx = hasToc ? dataIndex + 1 : dataIndex;
         
         if (targetIdx > total) targetIdx = total;
@@ -171,19 +206,16 @@
         // Establish reactive dependency
         const _idx = currentIndex;
         const _sub = currentSubPage;
-        const currentIdx = getPlainPageIndex();
-        const currentSub = currentSubPage;
+        const _mode = viewMode;
+        const pageState = getPapePageState();
         
         untrack(() => {
             if (iframeSource) {
                 (iframeSource as any).postMessage({
                     type: 'HCB_PAGE_CHANGED',
-                    payload: {
-                        currentPageIndex: currentIdx,
-                        currentSubPage: currentSub
-                    }
+                    payload: pageState
                 }, iframeOrigin);
-                console.log('[HyperCardBook] Sent HCB_PAGE_CHANGED to iframe:', currentIdx);
+                console.log('[HyperCardBook] Sent HCB_PAGE_CHANGED to iframe:', pageState);
             }
         });
     });
@@ -1289,7 +1321,7 @@
                             title: title,
                             totalPages: pages.length,
                             pages: $state.snapshot(pages),
-                            currentPageIndex: getPlainPageIndex()
+                            ...getPapePageState()
                         }
                     }, iframeOrigin);
                     console.log(`[HyperCardBook] Sent HCB_INIT_BOOK to iframe with ${pages.length} pages`);
@@ -1298,12 +1330,12 @@
                 console.log('[HyperCardBook] Received PAPE_ACTION:', payload);
                 if (payload) {
                     if (payload.action === 'next_page') {
-                        jumpToPlainPageIndex(getPlainPageIndex() + 1);
+                        goNext();
                     } else if (payload.action === 'prev_page' || payload.action === 'previous_page') {
-                        jumpToPlainPageIndex(getPlainPageIndex() - 1);
+                        goPrev();
                     } else if (payload.action === 'go_to_page' || payload.action === 'jump_to_page') {
                         const targetIdx = Number(payload.pageIndex);
-                        if (!isNaN(targetIdx)) {
+                        if (Number.isInteger(targetIdx) && targetIdx >= 0 && targetIdx < pages.length) {
                             jumpToPlainPageIndex(targetIdx);
                         }
                     }
