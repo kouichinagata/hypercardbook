@@ -227,7 +227,7 @@
     let authorImage = $state('');
     let authorBio = $state('');
     let themeColor = $state('black');
-    let pageLayout = $state('standard'); // 'standard' | 'full'
+    let pageLayout = $state('standard'); // 'standard' | 'full' | 'fill'
     let parsedId = $state('');
     let bookId = $derived(id || parsedId);
     let spreads = $state<Array<{ title: string; leftMarkdown: string; rightMarkdown: string }>>([]);
@@ -1441,7 +1441,7 @@
             <!-- 見開き中身 -->
             <div class="book-content" style:opacity={isOpened ? 1 : 0}>
                 <!-- 左ページ -->
-                <div class="page-side" class:full-layout={pageLayout === 'full'} style:display={(currentIndex !== -1 && (viewMode === 'spread' || currentSubPage === 0)) ? 'flex' : 'none'}>
+                <div class="page-side" class:full-layout={pageLayout === 'full' || pageLayout === 'fill'} style:display={(currentIndex !== -1 && (viewMode === 'spread' || currentSubPage === 0)) ? 'flex' : 'none'}>
                     {#if hasBio && currentIndex === total}
                         <div class="image-container" id="imageArea" style:display="flex">
                             <img src={normalizePath(authorImage || 'author_avatar.png')} alt="Photo" style="width: auto !important; height: auto !important; max-width: 100% !important; max-height: 100% !important; border-radius: 50%; object-fit: cover; box-shadow: 0 6px 15px rgba(0,0,0,0.15);" />
@@ -1462,7 +1462,7 @@
                 </div>
 
                 <!-- 右ページ -->
-                <div class="page-side" class:full-layout={pageLayout === 'full'} style:display={(currentIndex !== -1 && (viewMode === 'spread' || currentSubPage === 1)) ? 'flex' : 'none'}>
+                <div class="page-side" class:full-layout={pageLayout === 'full' || pageLayout === 'fill'} style:display={(currentIndex !== -1 && (viewMode === 'spread' || currentSubPage === 1)) ? 'flex' : 'none'}>
                     {#if hasBio && currentIndex === total}
                         <div class="markdown-body" id="textArea" style:display="block">
                             {@html renderMarkdownOnly(authorBio)}

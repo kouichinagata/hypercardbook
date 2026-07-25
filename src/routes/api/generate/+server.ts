@@ -204,6 +204,16 @@ CRITICAL RULES:
 
 9. HYPERHOOKS:
    - For event hooks (\`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
+
+10. NANO BANANA 2 LITE GENERATED IMAGES:
+   - If the prompt contains a "### Generated Images (Nano Banana 2 Lite)" section, use every provided image URL exactly as written. Never replace, shorten, or fabricate these URLs.
+   - For one generated image, place it at the bottom of the most relevant content page unless the user requests another position.
+   - For two or more generated images:
+     - Add \`layout: fill\` to the YAML frontmatter.
+     - Create exactly one dedicated page per generated image.
+     - Each dedicated image page must contain only one Markdown image and no text.
+     - Separate every image page with the normal \`***\` page delimiter.
+     - Distribute the image pages naturally through the Book.
 `;
 
 const cardSystemInstruction = `
@@ -271,6 +281,10 @@ CRITICAL RULES:
 
   8. HYPERHOOKS:
     - For event hooks (\`on_open_stack\`, \`on_open_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
+
+  9. NANO BANANA 2 LITE GENERATED IMAGES:
+    - If the prompt contains a "### Generated Images (Nano Banana 2 Lite)" section, use the first provided image URL exactly as written.
+    - Place that image at the bottom of the card unless the user requests another position.
 
 `;
 
@@ -359,7 +373,17 @@ function handleGdriveMcpRequest(req: { jsonrpc: string; method: string; params: 
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
-        const { prompt, history = [], currentMarkdown = '', bookId, mode = 'book', currentCardIndex = -1, activePluginIds = [], webSearchEnabled = false } = await request.json();
+        const {
+            prompt,
+            history = [],
+            currentMarkdown = '',
+            bookId,
+            mode = 'book',
+            currentCardIndex = -1,
+            activePluginIds = [],
+            webSearchEnabled = false,
+            webSearchSource = 'workspace'
+        } = await request.json();
         const session = locals.session;
         const supabase = locals.supabase;
 
@@ -404,7 +428,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         // Plan-based feature gating
         const userPlan = userMetadata.plan || 'free';
         const isPaidPlan = ['standard', 'pro', 'enterprise'].includes(userPlan);
-        const useWebSearch = webSearchEnabled && isPaidPlan;
+        const isHomeHandoff = webSearchSource === 'home';
+        const useWebSearch = webSearchEnabled && (isPaidPlan || isHomeHandoff);
 
         let activeSystemInstruction = mode === 'card' ? cardSystemInstruction : systemInstruction;
 

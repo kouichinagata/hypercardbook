@@ -199,6 +199,7 @@
     // Web Search toggle
     let webSearchEnabled = $state(false);
     let imageGenEnabled = $state(false);
+    let featureSource = $state<'home' | 'workspace'>('workspace');
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
     );
@@ -219,6 +220,20 @@
         if (plan === 'standard') return '200MB';
         return '20MB';
     });
+
+    function requestedImageCount(promptText: string): number {
+        if (!isProPlan) return 1;
+		const match = promptText.match(/([1-4])\s*(?:枚|images?)/i);
+        return match ? Number(match[1]) : 1;
+    }
+
+    function imageReferenceUrls(promptText: string, attachedImages: AttachedFile[]): string[] {
+        const markdownUrls = Array.from(promptText.matchAll(/!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/g), (match) => match[1]);
+        return Array.from(new Set([
+            ...attachedImages.map((image) => image.url || '').filter(Boolean),
+            ...markdownUrls
+        ])).slice(0, 1);
+    }
 
     // Monaco Editor states
     let useMonaco = $state(false);
@@ -985,11 +1000,15 @@ ${markdown}
             finalPrompt += skillDirectives;
         }
 
+        const historyForApi = $state.snapshot(chatHistory);
+        const requestSource = featureSource;
+        const canUseImageGeneration = imageGenEnabled && (isPaidPlan || requestSource === 'home');
+        const canUseWebSearch = webSearchEnabled && (isPaidPlan || requestSource === 'home');
+        const imageCount = requestedImageCount(promptText);
+        const referenceImages = imageReferenceUrls(visiblePrompt, images);
+
         // Add user message to history
         chatHistory = [...chatHistory, { role: 'user', text: visiblePrompt }];
-        // Append temporary Thinking... AI response
-        chatHistory = [...chatHistory, { role: 'model', text: 'Thinking...' }];
-        const lastIndex = chatHistory.length - 1;
 
         currentInput = '';
         attachedFiles = [];
@@ -1001,10 +1020,11 @@ ${markdown}
         markdownHistory = [...markdownHistory, markdown];
 
         // Check if imageGenEnabled is active for image generation / modification
-        if (imageGenEnabled && isPaidPlan) {
+        if (canUseImageGeneration) {
+            const loadingIndex = chatHistory.length;
+            chatHistory = [...chatHistory, { role: 'model', text: '🏙️ Generating images with Nano Banana 2 Lite...' }];
+            scrollToBottom();
             try {
-                chatHistory[lastIndex] = { role: 'model', text: '🏙️ Generating images with NanoBanana Lite...' };
-                const count = isProPlan ? 4 : 1;
                 const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
                 const imgRes = await fetch('/api/generate-image', {
                     method: 'POST',
@@ -1012,17 +1032,42 @@ ${markdown}
                         'Content-Type': 'application/json',
                         ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
                     },
-                    body: JSON.stringify({ prompt: promptText, count, source: 'workspace' })
+                    body: JSON.stringify({
+                        prompt: promptText,
+                        count: imageCount,
+                        source: requestSource,
+                        aspectRatio: imageCount > 1 ? '2:3' : '1:1',
+                        referenceImages
+                    })
                 });
                 const imgData = await imgRes.json();
+                if (!imgRes.ok) {
+                    throw new Error(imgData.error || `Image generation failed (${imgRes.status})`);
+                }
                 if (imgData.success && imgData.images && imgData.images.length > 0) {
                     const generatedImgsMarkdown = imgData.images.map((img: any) => `![${img.name}](${img.url})`).join('\n');
-                    finalPrompt += `\n\n### Generated Images (NanoBanana Lite)\nPrioritize using and embedding these image URLs in the content/card:\n${generatedImgsMarkdown}\n`;
+                    finalPrompt += `\n\n### Generated Images (Nano Banana 2 Lite)\nUse these exact image URLs in the generated content:\n${generatedImgsMarkdown}\n`;
+                    chatHistory = chatHistory.map((message, index) => index === loadingIndex
+                        ? {
+                            role: 'model',
+                            text: `🏙️ **Nano Banana 2 Lite** — Generated ${imgData.images.length} image${imgData.images.length === 1 ? '' : 's'}:\n\n${generatedImgsMarkdown}`
+                        }
+                        : message
+                    );
                 }
             } catch (imgErr) {
                 console.error('[Workspace Image Gen Error]:', imgErr);
+                const message = imgErr instanceof Error ? imgErr.message : 'Image generation failed.';
+                chatHistory = chatHistory.map((item, index) => index === loadingIndex
+                    ? { role: 'model', text: `⚠️ ${message}` }
+                    : item
+                );
             }
         }
+
+        // Append temporary Thinking... AI response after image generation.
+        chatHistory = [...chatHistory, { role: 'model', text: 'Thinking...' }];
+        const lastIndex = chatHistory.length - 1;
 
         try {
             const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
@@ -1034,13 +1079,14 @@ ${markdown}
                 },
                 body: JSON.stringify({
                     prompt: finalPrompt,
-                    history: chatHistory.slice(0, -2), // Send previous history (excluding user message and Thinking...)
+                    history: historyForApi,
                     currentMarkdown: markdown,
                     bookId: bookUuid,
                     mode: mode,
                     currentCardIndex: currentCardIndex,
                     activePluginIds: $state.snapshot(activePluginIds),
-                    webSearchEnabled: webSearchEnabled && isPaidPlan
+                    webSearchEnabled: canUseWebSearch,
+                    webSearchSource: requestSource
                 })
             });
 
@@ -1175,6 +1221,13 @@ ${markdown}
                 chatHistory = chatHistory.slice(0, -1);
             }
         } finally {
+            if (requestSource === 'home') {
+                featureSource = 'workspace';
+                if (!isPaidPlan) {
+                    webSearchEnabled = false;
+                    imageGenEnabled = false;
+                }
+            }
             isGenerating = false;
             scrollToBottom();
         }
@@ -1217,14 +1270,18 @@ ${markdown}
                         sessionStorage.removeItem('workspace_init_prompt');
                     }
                     // Restore web search and image gen state from top page
+                    const storedFeatureSource = sessionStorage.getItem('workspace_feature_source');
+                    featureSource = storedFeatureSource === 'home' ? 'home' : 'workspace';
+                    sessionStorage.removeItem('workspace_feature_source');
+
                     const storedWebSearch = sessionStorage.getItem('workspace_web_search');
-                    if (storedWebSearch === 'true' && isPaidPlan) {
+                    if (storedWebSearch === 'true' && (isPaidPlan || featureSource === 'home')) {
                         webSearchEnabled = true;
                     }
                     sessionStorage.removeItem('workspace_web_search');
 
                     const storedImageGen = sessionStorage.getItem('workspace_image_gen');
-                    if (storedImageGen === 'true' && isPaidPlan) {
+                    if (storedImageGen === 'true' && (isPaidPlan || featureSource === 'home')) {
                         imageGenEnabled = true;
                     }
                     sessionStorage.removeItem('workspace_image_gen');
@@ -1662,6 +1719,26 @@ ${markdown}
         }
     }
 
+    function attachUploadedImageForEditing(e: MouseEvent, image: { name: string; url: string }) {
+        e.stopPropagation();
+        if (!isPaidPlan) {
+            alert('Image editing in the workspace requires Standard plan or above.');
+            return;
+        }
+        attachedFiles = [
+            ...attachedFiles,
+            {
+                id: crypto.randomUUID(),
+                type: 'image',
+                name: image.name,
+                url: image.url,
+                status: 'success'
+            }
+        ];
+        imageGenEnabled = true;
+        showMediaPanel = false;
+    }
+
 
 </script>
 
@@ -2028,6 +2105,14 @@ ${markdown}
                                         >
                                             <img src={img.url} alt={img.name} class="thumbnail-img" />
                                             <div class="thumbnail-actions">
+                                                <button
+                                                    class="thumbnail-action-btn"
+                                                    onclick={(e) => attachUploadedImageForEditing(e, img)}
+                                                    title="Use for AI image editing"
+                                                    aria-label="Use for AI image editing"
+                                                >
+                                                    🏙️
+                                                </button>
                                                 <button 
                                                     class="thumbnail-action-btn delete-btn" 
                                                     onclick={(e) => handleDeleteUploadedImage(e, img.name)}

@@ -434,6 +434,7 @@
             sessionStorage.setItem('workspace_init_prompt', finalPrompt);
             sessionStorage.setItem('workspace_web_search', String(webSearchEnabled));
             sessionStorage.setItem('workspace_image_gen', String(imageGenEnabled));
+            sessionStorage.setItem('workspace_feature_source', 'home');
         } catch (err) {
             console.error('Failed to store prompt in sessionStorage:', err);
         }
