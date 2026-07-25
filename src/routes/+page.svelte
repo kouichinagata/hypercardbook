@@ -35,6 +35,7 @@
 
     // Web Search toggle
     let webSearchEnabled = $state(false);
+    let imageGenEnabled = $state(false);
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
     );
@@ -201,6 +202,8 @@
     let showFullLangModal = $state(false);
     let langSearchQuery = $state('');
     let translatedCovers = $state<Record<string, { title: string; author: string }>>({});
+    let translationLanguageReady = $state(false);
+    const coverTranslationsInFlight = new Set<string>();
 
     // Quick access to top languages
     const QUICK_LANGUAGES = LANGUAGES.filter(l => ['en', 'ja', 'zh-CN', 'es', 'fr'].includes(l.code));
@@ -245,8 +248,8 @@
             }
         }
 
-        // Auto translate bookshelf covers on mount
-        translateBookshelfCovers();
+        // Visible covers are translated lazily by each Bookshelf.
+        translationLanguageReady = true;
 
         // Check launch_robo URL parameter and auto-launch if present
         const urlParams = new URLSearchParams(window.location.search);
@@ -282,7 +285,7 @@
             showOnboardingModal = false;
             currentLanguage = onboardingLanguage;
             localStorage.setItem('reader-lang', onboardingLanguage);
-            await translateBookshelfCovers();
+            translatedCovers = {};
             await invalidateAll();
         } catch (err: any) {
             console.error('Failed to save onboarding settings:', err);
@@ -292,6 +295,7 @@
 
     async function selectLanguage(lang: string) {
         currentLanguage = lang;
+        translatedCovers = {};
         localStorage.setItem('reader-lang', lang);
         showLangDropdown = false;
         if (data.session?.user) {
@@ -299,39 +303,39 @@
                 data: { language: lang }
             });
         }
-        await translateBookshelfCovers();
     }
 
-    async function translateBookshelfCovers() {
-        if (!data.books || data.books.length === 0) return;
-        
-        const targetLang = currentLanguage;
-        
-        for (const book of data.books) {
-            if (targetLang === 'ja') {
-                if (translatedCovers[book.id]) {
-                    delete translatedCovers[book.id];
-                }
-                continue;
-            }
-            
+    async function translateVisibleBookCover(book: any, targetLang: string) {
+        if (!book?.id || book.isMoreBtn || !targetLang) return;
+        if (targetLang === 'ja' || translatedCovers[book.id]) return;
+
+        const requestKey = `${book.id}:${targetLang}`;
+        if (coverTranslationsInFlight.has(requestKey)) return;
+        coverTranslationsInFlight.add(requestKey);
+
+        const applyTranslation = (translation: { title: string; author: string }) => {
+            if (currentLanguage !== targetLang) return;
+            translatedCovers[book.id] = translation;
+        };
+
+        try {
             const isUserBook = isUuid(book.id);
-            
+
             if (isUserBook) {
                 try {
-                    const { data: cached, error } = await supabase
+                    const { data: cached } = await supabase
                         .from('book_translations')
                         .select('title, author')
                         .eq('book_id', book.id)
                         .eq('language', targetLang)
                         .maybeSingle();
-                        
+
                     if (cached) {
-                        translatedCovers[book.id] = {
+                        applyTranslation({
                             title: cached.title,
                             author: cached.author
-                        };
-                        continue;
+                        });
+                        return;
                     }
                 } catch (err) {
                     console.error('Failed to fetch cover cache from DB:', err);
@@ -340,40 +344,41 @@
                 const cacheKey = `sample-cover-${book.id}-${targetLang}`;
                 const cached = localStorage.getItem(cacheKey);
                 if (cached) {
-                    translatedCovers[book.id] = JSON.parse(cached);
-                    continue;
+                    applyTranslation(JSON.parse(cached));
+                    return;
                 }
             }
-            
-            try {
-                const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
-                const res = await fetch('/api/translate-metadata', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
-                    },
-                    body: JSON.stringify({
-                        title: book.title,
-                        author: book.author || '',
-                        targetLanguage: targetLang
-                    })
-                });
-                if (res.ok) {
-                    const translated = await res.json();
-                    translatedCovers[book.id] = {
-                        title: translated.title,
-                        author: translated.author
-                    };
-                    
-                    if (!isUserBook) {
-                        const cacheKey = `sample-cover-${book.id}-${targetLang}`;
-                        localStorage.setItem(cacheKey, JSON.stringify(translatedCovers[book.id]));
-                    }
+
+            const userGeminiApiKey = localStorage.getItem('user_gemini_api_key') || '';
+            const res = await fetch('/api/translate-metadata', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
+                },
+                body: JSON.stringify({
+                    title: book.title,
+                    author: book.author || '',
+                    targetLanguage: targetLang
+                })
+            });
+            if (res.ok) {
+                const translated = await res.json();
+                const translation = {
+                    title: translated.title,
+                    author: translated.author
+                };
+                applyTranslation(translation);
+
+                if (!isUserBook) {
+                    const cacheKey = `sample-cover-${book.id}-${targetLang}`;
+                    localStorage.setItem(cacheKey, JSON.stringify(translation));
                 }
-            } catch (err) {
-                console.error('Failed to translate cover metadata:', err);
             }
+        } catch (err) {
+            console.error('Failed to translate cover metadata:', err);
+        } finally {
+            coverTranslationsInFlight.delete(requestKey);
         }
     }
 
@@ -427,7 +432,8 @@
         isSubmitting = true;
         try {
             sessionStorage.setItem('workspace_init_prompt', finalPrompt);
-            sessionStorage.setItem('workspace_web_search', String(webSearchEnabled && isPaidPlan));
+            sessionStorage.setItem('workspace_web_search', String(webSearchEnabled));
+            sessionStorage.setItem('workspace_image_gen', String(imageGenEnabled));
         } catch (err) {
             console.error('Failed to store prompt in sessionStorage:', err);
         }
@@ -1444,7 +1450,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         let targetUrl = 'https://paperobo.hypercardbook.org/ai';
         if (typeof window !== 'undefined') {
             if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                targetUrl = 'http://localhost:5180/ai';
+                targetUrl = 'http://127.0.0.1:5180/ai';
             }
             const session = data.session;
             let syncUrl = `${targetUrl}#sync_openai_api_key=${encodeURIComponent(userOpenAiApiKey)}`;
@@ -1497,8 +1503,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             if (updateError) throw updateError;
             
             currentLanguage = profileLanguage;
+            translatedCovers = {};
             localStorage.setItem('reader-lang', profileLanguage);
-            await translateBookshelfCovers();
             
             showSettingsModal = false;
             await invalidateAll();
@@ -1777,12 +1783,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     let isPromptCallOpen = $state(false);
 
     async function getFreeCallUrl() {
-        let base = 'https://paperobo.hypercardbook.org'; // Production URL
-        if (typeof window !== 'undefined') {
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                base = 'http://localhost:5180'; // Local development URL
-            }
-        }
+        const base = 'https://paperobo.hypercardbook.org';
         let url = `${base}/?public=hVSMUWrz69&iframe=1`;
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
@@ -2001,6 +2002,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
                 <div class="prompt-bottom-row">
                     <div class="prompt-bottom-left">
+                        <!-- 1. Attach Button -->
                         <button
                             type="button"
                             class="attach-trigger-btn"
@@ -2010,39 +2012,41 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                         >
                             ➕
                         </button>
-                        <!-- Web Search Toggle -->
+                        <!-- 2. Mode Toggle (Card / Book) -->
+                        <div class="mode-toggle-container">
+                            <label class="mode-toggle-label">
+                                <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
+                                <span>Card</span>
+                            </label>
+                            <label class="mode-toggle-label">
+                                <input type="radio" name="mode" value="book" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
+                                <span>Book</span>
+                            </label>
+                        </div>
+                        <!-- 3. Web Search Toggle (Enabled for Free on Home) -->
                         <button
                             type="button"
                             class="web-search-btn"
-                            class:active={webSearchEnabled && isPaidPlan}
-                            disabled={!isPaidPlan || !data.currentUserId || isSubmitting}
+                            class:active={webSearchEnabled}
+                            disabled={!data.currentUserId || isSubmitting}
                             onclick={() => { webSearchEnabled = !webSearchEnabled; }}
-                            title={!isPaidPlan ? 'Available on Standard plan or above' : (webSearchEnabled ? 'Web Search: ON' : 'Web Search: OFF')}
+                            title={webSearchEnabled ? 'Web Search: ON' : 'Web Search: OFF'}
                             aria-label="Toggle Web Search"
                         >
                             🔍 Web
                         </button>
-                        <div class="toggle-and-split-wrapper">
-                            <div class="mode-toggle-container">
-                                <label class="mode-toggle-label">
-                                    <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
-                                    <span>Card</span>
-                                </label>
-                                <label class="mode-toggle-label">
-                                    <input type="radio" name="mode" value="book" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
-                                    <span>Book</span>
-                                </label>
-                            </div>
-                            <!-- 📱 Add mobile button -->
-                            <button
-                                type="button"
-                                class="split-view-trigger-btn"
-                                onclick={() => isPromptCallOpen = true}
-                                title="Open Split View with PapeRobo"
-                            >
-                                📱
-                            </button>
-                        </div>
+                        <!-- 4. 🏙️ Image Generation Toggle (Enabled for Free on Home) -->
+                        <button
+                            type="button"
+                            class="image-gen-btn"
+                            class:active={imageGenEnabled}
+                            disabled={!data.currentUserId || isSubmitting}
+                            onclick={() => { imageGenEnabled = !imageGenEnabled; }}
+                            title={imageGenEnabled ? 'Image Generation: ON (NanoBanana Lite)' : 'Image Generation: OFF'}
+                            aria-label="Toggle Image Generation"
+                        >
+                            🏙️ Image
+                        </button>
                     </div>
 
                     <button type="submit" class="submit-btn" disabled={!data.currentUserId || isSubmitting || (!prompt.trim() && attachedFiles.length === 0)}>
@@ -2054,9 +2058,19 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     </button>
                 </div>
             </div>
-            <!-- Plan Mode Display -->
-            <div class="prompt-plan-mode">
-                Plan mode: {currentPlan === 'enterprise' ? 'Enterprise' : currentPlan === 'pro' ? 'Pro' : currentPlan === 'standard' ? 'Standard' : 'Free'}
+            <!-- Plan Mode Display with 📱 PapeRobo button on the right end -->
+            <div class="prompt-plan-mode" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; margin-bottom: 0;">
+                <span>
+                    Plan mode: {currentPlan === 'enterprise' ? 'Enterprise' : currentPlan === 'pro' ? 'Pro' : currentPlan === 'standard' ? 'Standard' : 'Free'}
+                </span>
+                <button
+                    type="button"
+                    class="split-view-trigger-btn"
+                    onclick={() => isPromptCallOpen = true}
+                    title="Open Split View with PapeRobo"
+                >
+                    📱
+                </button>
             </div>
         </form>
     </div>
@@ -2073,6 +2087,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             {:else}
                 <Bookshelf
                     books={displayedBooksLocalized}
+                    translationLanguage={translationLanguageReady ? currentLanguage : ''}
+                    onBookVisible={translateVisibleBookCover}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -2104,6 +2120,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 </div>
                 <Bookshelf
                     books={quarksChoiceListLocalized}
+                    translationLanguage={translationLanguageReady ? currentLanguage : ''}
+                    onBookVisible={translateVisibleBookCover}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     isPublicShelf={true}
@@ -2136,6 +2154,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 </div>
                 <Bookshelf
                     books={myBooksListLocalized}
+                    translationLanguage={translationLanguageReady ? currentLanguage : ''}
+                    onBookVisible={translateVisibleBookCover}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -2165,6 +2185,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 </div>
                 <Bookshelf
                     books={sampleBooksListLocalized}
+                    translationLanguage={translationLanguageReady ? currentLanguage : ''}
+                    onBookVisible={translateVisibleBookCover}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -2205,6 +2227,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 </div>
                 <Bookshelf
                     books={publicBooksListLocalized}
+                    translationLanguage={translationLanguageReady ? currentLanguage : ''}
+                    onBookVisible={translateVisibleBookCover}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     isPublicShelf={true}
@@ -4418,6 +4442,33 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         border-color: rgba(66, 133, 244, 0.55);
         color: #8ab4f8;
     }
+
+    /* 🏙️ Image Generation Button */
+    .image-gen-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        color: rgba(255, 255, 255, 0.55);
+        cursor: pointer;
+        transition: background 0.18s, border-color 0.18s, color 0.18s;
+        white-space: nowrap;
+    }
+    .image-gen-btn:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.13);
+        color: rgba(255, 255, 255, 0.85);
+    }
+    .image-gen-btn.active {
+        background: rgba(168, 85, 247, 0.22);
+        border-color: rgba(168, 85, 247, 0.55);
+        color: #c084fc;
+    }
+
     .web-search-btn.active:hover:not(.disabled-plan) {
         background: rgba(66, 133, 244, 0.32);
     }

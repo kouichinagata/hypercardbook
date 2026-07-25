@@ -32,10 +32,13 @@
         isHyperRoboSelection = false,
         selectedHyperRoboBookIds = [],
         onToggleHyperRoboSelectionMode = null,
-        onHyperRoboClick = null
+        onHyperRoboClick = null,
+        translationLanguage = '',
+        onBookVisible = null
     } = $props();
 
     let displayBooks = $derived(showMoreBtn ? [...books, { id: 'more-btn-virtual', isMoreBtn: true, title: 'more…' }] : books);
+    let visibleBooks = $state<Record<string, any>>({});
 
     let measureElements = $state<HTMLDivElement[]>([]);
     let shelfRows = $state<any[][]>([]);
@@ -95,6 +98,52 @@
             });
         }
     });
+
+    $effect(() => {
+        const language = translationLanguage;
+        const booksInView = Object.values(visibleBooks);
+        if (!language || !onBookVisible) return;
+        booksInView.forEach((book) => onBookVisible(book, language));
+    });
+
+    function observeBookVisibility(node: HTMLElement, initialBook: any) {
+        let book = initialBook;
+        let isVisible = false;
+
+        const removeVisibleBook = (bookId: string) => {
+            if (!(bookId in visibleBooks)) return;
+            const { [bookId]: _, ...remaining } = visibleBooks;
+            visibleBooks = remaining;
+        };
+
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                isVisible = entry.isIntersecting;
+                if (isVisible && !book.isMoreBtn) {
+                    visibleBooks = { ...visibleBooks, [book.id]: book };
+                } else {
+                    removeVisibleBook(book.id);
+                }
+            },
+            { threshold: 0.01 }
+        );
+        observer.observe(node);
+
+        return {
+            update(nextBook: any) {
+                const previousId = book.id;
+                book = nextBook;
+                if (previousId !== book.id) removeVisibleBook(previousId);
+                if (isVisible && !book.isMoreBtn) {
+                    visibleBooks = { ...visibleBooks, [book.id]: book };
+                }
+            },
+            destroy() {
+                observer.disconnect();
+                removeVisibleBook(book.id);
+            }
+        };
+    }
 
     function normalizePath(url: string): string {
         if (!url) return '';
@@ -180,7 +229,7 @@
 
         if (typeof window !== 'undefined') {
             if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                targetUrl = 'http://localhost:5180/ai'; // Local development URL
+                targetUrl = 'http://127.0.0.1:5180/ai'; // Local development URL
             }
         }
 
@@ -309,7 +358,7 @@
         <div class="shelf-row">
             <div class="shelf-books-area">
                 {#each rowBooks as book (book.id)}
-                    <div class="book-item-wrapper">
+                    <div class="book-item-wrapper" use:observeBookVisibility={book}>
                         {#if book.isMoreBtn}
                             <div 
                                 class="book-item is-more-btn" 

@@ -198,6 +198,7 @@
 
     // Web Search toggle
     let webSearchEnabled = $state(false);
+    let imageGenEnabled = $state(false);
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
     );
@@ -999,6 +1000,30 @@ ${markdown}
         // Backup current book state before AI modifications
         markdownHistory = [...markdownHistory, markdown];
 
+        // Check if imageGenEnabled is active for image generation / modification
+        if (imageGenEnabled && isPaidPlan) {
+            try {
+                chatHistory[lastIndex] = { role: 'model', text: '🏙️ Generating images with NanoBanana Lite...' };
+                const count = isProPlan ? 4 : 1;
+                const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
+                const imgRes = await fetch('/api/generate-image', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
+                    },
+                    body: JSON.stringify({ prompt: promptText, count, source: 'workspace' })
+                });
+                const imgData = await imgRes.json();
+                if (imgData.success && imgData.images && imgData.images.length > 0) {
+                    const generatedImgsMarkdown = imgData.images.map((img: any) => `![${img.name}](${img.url})`).join('\n');
+                    finalPrompt += `\n\n### Generated Images (NanoBanana Lite)\nPrioritize using and embedding these image URLs in the content/card:\n${generatedImgsMarkdown}\n`;
+                }
+            } catch (imgErr) {
+                console.error('[Workspace Image Gen Error]:', imgErr);
+            }
+        }
+
         try {
             const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
             const response = await fetch('/api/generate', {
@@ -1191,12 +1216,18 @@ ${markdown}
                     if (initPrompt) {
                         sessionStorage.removeItem('workspace_init_prompt');
                     }
-                    // Restore web search state from top page
+                    // Restore web search and image gen state from top page
                     const storedWebSearch = sessionStorage.getItem('workspace_web_search');
                     if (storedWebSearch === 'true' && isPaidPlan) {
                         webSearchEnabled = true;
                     }
                     sessionStorage.removeItem('workspace_web_search');
+
+                    const storedImageGen = sessionStorage.getItem('workspace_image_gen');
+                    if (storedImageGen === 'true' && isPaidPlan) {
+                        imageGenEnabled = true;
+                    }
+                    sessionStorage.removeItem('workspace_image_gen');
                 } catch (err) {
                     console.error('Failed to read prompt from sessionStorage:', err);
                 }
@@ -1806,17 +1837,31 @@ ${markdown}
                                 >
                                     ＋
                                 </button>
-                                <!-- Web Search Toggle -->
+                                <!-- Web Search Toggle (Standard plan or above in workspace) -->
                                 <button
                                     type="button"
                                     class="web-search-btn"
                                     class:active={webSearchEnabled && isPaidPlan}
+                                    class:disabled-plan={!isPaidPlan}
                                     disabled={!isPaidPlan || !data.session?.user || isGenerating}
                                     onclick={() => { webSearchEnabled = !webSearchEnabled; }}
                                     title={!isPaidPlan ? 'Available on Standard plan or above' : (webSearchEnabled ? 'Web Search: ON' : 'Web Search: OFF')}
                                     aria-label="Toggle Web Search"
                                 >
                                     🔍 Web
+                                </button>
+                                <!-- 🏙️ Image Generation Toggle (Standard plan or above in workspace) -->
+                                <button
+                                    type="button"
+                                    class="image-gen-btn"
+                                    class:active={imageGenEnabled && isPaidPlan}
+                                    class:disabled-plan={!isPaidPlan}
+                                    disabled={!isPaidPlan || !data.session?.user || isGenerating}
+                                    onclick={() => { imageGenEnabled = !imageGenEnabled; }}
+                                    title={!isPaidPlan ? 'Available on Standard plan or above' : (imageGenEnabled ? 'Image Generation: ON (NanoBanana Lite)' : 'Image Generation: OFF')}
+                                    aria-label="Toggle Image Generation"
+                                >
+                                    🏙️ Image
                                 </button>
                             </div>
                             <button 
@@ -3189,6 +3234,36 @@ ${markdown}
         background: rgba(66, 133, 244, 0.32);
     }
     .web-search-btn.disabled-plan {
+        opacity: 0.35;
+        cursor: not-allowed;
+    }
+
+    /* 🏙️ Image Generation Button (Workspace) */
+    .image-gen-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        color: rgba(255, 255, 255, 0.55);
+        cursor: pointer;
+        transition: background 0.18s, border-color 0.18s, color 0.18s;
+        white-space: nowrap;
+    }
+    .image-gen-btn:hover:not(.disabled-plan):not(:disabled) {
+        background: rgba(255, 255, 255, 0.13);
+        color: rgba(255, 255, 255, 0.85);
+    }
+    .image-gen-btn.active {
+        background: rgba(168, 85, 247, 0.22);
+        border-color: rgba(168, 85, 247, 0.55);
+        color: #c084fc;
+    }
+    .image-gen-btn.disabled-plan {
         opacity: 0.35;
         cursor: not-allowed;
     }

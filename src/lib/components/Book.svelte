@@ -227,6 +227,7 @@
     let authorImage = $state('');
     let authorBio = $state('');
     let themeColor = $state('black');
+    let pageLayout = $state('standard'); // 'standard' | 'full'
     let parsedId = $state('');
     let bookId = $derived(id || parsedId);
     let spreads = $state<Array<{ title: string; leftMarkdown: string; rightMarkdown: string }>>([]);
@@ -714,6 +715,7 @@
         let parsedAuthorImage = '';
         let parsedAuthorBio = '';
         let parsedThemeColor = 'black';
+        let parsedPageLayout = 'standard';
         let parsedSpreads: typeof spreads = [];
         let parsedUserStyles = '';
 
@@ -735,6 +737,7 @@
                     if (k === 'cover_image') parsedCoverImage = normalizePath(v);
                     if (k === 'author_image') parsedAuthorImage = normalizePath(v);
                     if (k === 'theme_color') parsedThemeColor = v;
+                    if (k === 'layout' || k === 'mode' || k === 'page_mode') parsedPageLayout = v.toLowerCase();
                     
                     // Single-line hooks extraction (e.g. on_open_card: goCard(3))
                     if (k.startsWith('on_') && !v.startsWith('|')) {
@@ -856,6 +859,7 @@
         authorImage = parsedAuthorImage;
         authorBio = parsedAuthorBio;
         themeColor = parsedThemeColor;
+        pageLayout = parsedPageLayout;
         spreads = parsedSpreads;
         parsedId = parsedIdLocal;
         bookmarkHtml = parsedBookmarkHtml;
@@ -1437,7 +1441,7 @@
             <!-- 見開き中身 -->
             <div class="book-content" style:opacity={isOpened ? 1 : 0}>
                 <!-- 左ページ -->
-                <div class="page-side" style:display={(currentIndex !== -1 && (viewMode === 'spread' || currentSubPage === 0)) ? 'flex' : 'none'}>
+                <div class="page-side" class:full-layout={pageLayout === 'full'} style:display={(currentIndex !== -1 && (viewMode === 'spread' || currentSubPage === 0)) ? 'flex' : 'none'}>
                     {#if hasBio && currentIndex === total}
                         <div class="image-container" id="imageArea" style:display="flex">
                             <img src={normalizePath(authorImage || 'author_avatar.png')} alt="Photo" style="width: auto !important; height: auto !important; max-width: 100% !important; max-height: 100% !important; border-radius: 50%; object-fit: cover; box-shadow: 0 6px 15px rgba(0,0,0,0.15);" />
@@ -1458,7 +1462,7 @@
                 </div>
 
                 <!-- 右ページ -->
-                <div class="page-side" style:display={(currentIndex !== -1 && (viewMode === 'spread' || currentSubPage === 1)) ? 'flex' : 'none'}>
+                <div class="page-side" class:full-layout={pageLayout === 'full'} style:display={(currentIndex !== -1 && (viewMode === 'spread' || currentSubPage === 1)) ? 'flex' : 'none'}>
                     {#if hasBio && currentIndex === total}
                         <div class="markdown-body" id="textArea" style:display="block">
                             {@html renderMarkdownOnly(authorBio)}
@@ -1725,6 +1729,43 @@
     }
     .book-workspace[data-theme="dark"] .markdown-body :global(img) {
         box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+
+    /* --- Full Layout Mode --- */
+    .page-side.full-layout {
+        padding: 0;
+    }
+    .page-side.full-layout .markdown-body {
+        padding: 0;
+        max-height: 100%;
+        height: 100%;
+        width: 100%;
+    }
+    .page-side.full-layout .markdown-body :global(img) {
+        max-width: 100%;
+        max-height: 100%;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 0;
+        margin: 0;
+        box-shadow: none;
+    }
+    .page-side.full-layout .image-container {
+        max-width: 100%;
+        width: 100%;
+        height: 100%;
+        aspect-ratio: auto;
+        border-radius: 0;
+        box-shadow: none;
+    }
+    .page-side.full-layout .page-number {
+        background: rgba(0, 0, 0, 0.4);
+        color: #fff;
+        padding: 2px 8px;
+        border-radius: 10px;
+        opacity: 0.8;
+        z-index: 5;
     }
 
     /* --- Left Page Flexibility --- */
