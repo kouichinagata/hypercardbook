@@ -38,7 +38,7 @@
     } = $props();
 
     let displayBooks = $derived(showMoreBtn ? [...books, { id: 'more-btn-virtual', isMoreBtn: true, title: 'more…' }] : books);
-    let visibleBooks = $state<Record<string, any>>({});
+    const visibleBooks = new Map<string, any>();
 
     let measureElements = $state<HTMLDivElement[]>([]);
     let shelfRows = $state<any[][]>([]);
@@ -101,9 +101,8 @@
 
     $effect(() => {
         const language = translationLanguage;
-        const booksInView = Object.values(visibleBooks);
         if (!language || !onBookVisible) return;
-        booksInView.forEach((book) => onBookVisible(book, language));
+        visibleBooks.forEach((book) => onBookVisible(book, language));
     });
 
     function observeBookVisibility(node: HTMLElement, initialBook: any) {
@@ -111,16 +110,21 @@
         let isVisible = false;
 
         const removeVisibleBook = (bookId: string) => {
-            if (!(bookId in visibleBooks)) return;
-            const { [bookId]: _, ...remaining } = visibleBooks;
-            visibleBooks = remaining;
+            visibleBooks.delete(bookId);
+        };
+
+        const addVisibleBook = (visibleBook: any) => {
+            visibleBooks.set(visibleBook.id, visibleBook);
+            if (translationLanguage && onBookVisible) {
+                onBookVisible(visibleBook, translationLanguage);
+            }
         };
 
         const observer = new IntersectionObserver(
             ([entry]) => {
                 isVisible = entry.isIntersecting;
                 if (isVisible && !book.isMoreBtn) {
-                    visibleBooks = { ...visibleBooks, [book.id]: book };
+                    addVisibleBook(book);
                 } else {
                     removeVisibleBook(book.id);
                 }
@@ -135,7 +139,7 @@
                 book = nextBook;
                 if (previousId !== book.id) removeVisibleBook(previousId);
                 if (isVisible && !book.isMoreBtn) {
-                    visibleBooks = { ...visibleBooks, [book.id]: book };
+                    addVisibleBook(book);
                 }
             },
             destroy() {

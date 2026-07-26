@@ -251,6 +251,13 @@
         // Visible covers are translated lazily by each Bookshelf.
         translationLanguageReady = true;
 
+        // Refresh the bookshelf after returning from an editor tab so saved,
+        // renamed, recolored, published, or deleted books are shown immediately.
+        const handleWindowFocus = () => {
+            invalidateAll();
+        };
+        window.addEventListener('focus', handleWindowFocus);
+
         // Check launch_robo URL parameter and auto-launch if present
         const urlParams = new URLSearchParams(window.location.search);
         const launchRoboId = urlParams.get('launch_robo');
@@ -267,6 +274,9 @@
         // Subscribe to realtime changes on the books table to auto-refresh bookshelf
         // (Removed to prevent high database egress from auto-refreshing markdown content)
 
+        return () => {
+            window.removeEventListener('focus', handleWindowFocus);
+        };
     });
 
     async function saveOnboarding() {
