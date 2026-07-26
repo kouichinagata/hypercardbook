@@ -1461,7 +1461,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         let targetUrl = 'https://paperobo.hypercardbook.org/ai';
         if (typeof window !== 'undefined') {
             if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                targetUrl = 'http://127.0.0.1:5180/ai';
+                targetUrl = 'http://localhost:5180/ai';
             }
             const session = data.session;
             let syncUrl = `${targetUrl}#sync_openai_api_key=${encodeURIComponent(userOpenAiApiKey)}`;
