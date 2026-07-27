@@ -253,15 +253,10 @@
         script.src = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js";
         script.onload = () => {
             const amdRequire = (window as any).require as any;
-            const amdDefine = (window as any).define as any;
 
             if (amdRequire) {
                 amdRequire.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
                 amdRequire(['vs/editor/editor.main'], () => {
-                    // Hide global AMD 'define' to prevent breaking UMD libraries like 'marked'
-                    if ((window as any).define === amdDefine) {
-                        (window as any).define = undefined;
-                    }
                     createMonacoInstance();
                 });
             }
@@ -279,7 +274,7 @@
         monacoEditor = (window as any).monaco.editor.create(monacoContainerEl, {
             value: markdown,
             language: 'markdown',
-            theme: 'vs-dark',
+            theme: 'hc-black',
             lineNumbers: 'on',
             automaticLayout: true,
             readOnly: !data.session?.user,

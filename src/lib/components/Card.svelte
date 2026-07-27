@@ -85,9 +85,15 @@
             styleEl.id = 'card-dynamic-styles';
             document.head.appendChild(styleEl);
         }
-        styleEl.textContent = cardUserStyles;
-        console.log('[Card.svelte style element] Applied styles to #card-dynamic-styles, length:', cardUserStyles.length);
-        
+        // In embedded contexts (workspace, home modal, iframe embed) the host page owns
+        // <body>/<html>, so rewrite those selectors to the card's own container to avoid
+        // leaking author-provided CSS (e.g. `body { padding: 40px }`) onto the host layout.
+        const cssToApply = isEmbed
+            ? cardUserStyles.replace(/(^|[\s,{}])(html|body)(?=[\s,{.:#\[]|$)/gi, '$1.card-reader-container')
+            : cardUserStyles;
+        styleEl.textContent = cssToApply;
+        console.log('[Card.svelte style element] Applied styles to #card-dynamic-styles, length:', cssToApply.length);
+
         return () => {
             const el = document.getElementById('card-dynamic-styles');
             if (el) el.remove();
@@ -699,7 +705,7 @@
     .card-webview-frame.embed-mode {
         box-shadow: none;
         max-width: 100%;
-        padding: 20px;
+        padding: 0;
         overflow: visible;
         margin: 0;
         border-radius: 0;
