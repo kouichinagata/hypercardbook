@@ -686,8 +686,12 @@
     /* Embed / Workspace Preview Adjustments */
     .card-reader-container.embed-mode {
         background-color: transparent !important;
-        height: auto;
-        width: auto;
+        height: auto !important;
+        width: auto !important;
+        max-width: none !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
         overflow: visible;
         display: block;
     }
