@@ -709,7 +709,7 @@
     .card-webview-frame.embed-mode {
         box-shadow: none;
         max-width: 100%;
-        padding: 0;
+        padding: 20px;
         overflow: visible;
         margin: 0;
         border-radius: 0;
