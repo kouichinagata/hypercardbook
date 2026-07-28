@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
 import { getActiveGeminiApiKey } from '$lib/server/plan';
+import { biographySlug, upsertBiographySection } from '$lib/server/biography';
 import fs from 'fs';
 import path from 'path';
 
@@ -473,6 +474,27 @@ The user has not enabled a usable author profile. Do NOT include author_bio or a
             activeSystemInstruction += `\n\nCUSTOM PROMPT GUIDELINES:\nFollow these custom prompt guidelines for style, formatting, and content creation:\n"""\n${custompromptMd.trim()}\n"""`;
         }
 
+        // Long-term memory: the user's Biography book, gradually filled in across conversations.
+        const { data: biographyRow } = await supabase
+            .from('books')
+            .select('markdown_content')
+            .eq('user_id', session.user.id)
+            .eq('slug', biographySlug(session.user.id))
+            .maybeSingle();
+        const biographyMarkdown = biographyRow?.markdown_content || '';
+
+        activeSystemInstruction += `\n\nLONG-TERM MEMORY (BIOGRAPHY):
+- Below is everything currently known about this user, written up as an evolving biography.
+- If, and only if, it fits naturally into the current conversation, you MAY ask ONE small, soft biographical question to fill a gap (birthplace, upbringing, career, hobbies, personality, present life, etc.). Never ask more than one such question per turn, and never make it feel like an interrogation or a form.
+- Whenever the user shares any personal/biographical detail — whether in answer to your question or volunteered on their own — you MUST call the 'update_biography' tool to record it, written in third-person narrative biography style (like a published biography), in the most fitting section. Merge with what's already there rather than contradicting it.
+- NEVER fabricate or guess biographical details. Only record what the user actually said.
+- This is a background task alongside the user's actual request; do not let it derail or dominate your main response.
+
+CURRENT BIOGRAPHY:
+"""
+${biographyMarkdown.trim() || '(empty - nothing known yet)'}
+"""`;
+
         const isProPlan = ['pro', 'enterprise'].includes(userPlan);
         const allowedActivePluginIds = isProPlan ? activePluginIds : ['hypercard-hook'];
 
@@ -511,6 +533,25 @@ The user has not enabled a usable author profile. Do NOT include author_bio or a
 
                     for (let turn = 0; turn < 10; turn++) {
                         const toolDeclarations = [];
+
+                        toolDeclarations.push({
+                            name: 'update_biography',
+                            description: 'Record a personal/biographical detail the user shared into their long-term-memory Biography book. Merge with existing content in that section rather than overwriting unrelated facts.',
+                            parameters: {
+                                type: 'OBJECT',
+                                properties: {
+                                    section: {
+                                        type: 'STRING',
+                                        description: 'A short section label, e.g. "生い立ち", "学生時代", "仕事・キャリア", "趣味・人柄", "現在", or a new freeform label if none fit.'
+                                    },
+                                    content: {
+                                        type: 'STRING',
+                                        description: 'The full narrative markdown content for that section, written in third-person biography style, including any previously known facts merged in.'
+                                    }
+                                },
+                                required: ['section', 'content']
+                            }
+                        });
 
                         if (mode === 'book') {
                             toolDeclarations.push({
@@ -655,6 +696,39 @@ The user has not enabled a usable author profile. Do NOT include author_bio or a
                                     updatedMarkdown = applyPageEdit(updatedMarkdown, pageIdx, act, newCont);
                                     lastPageEdit = { page_index: pageIdx, action: act, new_content: newCont };
                                     resultData = { success: true, message: `Page ${pageIdx} successfully modified.` };
+                                } else if (fc.name === 'update_biography') {
+                                    const section = String(fc.args?.section || '').trim();
+                                    const bioContent = String(fc.args?.content || '').trim();
+
+                                    if (!section || !bioContent) {
+                                        resultData = { success: false, error: 'section and content are required.' };
+                                    } else {
+                                        const slug = biographySlug(session.user.id);
+                                        const { data: currentBio, error: fetchBioError } = await supabase
+                                            .from('books')
+                                            .select('id, markdown_content')
+                                            .eq('user_id', session.user.id)
+                                            .eq('slug', slug)
+                                            .maybeSingle();
+
+                                        if (fetchBioError || !currentBio) {
+                                            resultData = { success: false, error: 'Biography book not found.' };
+                                        } else {
+                                            const newBioMarkdown = upsertBiographySection(
+                                                currentBio.markdown_content || '',
+                                                section,
+                                                bioContent
+                                            );
+                                            const { error: updateBioError } = await supabase
+                                                .from('books')
+                                                .update({ markdown_content: newBioMarkdown })
+                                                .eq('id', currentBio.id);
+
+                                            resultData = updateBioError
+                                                ? { success: false, error: updateBioError.message }
+                                                : { success: true, message: `Biography section "${section}" updated.` };
+                                        }
+                                    }
                                 } else if (fc.name === 'gdrive_search_files') {
                                     const queryArg = fc.args?.query || '';
                                     const jsonRpcResponse = handleGdriveMcpRequest({

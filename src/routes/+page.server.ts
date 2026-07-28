@@ -1,4 +1,5 @@
 import type { PageServerLoad } from './$types';
+import { ensureBiographyBook } from '$lib/server/biography';
 
 export const load: PageServerLoad = async ({ locals, fetch }) => {
     const supabase = locals.supabase;
@@ -8,6 +9,9 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
 
     // Query books from Supabase only if the user is logged in (session exists)
     if (session?.user?.id) {
+        // 新規/既存ユーザー問わず、Biography Bookが無ければここで作成する(冪等・ベストエフォート)
+        await ensureBiographyBook(supabase, session.user.id, session.user.user_metadata || {});
+
         const { data: books, error } = await supabase
             .from('books')
             .select('id, slug, title, author, cover_image, theme_color, user_id, markdown_content, updated_at')

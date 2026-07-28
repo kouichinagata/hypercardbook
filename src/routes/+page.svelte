@@ -4544,6 +4544,24 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         border-color: rgba(66, 133, 244, 0.4);
         color: #1a73e8;
     }
+    .landing-container[data-theme="light"] .image-gen-btn {
+        background: rgba(0, 0, 0, 0.05);
+        border-color: rgba(0, 0, 0, 0.12);
+        color: rgba(0, 0, 0, 0.55);
+    }
+    .landing-container[data-theme="light"] .image-gen-btn:hover:not(:disabled) {
+        background: rgba(0, 0, 0, 0.09);
+        color: rgba(0, 0, 0, 0.78);
+    }
+    .landing-container[data-theme="light"] .image-gen-btn.active {
+        background: rgba(168, 85, 247, 0.12);
+        border-color: rgba(126, 34, 206, 0.4);
+        color: #7e22ce;
+    }
+    .landing-container[data-theme="light"] .image-gen-btn.active:hover:not(:disabled) {
+        background: rgba(168, 85, 247, 0.18);
+        color: #6b21a8;
+    }
 
     /* Attached files preview bar */
     .attached-files-preview-bar {
