@@ -216,8 +216,7 @@ function validatePayload(payload: PapeRoboCallHistoryPayload):
 				voice: stringValue(payload.agent?.voice),
 				launchUrl: stringValue(payload.agent?.launchUrl)
 			},
-			transcript,
-			rawPayload: payload
+			transcript
 		}
 	};
 }
@@ -254,7 +253,6 @@ type NormalizedPayload = {
 		at: string;
 		source: string;
 	}>;
-	rawPayload: PapeRoboCallHistoryPayload;
 };
 
 function buildInitialBookMarkdown() {
@@ -316,10 +314,8 @@ function buildCallPage(payload: NormalizedPayload) {
 	const transcript = payload.transcript
 		.map((entry) => `**${escapeMarkdown(entry.speakerName)}**: ${escapeMarkdown(entry.text)}`)
 		.join('\n\n');
-	const rawPayload = Buffer.from(JSON.stringify(payload.rawPayload)).toString('base64');
 
 	return `<!-- paperobo_call_id: ${payload.call.callId} -->
-<!-- paperobo_payload_base64: ${rawPayload} -->
 
 # ${escapeMarkdown(title)}
 
