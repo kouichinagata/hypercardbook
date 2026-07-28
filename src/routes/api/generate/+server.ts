@@ -424,6 +424,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const custompromptMd = userMetadata.customprompt_md || '';
         const authorBio = userMetadata.author_bio || '';
         const authorName = userMetadata.nickname || userMetadata.full_name || 'Anonymous';
+        const authorImage = userMetadata.avatar_url || userMetadata.picture || '';
+        const useAuthorBioInBook = userMetadata.use_author_bio_in_book
+            ?? Boolean(authorBio.trim());
 
         // Plan-based feature gating
         const userPlan = userMetadata.plan || 'free';
@@ -435,12 +438,24 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
         activeSystemInstruction += `\n\nAUTHOR INFO:\n- The author of this book/card is strictly "${authorName}". You MUST populate the "author: ${authorName}" field in the YAML frontmatter.`;
 
-        // Strict rule for author biography: Do not create biography pages if empty, and prohibit inventing dummy data.
+        // A book biography is opt-in. Book.svelte renders it as the final spread
+        // whenever author_bio is present in the generated YAML frontmatter.
         if (mode === 'book') {
-            if (authorBio.trim()) {
-                activeSystemInstruction += `\n\nAUTHOR BIOGRAPHY INFO:\nUse this author biography if the book includes or requests an author biography section/page:\n"""\n${authorBio.trim()}\n"""`;
+            if (useAuthorBioInBook && authorBio.trim()) {
+                activeSystemInstruction += `\n\nREQUIRED AUTHOR PROFILE AT THE END OF THE BOOK:
+- The user explicitly enabled the author profile.
+- You MUST include "author_image: ${authorImage}" in the YAML frontmatter before author_bio.
+- You MUST include the biography below as the FINAL YAML frontmatter field, using the multiline form "author_bio: |" with every biography line indented by two spaces.
+- Do NOT repeat the biography as a normal content page. The HyperBook viewer automatically creates the final author-profile spread from author_image and author_bio.
+- Preserve these fields when modifying an existing book.
+
+AUTHOR BIOGRAPHY:
+"""
+${authorBio.trim()}
+"""`;
             } else {
-                activeSystemInstruction += `\n\nCRITICAL RULE FOR AUTHOR BIOGRAPHY:\nNo author biography details are provided. Do NOT create any author biography pages, empty layout spreads, or placeholders for an author biography. AI must NEVER invent or populate dummy biography content.`;
+                activeSystemInstruction += `\n\nCRITICAL RULE FOR AUTHOR BIOGRAPHY:
+The user has not enabled a usable author profile. Do NOT include author_bio or author_image in the YAML frontmatter. Do NOT create any author biography pages, empty layout spreads, or placeholders. AI must NEVER invent biography content.`;
             }
         } else if (mode === 'card') {
             if (authorBio.trim()) {

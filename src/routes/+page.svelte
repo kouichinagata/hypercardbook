@@ -196,6 +196,13 @@
     let showOnboardingModal = $state(false);
     let onboardingNickname = $state('');
     let onboardingLanguage = $state('en');
+
+    function buildInitialBiography(displayName: string): string {
+        const name = displayName.trim();
+        if (!name) return '';
+
+        return `## About the Author\n\n${name} is an author on HyperCardBook, sharing ideas and stories through interactive books.`;
+    }
     
     let currentLanguage = $state('en');
     let showLangDropdown = $state(false);
@@ -242,7 +249,7 @@
             activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
             
             if (!metadata.nickname || !metadata.language) {
-                onboardingNickname = metadata.nickname || data.session.user.email?.split('@')[0] || '';
+                onboardingNickname = metadata.nickname || metadata.full_name || metadata.name || data.session.user.email?.split('@')[0] || '';
                 onboardingLanguage = currentLanguage;
                 showOnboardingModal = true;
             }
@@ -285,10 +292,17 @@
             return;
         }
         try {
+            const metadata = data.session?.user?.user_metadata || {};
+            const googleDisplayName = metadata.full_name || metadata.name || onboardingNickname.trim();
+            const initialBiography = metadata.author_bio?.trim()
+                ? metadata.author_bio
+                : buildInitialBiography(googleDisplayName);
             const { error } = await supabase.auth.updateUser({
                 data: {
                     nickname: onboardingNickname.trim(),
-                    language: onboardingLanguage
+                    language: onboardingLanguage,
+                    author_bio: initialBiography,
+                    use_author_bio_in_book: metadata.use_author_bio_in_book ?? true
                 }
             });
             if (error) throw error;
@@ -1145,6 +1159,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     let profileNickname = $state('');
     let profileAvatarUrl = $state('');
     let profileAuthorBio = $state('');
+    let profileUseAuthorBioInBook = $state(false);
     let profileLanguage = $state('en');
     
     // Config files states
@@ -1396,6 +1411,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         profileNickname = metadata.nickname || '';
         profileAvatarUrl = metadata.avatar_url || '';
         profileAuthorBio = metadata.author_bio || '';
+        profileUseAuthorBioInBook = metadata.use_author_bio_in_book
+            ?? Boolean(metadata.author_bio?.trim());
         profileLanguage = metadata.language || currentLanguage || 'en';
         
         profileHypercardbookMd = metadata.hypercardbook_md || DEFAULT_HYPERCARDBOOK_MD;
@@ -1502,6 +1519,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     nickname: profileNickname,
                     avatar_url: profileAvatarUrl,
                     author_bio: profileAuthorBio,
+                    use_author_bio_in_book: profileUseAuthorBioInBook,
                     language: profileLanguage,
                     hypercardbook_md: profileHypercardbookMd,
                     user_plugins: $state.snapshot(userPlugins),
@@ -2700,7 +2718,13 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                             </div>
                             
                             <div class="form-group">
-                                <label for="setting-bio">Biography</label>
+                                <div class="biography-label-row">
+                                    <label for="setting-bio">Biography</label>
+                                    <label class="biography-book-toggle">
+                                        <input type="checkbox" bind:checked={profileUseAuthorBioInBook} />
+                                        <span>Use this Biography in the author profile at the end of the book.</span>
+                                    </label>
+                                </div>
                                 <textarea id="setting-bio" bind:value={profileAuthorBio} rows="4" placeholder=""></textarea>
                             </div>
                             
@@ -4114,6 +4138,29 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         font-size: 12px;
         font-weight: 600;
         opacity: 0.8;
+    }
+    .biography-label-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    .form-group .biography-book-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 500;
+        cursor: pointer;
+        opacity: 0.9;
+    }
+    .biography-book-toggle input[type="checkbox"] {
+        width: 15px;
+        height: 15px;
+        margin: 0;
+        accent-color: #8b5cf6;
+        cursor: pointer;
+        flex: 0 0 auto;
     }
     .form-group input[type="text"],
     .form-group input[type="email"],
