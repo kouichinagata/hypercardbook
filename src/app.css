@@ -11,6 +11,46 @@ html, body {
     -webkit-font-smoothing: antialiased;
 }
 
+html {
+    scrollbar-gutter: stable;
+}
+
+html[data-theme="dark"],
+html[data-theme="dark"] body {
+    background-color: #0b0c10;
+    color-scheme: dark;
+}
+
+html[data-theme="light"],
+html[data-theme="light"] body {
+    background-color: #f4eae1;
+    color-scheme: light;
+}
+
+html[data-theme="dark"] {
+    scrollbar-color: rgba(255, 255, 255, 0.28) #0b0c10;
+}
+
+html[data-theme="light"] {
+    scrollbar-color: rgba(61, 37, 22, 0.38) #f4eae1;
+}
+
+html[data-theme="dark"]::-webkit-scrollbar-track {
+    background: #0b0c10;
+}
+
+html[data-theme="dark"]::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.28);
+}
+
+html[data-theme="light"]::-webkit-scrollbar-track {
+    background: #f4eae1;
+}
+
+html[data-theme="light"]::-webkit-scrollbar-thumb {
+    background: rgba(61, 37, 22, 0.38);
+}
+
 html.scroll-locked, body.scroll-locked {
     height: 100%;
     overflow: hidden;

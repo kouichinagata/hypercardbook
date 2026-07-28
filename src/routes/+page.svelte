@@ -229,6 +229,7 @@
         if (savedTheme) {
             uiTheme = savedTheme;
         }
+        document.documentElement.setAttribute('data-theme', uiTheme);
 
         // Determine default language
         const savedLang = localStorage.getItem('reader-lang');
@@ -409,6 +410,7 @@
     function toggleTheme() {
         uiTheme = uiTheme === 'dark' ? 'light' : 'dark';
         localStorage.setItem('shelf-theme', uiTheme);
+        document.documentElement.setAttribute('data-theme', uiTheme);
     }
 
     // Handle prompt selection context toggles
@@ -3710,7 +3712,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         flex-direction: column;
         align-items: center;
         justify-content: flex-start;
-        width: 100vw;
+        width: 100%;
         min-height: 100vh;
         background-color: var(--bg-color);
         transition: background 0.4s, color 0.4s;
