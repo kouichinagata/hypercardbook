@@ -7,6 +7,7 @@
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
     import { LANGUAGES } from '$lib/languages';
+    import { activePromotionFromUser, effectivePlanFromUser } from '$lib/plan';
 
     let { data } = $props();
 
@@ -37,20 +38,20 @@
     let webSearchEnabled = $state(false);
     let imageGenEnabled = $state(false);
     let isPaidPlan = $derived(
-        ['standard', 'pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
+        ['standard', 'pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
     );
     let isProPlan = $derived(
-        ['pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
+        ['pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
     );
     let maxStorageBytes = $derived.by(() => {
-        const plan = data.session?.user?.user_metadata?.plan || 'free';
+        const plan = effectivePlanFromUser(data.session?.user);
         if (plan === 'enterprise') return 1 * 1024 * 1024 * 1024; // 1GB
         if (plan === 'pro') return 1 * 1024 * 1024 * 1024; // 1GB
         if (plan === 'standard') return 200 * 1024 * 1024; // 200MB
         return 20 * 1024 * 1024; // 20MB
     });
     let maxStorageText = $derived.by(() => {
-        const plan = data.session?.user?.user_metadata?.plan || 'free';
+        const plan = effectivePlanFromUser(data.session?.user);
         if (plan === 'enterprise') return '1GB';
         if (plan === 'pro') return '1GB';
         if (plan === 'standard') return '200MB';
@@ -1119,7 +1120,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
     
     // Pricing states
-    let currentPlan = $derived(data.session?.user?.user_metadata?.plan || 'free');
+    let currentPlan = $derived(effectivePlanFromUser(data.session?.user));
+    let activePromotion = $derived(activePromotionFromUser(data.session?.user));
     let isAdminUser = $derived.by(() => {
         const email = data.session?.user?.email || '';
         const adminList = ['kouichi.nagata@gmail.com'];
@@ -1147,6 +1149,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 throw new Error(result.error || 'Failed to activate plan.');
             }
 
+            await supabase.auth.refreshSession();
             window.location.reload();
         } catch (err: any) {
             console.error('Failed to change plan:', err);
@@ -3106,6 +3109,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     {:else if settingsActiveTab === 'plan'}
                         <div class="tab-pane plan-tab-pane">
                             <h3 class="plan-tab-title">MarkdownAI Price Plans</h3>
+                            {#if activePromotion}
+                                <div class="promotion-status-banner">
+                                    Promotional {activePromotion.plan} access is active until
+                                    {new Date(activePromotion.expiresAt).toLocaleDateString()}.
+                                </div>
+                            {/if}
                             
                             {#if activationError}
                                 <div class="activation-error-banner">{activationError}</div>
@@ -3470,6 +3479,16 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         padding: 12px;
         border-radius: 8px;
         margin-bottom: 20px;
+        text-align: center;
+        font-size: 0.95rem;
+    }
+    .promotion-status-banner {
+        background-color: #ecfdf5;
+        border: 1px solid #6ee7b7;
+        color: #047857;
+        padding: 12px;
+        border-radius: 8px;
+        margin: -10px 0 20px;
         text-align: center;
         font-size: 0.95rem;
     }

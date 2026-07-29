@@ -10,7 +10,8 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"db:migrate": "node --env-file=.env scripts/migrate.js"
+		"db:migrate": "node --env-file=.env scripts/migrate.js",
+		"promotion:codes": "node --env-file=.env scripts/manage_promotion_codes.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.1",

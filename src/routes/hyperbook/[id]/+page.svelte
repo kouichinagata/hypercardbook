@@ -1,13 +1,14 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import Book from '$lib/components/Book.svelte';
+    import { effectivePlanFromUser } from '$lib/plan';
     import Card from '$lib/components/Card.svelte';
 
     let { data } = $props();
 
     let isCard = $derived(data.markdown.includes('play_mode: card') || (!data.markdown.includes('play_mode: book') && !/Page\s*\d+:/i.test(data.markdown) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(data.markdown)));
     let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || ['hypercard-hook']);
-    let isProPlan = $derived(['pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free'));
+    let isProPlan = $derived(['pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user)));
     
     let currentLanguage = $state('ja');
     let currentIndex = $state(data.initialPageIndex ?? -1);
@@ -39,4 +40,3 @@
 {:else}
     <Book markdown={data.markdown} id={data.id} backUrl={data.isEmbed ? '' : data.backUrl} activePluginIds={activePluginIds} language={currentLanguage} currentUserId={data.currentUserId} bind:currentIndex isProPlan={isProPlan} />
 {/if}
-

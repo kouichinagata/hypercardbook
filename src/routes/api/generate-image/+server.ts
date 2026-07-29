@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { getActiveGeminiApiKey } from '$lib/server/plan';
+import { effectivePlanFromUser, isPaidPlan, isProPlan } from '$lib/plan';
 
 const BUCKET = 'HyperCardBookBucket';
 const MODEL = 'gemini-3.1-flash-lite-image';
@@ -59,15 +60,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Prompt is required for image generation.' }, { status: 400 });
         }
 
-        const plan = String(session.user.user_metadata?.plan || 'free');
-        const isPaidPlan = ['standard', 'pro', 'enterprise'].includes(plan);
-        const isProPlan = ['pro', 'enterprise'].includes(plan);
-        if (source !== 'home' && !isPaidPlan) {
+        const plan = effectivePlanFromUser(session.user);
+        const paidPlanActive = isPaidPlan(plan);
+        const proPlanActive = isProPlan(plan);
+        if (source !== 'home' && !paidPlanActive) {
             return json({ error: 'Image generation in workspace requires Standard plan or above.' }, { status: 403 });
         }
 
         const requestedCount = Number.isFinite(Number(count)) ? Math.floor(Number(count)) : 1;
-        const imageCount = isProPlan
+        const imageCount = proPlanActive
             ? Math.min(Math.max(requestedCount, 1), 4)
             : 1;
         const outputAspectRatio = ALLOWED_ASPECT_RATIOS.has(String(aspectRatio))

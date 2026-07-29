@@ -1,99 +1,67 @@
 # MarkdownAI Plan Database & Limits Specification for PapeRobo
 
-本ドキュメントは、PapeRoboにおいてログインユーザーの契約プラン（MarkdownAIプラン）をデータベース（Supabase）から直接参照し、連続通話時間の制限を制御するための仕様をまとめたものです。
+PapeRoboは、HyperCardBookと共通のSupabase Authユーザーに保存されたMarkdownAIプランを参照し、連続通話時間を制御します。
 
----
+## 1. Supabase Authのプラン情報
 
-## 1. データベース仕様 (Supabase Auth)
-
-ユーザーのプラン情報は、Supabaseの認証スキーマ（`auth`）に紐づくメタデータ内に格納されています。
-
-* **データベース名 / サービス**: Supabase
-* **参照スキーマ / テーブル**: `auth.users`
-* **メタデータ格納カラム**: `raw_user_meta_data` (JSONB型)
-* **プラン特定キー**: `"plan"`
-
-### JSON構造イメージ
-`auth.users.raw_user_meta_data` 内の構造は以下のようになっています。
+プラン情報はユーザーが編集できる `user_metadata` ではなく、サーバーだけが更新する `app_metadata`（`auth.users.raw_app_meta_data`）に保存します。
 
 ```json
 {
-  "iss": "https://fxtqkhfkavwtctuljrqt.supabase.co/auth/v1",
-  "sub": "ユーザーのUUID",
-  "plan": "pro",  // <--- このキーを参照します
-  "nickname": "ユーザー名",
-  "github_token": "...",
-  "github_owner": "...",
-  "github_repo": "..."
+  "plan": "free",
+  "promotion_plan": "pro",
+  "promotion_expires_at": "2026-08-28T12:00:00.000Z",
+  "promotion_code_id": "プロモーションコードのUUID"
 }
 ```
 
----
+- `plan`: 恒久プラン。未設定または不正な値は `free` とみなします。
+- `promotion_plan`: 期間限定プロモーションで付与されたプラン。
+- `promotion_expires_at`: プロモーションの終了日時（UTC）。
+- 有効な恒久プランとプロモーションプランのうち、上位のプランを実効プランとします。
+- プロモーション終了後は、データ削除処理を待たずに恒久プランへ自動的に戻ります。
 
-## 2. プラン値と連続通話時間制限
+既存ユーザーの `user_metadata.plan` は、`supabase_migration_plan_promotions.sql` の適用時に `app_metadata.plan` へ移行します。移行後のアプリケーションは `user_metadata.plan` を権限判定に使用しません。
 
-PapeRobo側で制御する連続通話時間の仕様は以下の通りです。
+## 2. PapeRoboの連続通話時間
 
-| プラン値 (`plan` キーの値) | 対象プラン名 | 連続通話時間上限 |
-| :--- | :--- | :--- |
-| `"free"` (または値なし/NULL) | 無料プラン (Free) | **3分** |
-| `"standard"` | スタンダードプラン (Standard) | **20分** |
-| `"pro"` | プロプラン (Pro) | **60分** (1時間) |
-| `"enterprise"` | エンタープライズプラン (Enterprise) | **120分** (2時間) |
+| 実効プラン | 連続通話時間上限 |
+| :--- | :--- |
+| `free` | 3分 |
+| `standard` | 12分 |
+| `pro` | 30分 |
+| `enterprise` | 60分 |
 
----
+実装の正本はPapeRoboの `src/lib/server/markdownaiPlan.ts` です。
 
-## 3. 実装例
+## 3. 参照方法
 
-### クライアントサイド (JavaScript / TypeScript)
-PapeRoboのフロントエンドからログイン中ユーザーのセッション情報を取得して制御する場合のコード例です。
+Supabaseで検証済みのユーザーを取得し、`app_metadata` から実効プランを計算します。
 
-```javascript
-import { createClient } from '@supabase/supabase-js';
+```typescript
+const metadata = user.app_metadata || {};
+const basePlan = normalizePlan(metadata.plan);
+const promotionPlan = normalizePlan(metadata.promotion_plan);
+const expiresAt = Date.parse(String(metadata.promotion_expires_at || ''));
+const promotionIsActive =
+    promotionPlan !== 'free' &&
+    Number.isFinite(expiresAt) &&
+    expiresAt > Date.now();
 
-const supabase = createClient('YOUR_SUPABASE_URL', 'YOUR_SUPABASE_ANON_KEY');
-
-async function getCallLimitMinutes() {
-    // データベースから最新のユーザー情報を取得 (メモリキャッシュではなく安全にDBを参照)
-    const { data: { user }, error } = await supabase.auth.getUser();
-    
-    if (error || !user) {
-        console.error('ユーザー情報の取得に失敗しました。デフォルトでFree（3分）制限を適用します。');
-        return 3; // Free制限
-    }
-
-    // メタデータからplanキーを取得 (存在しない場合は 'free' とみなす)
-    const plan = user.user_metadata?.plan || 'free';
-
-    switch (plan) {
-        case 'enterprise':
-            return 120; // 2時間 (120分)
-        case 'pro':
-            return 60;  // 60分
-        case 'standard':
-            return 20;  // 20分
-        case 'free':
-        default:
-            return 3;   // 3分
-    }
-}
+const effectivePlan =
+    promotionIsActive && rank[promotionPlan] > rank[basePlan]
+        ? promotionPlan
+        : basePlan;
 ```
 
-### バックエンドAPI / エッジファンクション (JWTデコード)
-PapeRoboのバックエンド側でAPIリクエスト時に制限を検証する場合、リクエストヘッダーの `Authorization: Bearer <JWT>` からデコードされたペイロードの `user_metadata.plan` を参照します。
+クライアントから送られた任意のJWTペイロードや `user_metadata` を、そのまま権限判定に使用しないでください。重要な判定ではSupabase Authが検証したユーザー情報を使用します。
 
-* **JWT ペイロードの参照パス**: `user_metadata.plan`
-* **検証ロジック例 (Node.js)**:
-  ```javascript
-  // デコードされたJWTペイロードから取得
-  const plan = jwtPayload.user_metadata?.plan || 'free';
-  ```
+## 4. プロモーションコード
 
----
+- コード本体はDBへ保存せず、SHA-256ハッシュだけを保存します。
+- コードには、付与プラン、付与日数、利用開始日時、引換期限、最大利用回数、有効・無効状態を設定できます。
+- 同じコードの同一ユーザーによる再利用、および有効なプロモーションを持つユーザーの重複引換は拒否します。
+- 発行・一覧・無効化はHyperCardBookの `npm run promotion:codes -- ...` で行います。
+- DBのテーブルと引換RPCは `supabase_migration_plan_promotions.sql` で作成します。
 
-## 4. 注意点
-
-* **未設定ユーザー of 扱い**:
-  過去に作成されたアカウントやメタデータ移行前のユーザーには、`plan` キーが存在しない場合があります。その場合は**必ずデフォルト値として `"free"`（制限時間3分）を適用**するようにフォールバック処理を実装してください。
-* **プラン変更の即時反映**:
-  ユーザーがHyperCardBook側でプランをアップグレードした場合、メタデータはSupabase側で即時書き換わります。PapeRobo側で古いセッションキャッシュを保持し続けないよう、通話開始前などの重要なタイミングでは `supabase.auth.getUser()` を呼び出して最新のメタデータを再取得することを推奨します。
+プラン変更後はJWT内の `app_metadata` を更新するため、セッションを更新してから新しい実効プランを表示・利用します。

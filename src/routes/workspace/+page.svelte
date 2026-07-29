@@ -5,6 +5,7 @@
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
     import { marked } from 'marked';
+    import { effectivePlanFromUser } from '$lib/plan';
 
     let { data } = $props();
 
@@ -201,20 +202,20 @@
     let imageGenEnabled = $state(false);
     let featureSource = $state<'home' | 'workspace'>('workspace');
     let isPaidPlan = $derived(
-        ['standard', 'pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
+        ['standard', 'pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
     );
     let isProPlan = $derived(
-        ['pro', 'enterprise'].includes(data.session?.user?.user_metadata?.plan || 'free')
+        ['pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
     );
     let maxStorageBytes = $derived.by(() => {
-        const plan = data.session?.user?.user_metadata?.plan || 'free';
+        const plan = effectivePlanFromUser(data.session?.user);
         if (plan === 'enterprise') return 1 * 1024 * 1024 * 1024; // 1GB
         if (plan === 'pro') return 1 * 1024 * 1024 * 1024; // 1GB
         if (plan === 'standard') return 200 * 1024 * 1024; // 200MB
         return 20 * 1024 * 1024; // 20MB
     });
     let maxStorageText = $derived.by(() => {
-        const plan = data.session?.user?.user_metadata?.plan || 'free';
+        const plan = effectivePlanFromUser(data.session?.user);
         if (plan === 'enterprise') return '1GB';
         if (plan === 'pro') return '1GB';
         if (plan === 'standard') return '200MB';

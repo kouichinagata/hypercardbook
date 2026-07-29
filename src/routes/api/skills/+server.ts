@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import fs from 'fs';
 import path from 'path';
+import { effectivePlanFromUser, isProPlan } from '$lib/plan';
 
 // GET /api/skills: ユーザー固有の物理Skill一覧を読み込んで返す
 export const GET: RequestHandler = async ({ locals }) => {
@@ -12,9 +13,7 @@ export const GET: RequestHandler = async ({ locals }) => {
         }
 
         const userId = session.user.id;
-        const plan = session.user?.user_metadata?.plan || 'free';
-        const isProPlan = ['pro', 'enterprise'].includes(plan);
-        if (!isProPlan) {
+        if (!isProPlan(effectivePlanFromUser(session.user))) {
             return json({ error: 'Pro plan or above is required.' }, { status: 403 });
         }
         const userSkillsDir = path.resolve('data/skills', userId);
@@ -78,9 +77,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const plan = session.user?.user_metadata?.plan || 'free';
-        const isProPlan = ['pro', 'enterprise'].includes(plan);
-        if (!isProPlan) {
+        if (!isProPlan(effectivePlanFromUser(session.user))) {
             return json({ error: 'Pro plan or above is required.' }, { status: 403 });
         }
         const { skillName, skillMd } = await request.json();
@@ -125,9 +122,7 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const plan = session.user?.user_metadata?.plan || 'free';
-        const isProPlan = ['pro', 'enterprise'].includes(plan);
-        if (!isProPlan) {
+        if (!isProPlan(effectivePlanFromUser(session.user))) {
             return json({ error: 'Pro plan or above is required.' }, { status: 403 });
         }
         const { skillName } = await request.json();

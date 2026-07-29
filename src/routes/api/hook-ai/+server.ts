@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
 import { getActiveGeminiApiKey } from '$lib/server/plan';
+import { effectivePlanFromUser, isProPlan } from '$lib/plan';
 
 const systemInstruction = `You are an AI assistant executing a HyperHook for a HyperCardBook.
 The user is reading a page (Card) in a book (Stack).
@@ -34,9 +35,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized. Please login first.' }, { status: 401 });
         }
 
-        const plan = session.user?.user_metadata?.plan || 'free';
-        const isProPlan = ['pro', 'enterprise'].includes(plan);
-        if (!isProPlan) {
+        if (!isProPlan(effectivePlanFromUser(session.user))) {
             return json({ error: 'Pro plan or above is required.' }, { status: 403 });
         }
 

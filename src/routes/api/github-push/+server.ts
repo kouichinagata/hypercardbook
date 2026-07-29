@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { effectivePlanFromUser, isPaidPlan } from '$lib/plan';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
@@ -9,9 +10,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized. Please login first.' }, { status: 401 });
         }
 
-        const plan = session.user?.user_metadata?.plan || 'free';
-        const isPaidPlan = ['standard', 'pro', 'enterprise'].includes(plan);
-        if (!isPaidPlan) {
+        if (!isPaidPlan(effectivePlanFromUser(session.user))) {
             return json({ error: 'GitHub Integration is only available on Standard plan or above.' }, { status: 403 });
         }
 

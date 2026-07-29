@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
 import { getActiveGeminiApiKey } from '$lib/server/plan';
+import { effectivePlanFromUser, isProPlan } from '$lib/plan';
 
 const systemInstruction = `You are a meta-prompt engineer and AI agent designer. Your job is to create or refine "Skills" for an AI agent (HyperCardBook Creator).
 A Skill consists of:
@@ -28,9 +29,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized. Please login first.' }, { status: 401 });
         }
 
-        const plan = session.user?.user_metadata?.plan || 'free';
-        const isProPlan = ['pro', 'enterprise'].includes(plan);
-        if (!isProPlan) {
+        if (!isProPlan(effectivePlanFromUser(session.user))) {
             return json({ error: 'Pro plan or above is required.' }, { status: 403 });
         }
 

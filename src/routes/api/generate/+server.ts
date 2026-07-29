@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { effectivePlanFromUser, isPaidPlan, isProPlan } from '$lib/plan';
 import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
@@ -430,10 +431,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             ?? Boolean(authorBio.trim());
 
         // Plan-based feature gating
-        const userPlan = userMetadata.plan || 'free';
-        const isPaidPlan = ['standard', 'pro', 'enterprise'].includes(userPlan);
+        const userPlan = effectivePlanFromUser(session.user);
+        const paidPlanActive = isPaidPlan(userPlan);
         const isHomeHandoff = webSearchSource === 'home';
-        const useWebSearch = webSearchEnabled && (isPaidPlan || isHomeHandoff);
+        const useWebSearch = webSearchEnabled && (paidPlanActive || isHomeHandoff);
 
         let activeSystemInstruction = mode === 'card' ? cardSystemInstruction : systemInstruction;
 
@@ -495,11 +496,11 @@ CURRENT BIOGRAPHY:
 ${biographyMarkdown.trim() || '(empty - nothing known yet)'}
 """`;
 
-        const isProPlan = ['pro', 'enterprise'].includes(userPlan);
-        const allowedActivePluginIds = isProPlan ? activePluginIds : ['hypercard-hook'];
+        const proPlanActive = isProPlan(userPlan);
+        const allowedActivePluginIds = proPlanActive ? activePluginIds : ['hypercard-hook'];
 
         // Dynamic loading of available skills for "Progressive Disclosure"
-        const availableSkills = isProPlan ? getAvailableSkills(session.user.id) : [];
+        const availableSkills = proPlanActive ? getAvailableSkills(session.user.id) : [];
         if (availableSkills.length > 0) {
             let skillsCatalog = '\n\nAVAILABLE SKILLS:\n';
             availableSkills.forEach(s => {
@@ -763,10 +764,7 @@ ${biographyMarkdown.trim() || '(empty - nothing known yet)'}
                                     const owner = userMetadata.github_owner;
                                     const repo = userMetadata.github_repo;
                                     
-                                    const plan = userMetadata.plan || 'free';
-                                    const isPaidPlan = ['standard', 'pro', 'enterprise'].includes(plan);
-
-                                    if (!isPaidPlan) {
+                                    if (!paidPlanActive) {
                                         resultData = { success: false, error: 'GitHub Integration is only available on Standard plan or above.' };
                                     } else if (!token || !owner || !repo) {
                                         resultData = { success: false, error: 'GitHub is not configured in settings. Please connect your GitHub account and repository first.' };
