@@ -45,12 +45,15 @@
             return;
         }
         
-        const currentSpread = spreads[currentIndex];
-        if (!currentSpread) return;
-        
         let textToSpeak = '';
-        if (currentSpread.leftMarkdown) textToSpeak += currentSpread.leftMarkdown + '\n';
-        if (currentSpread.rightMarkdown) textToSpeak += currentSpread.rightMarkdown;
+        if (viewMode === 'vertical') {
+            textToSpeak = pages[getPlainPageIndex()] || '';
+        } else {
+            const currentSpread = spreads[currentIndex];
+            if (!currentSpread) return;
+            if (currentSpread.leftMarkdown) textToSpeak += currentSpread.leftMarkdown + '\n';
+            if (currentSpread.rightMarkdown) textToSpeak += currentSpread.rightMarkdown;
+        }
         
         if (!textToSpeak.trim()) return;
         speak(textToSpeak);
@@ -476,6 +479,9 @@
     let bookEl: HTMLDivElement | null = $state(null);
     let bookViewportEl: HTMLDivElement | null = $state(null);
     let pageSliderEl: HTMLInputElement | null = $state(null);
+    const CONTINUOUS_BATCH_SIZE = 30;
+    let continuousLoadedCount = $state(CONTINUOUS_BATCH_SIZE);
+    let continuousScrollFrame: number | null = null;
 
     // Watch markdown changes, handle translation if needed, and parse displayMarkdown
     let displayMarkdown = $state('');
@@ -829,6 +835,7 @@
             }
             return clean;
         });
+        continuousLoadedCount = Math.min(CONTINUOUS_BATCH_SIZE, pagesRaw.length);
 
         for (let i = 0; i < pagesRaw.length; i += 2) {
             const leftPart = pagesRaw[i] || "";
@@ -901,7 +908,7 @@
         return url;
     }
 
-    function renderPage(content: string): string {
+    function renderPage(content: string, lazy = false): string {
         if (!content) return '';
         
         let processed = content.split('\n').map(line => {
@@ -909,7 +916,8 @@
             const videoMatch = trimmed.match(/^video:\s*(.*)/);
             if (videoMatch) {
                 const videoUrl = videoMatch[1].trim();
-                return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}" allowfullscreen></iframe></div>`;
+                const loading = lazy ? ' loading="lazy"' : '';
+                return `<div class="video-container"><iframe src="${getEmbedUrl(videoUrl)}"${loading} allowfullscreen></iframe></div>`;
             }
             return line;
         }).join('\n');
@@ -925,6 +933,9 @@
         
         let html = marked.parse(processed) as string;
         html = html.replace(/src="books\//g, 'src="/books/');
+        if (lazy) {
+            html = html.replace(/<img\b(?![^>]*\bloading=)/gi, '<img loading="lazy" decoding="async"');
+        }
         return html;
     }
 
@@ -967,21 +978,166 @@
         return `${spreads.length * 2 + 1}`;
     }
 
+    function ensureContinuousPageLoaded(pageIndex: number) {
+        if (!pages.length) return;
+        const boundedIndex = Math.min(Math.max(Math.trunc(pageIndex), 0), pages.length - 1);
+        const requiredCount = Math.ceil((boundedIndex + 1) / CONTINUOUS_BATCH_SIZE) * CONTINUOUS_BATCH_SIZE;
+        continuousLoadedCount = Math.min(
+            pages.length,
+            Math.max(continuousLoadedCount, requiredCount)
+        );
+    }
+
+    function updateCurrentPageFromContinuousScroll() {
+        if (!browser || !bookViewportEl || viewMode !== 'vertical' || !isOpened) return;
+
+        const viewportRect = bookViewportEl.getBoundingClientRect();
+        const readingLine = viewportRect.top + Math.min(viewportRect.height * 0.3, 220);
+        const renderedPages = Array.from(
+            bookViewportEl.querySelectorAll<HTMLElement>('[data-continuous-page], [data-continuous-special]')
+        );
+
+        let activeElement: HTMLElement | null = null;
+        for (const element of renderedPages) {
+            const rect = element.getBoundingClientRect();
+            if (rect.top <= readingLine && rect.bottom > readingLine) {
+                activeElement = element;
+                break;
+            }
+            if (!activeElement && rect.top > readingLine) {
+                activeElement = element;
+                break;
+            }
+            activeElement = element;
+        }
+
+        if (!activeElement) return;
+
+        if (activeElement.dataset.continuousSpecial === 'bio') {
+            if (hasBio && currentIndex !== total) {
+                currentIndex = total;
+                currentSubPage = 0;
+            }
+            return;
+        }
+
+        const pageIndex = Number(activeElement.dataset.continuousPage);
+        if (!Number.isInteger(pageIndex)) return;
+
+        const pageState = getPapePageState();
+        if (pageState.location !== 'content' || getPlainPageIndex() !== pageIndex) {
+            jumpToPlainPageIndex(pageIndex);
+        }
+    }
+
+    function scheduleContinuousPageSync() {
+        if (!browser) return;
+        if (continuousScrollFrame !== null) {
+            cancelAnimationFrame(continuousScrollFrame);
+        }
+        continuousScrollFrame = requestAnimationFrame(() => {
+            continuousScrollFrame = null;
+            updateCurrentPageFromContinuousScroll();
+        });
+    }
+
+    function handleContinuousScroll() {
+        if (!bookViewportEl || viewMode !== 'vertical' || !isOpened) return;
+
+        const remainingScroll = bookViewportEl.scrollHeight
+            - bookViewportEl.scrollTop
+            - bookViewportEl.clientHeight;
+        if (
+            remainingScroll < bookViewportEl.clientHeight * 2
+            && continuousLoadedCount < pages.length
+        ) {
+            loadNextContinuousBatch();
+        }
+
+        scheduleContinuousPageSync();
+    }
+
+    function loadNextContinuousBatch() {
+        if (continuousLoadedCount >= pages.length) return;
+        continuousLoadedCount = Math.min(
+            continuousLoadedCount + CONTINUOUS_BATCH_SIZE,
+            pages.length
+        );
+        tick().then(() => renderMermaid());
+    }
+
+    function observeContinuousLoadMarker(node: HTMLElement) {
+        if (!browser || !bookViewportEl) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((entry) => entry.isIntersecting)) {
+                    loadNextContinuousBatch();
+                }
+            },
+            {
+                root: bookViewportEl,
+                rootMargin: '200% 0px'
+            }
+        );
+        observer.observe(node);
+
+        return {
+            destroy() {
+                observer.disconnect();
+            }
+        };
+    }
+
+    async function scrollToContinuousPage(pageIndex: number, behavior: ScrollBehavior = 'smooth') {
+        if (!pages.length) return;
+
+        const boundedIndex = Math.min(Math.max(Math.trunc(pageIndex), 0), pages.length - 1);
+        ensureContinuousPageLoaded(boundedIndex);
+        jumpToPlainPageIndex(boundedIndex);
+        await tick();
+
+        const target = bookViewportEl?.querySelector<HTMLElement>(
+            `[data-continuous-page="${boundedIndex}"]`
+        );
+        if (target && bookViewportEl) {
+            bookViewportEl.scrollTo({
+                top: target.offsetTop,
+                behavior
+            });
+        }
+    }
+
+    async function scrollToContinuousBio(behavior: ScrollBehavior = 'smooth') {
+        if (!hasBio) return;
+        continuousLoadedCount = pages.length;
+        currentIndex = total;
+        currentSubPage = 0;
+        await tick();
+
+        const target = bookViewportEl?.querySelector<HTMLElement>('[data-continuous-special="bio"]');
+        if (target && bookViewportEl) {
+            bookViewportEl.scrollTo({
+                top: target.offsetTop,
+                behavior
+            });
+        }
+    }
+
     // Navigation logic
     function goPrev() {
         const isVertical = viewMode === 'vertical';
         if (isVertical) {
-            if (currentSubPage === 1) {
-                currentSubPage = 0;
+            if (currentIndex === -1) return;
+            if (hasBio && currentIndex === total) {
+                void scrollToContinuousPage(pages.length - 1);
+                return;
+            }
+            const previousPage = getPlainPageIndex() - 1;
+            if (previousPage >= 0) {
+                void scrollToContinuousPage(previousPage);
             } else {
-                if (currentIndex > -1) {
-                    currentIndex--;
-                    if (currentIndex >= 0 && currentIndex < total) {
-                        currentSubPage = 1;
-                    } else {
-                        currentSubPage = 0;
-                    }
-                }
+                goFirst();
             }
         } else {
             if (currentIndex > -1) {
@@ -993,13 +1149,17 @@
     function goNext() {
         const isVertical = viewMode === 'vertical';
         if (isVertical) {
-            if (currentIndex >= 0 && currentIndex <= total && currentSubPage === 0) {
-                currentSubPage = 1;
-            } else {
-                if (currentIndex < total) {
-                    currentIndex++;
-                    currentSubPage = 0;
-                }
+            if (currentIndex === -1) {
+                void scrollToContinuousPage(0, 'auto');
+                return;
+            }
+            if (hasBio && currentIndex === total) return;
+
+            const nextPage = getPlainPageIndex() + 1;
+            if (nextPage < pages.length) {
+                void scrollToContinuousPage(nextPage);
+            } else if (hasBio) {
+                void scrollToContinuousBio();
             }
         } else {
             if (currentIndex < total) {
@@ -1011,19 +1171,38 @@
     function goFirst() {
         currentIndex = -1;
         currentSubPage = 0;
+        if (viewMode === 'vertical' && bookViewportEl) {
+            bookViewportEl.scrollTo({ top: 0, behavior: 'auto' });
+        }
     }
 
     function goLast() {
+        if (viewMode === 'vertical') {
+            if (hasBio) {
+                void scrollToContinuousBio();
+            } else {
+                void scrollToContinuousPage(pages.length - 1);
+            }
+            return;
+        }
         currentIndex = total;
         currentSubPage = 0;
     }
 
     function handleSliderInput(e: Event) {
+        if (viewMode === 'vertical') {
+            void scrollToContinuousPage(parseInt((e.target as HTMLInputElement).value));
+            return;
+        }
         currentIndex = parseInt((e.target as HTMLInputElement).value);
         currentSubPage = 0;
     }
 
     function jumpToPage(index: number) {
+        if (viewMode === 'vertical') {
+            void scrollToContinuousPage(getPlainPageIndexFor(index, 0));
+            return;
+        }
         currentIndex = index;
         currentSubPage = 0;
     }
@@ -1047,11 +1226,12 @@
     }
 
     function toggleViewMode() {
+        const currentPlainPage = getPlainPageIndex();
         const isVertical = viewMode === 'spread' ? 'vertical' : 'spread';
         viewMode = isVertical;
         userSwitchedMode = true;
-        if (isVertical === 'vertical') {
-            currentSubPage = 0;
+        if (isVertical === 'vertical' && currentIndex !== -1) {
+            void scrollToContinuousPage(currentPlainPage, 'auto');
         }
         adjustBookScale();
     }
@@ -1080,7 +1260,11 @@
             const isPortrait = window.innerHeight > window.innerWidth;
             const targetMode = isPortrait ? 'vertical' : 'spread';
             if (viewMode !== targetMode) {
+                const currentPlainPage = getPlainPageIndex();
                 viewMode = targetMode;
+                if (targetMode === 'vertical' && currentIndex !== -1) {
+                    void scrollToContinuousPage(currentPlainPage, 'auto');
+                }
             }
         }
         adjustBookScale();
@@ -1158,55 +1342,33 @@
         const isVertical = viewMode === 'vertical';
         
         if (currentIndex === -1) {
-            currentIndex = 0;
-            currentSubPage = 0;
+            if (isVertical) {
+                void scrollToContinuousPage(0, 'auto');
+            } else {
+                currentIndex = 0;
+                currentSubPage = 0;
+            }
             return;
         }
+
+        if (isVertical) return;
 
         const rect = bookEl!.getBoundingClientRect();
         const x = e.clientX - rect.left;
 
         if (x > rect.width / 2) {
             // Right click (Next)
-            if (isVertical) {
-                if (currentSubPage === 0) {
-                    currentSubPage = 1;
-                } else {
-                    if (currentIndex < total) {
-                        currentIndex++;
-                        currentSubPage = 0;
-                    } else {
-                        currentIndex = -1;
-                        currentSubPage = 0;
-                    }
-                }
+            if (currentIndex < total) {
+                currentIndex++;
             } else {
-                if (currentIndex < total) {
-                    currentIndex++;
-                } else {
-                    currentIndex = -1; // back to cover
-                }
+                currentIndex = -1; // back to cover
             }
         } else {
             // Left click (Prev)
-            if (isVertical) {
-                if (currentSubPage === 1) {
-                    currentSubPage = 0;
-                } else {
-                    if (currentIndex > 0) {
-                        currentIndex--;
-                        currentSubPage = 1;
-                    } else {
-                        currentIndex = -1;
-                        currentSubPage = 0;
-                    }
-                }
+            if (currentIndex > 0) {
+                currentIndex--;
             } else {
-                if (currentIndex > 0) {
-                    currentIndex--;
-                } else {
-                    currentIndex = -1; // back to cover
-                }
+                currentIndex = -1; // back to cover
             }
         }
     }
@@ -1214,7 +1376,7 @@
     function renderMermaid() {
         if (browser && (window as any).mermaid) {
             try {
-                const mermaidDivs = document.querySelectorAll('.mermaid');
+                const mermaidDivs = document.querySelectorAll('.mermaid:not([data-processed="true"])');
                 if (mermaidDivs.length > 0) {
                     (window as any).mermaid.init(undefined, mermaidDivs);
                 }
@@ -1275,6 +1437,9 @@
         const isPortrait = window.innerHeight > window.innerWidth;
         viewMode = isPortrait ? 'vertical' : 'spread';
         currentSubPage = 0;
+        if (viewMode === 'vertical' && currentIndex !== -1) {
+            void scrollToContinuousPage(getPlainPageIndex(), 'auto');
+        }
 
         // Setup custom renderer for marked
         const renderer = new marked.Renderer();
@@ -1340,7 +1505,11 @@
                     } else if (payload.action === 'go_to_page' || payload.action === 'jump_to_page') {
                         const targetIdx = Number(payload.pageIndex);
                         if (Number.isInteger(targetIdx) && targetIdx >= 0 && targetIdx < pages.length) {
-                            jumpToPlainPageIndex(targetIdx);
+                            if (viewMode === 'vertical') {
+                                void scrollToContinuousPage(targetIdx);
+                            } else {
+                                jumpToPlainPageIndex(targetIdx);
+                            }
                         }
                     }
                 }
@@ -1354,6 +1523,9 @@
             document.removeEventListener('fullscreenchange', handleFullscreenChange);
             document.removeEventListener('error', handleImageError, true);
             window.removeEventListener('message', handleMessage);
+            if (continuousScrollFrame !== null) {
+                cancelAnimationFrame(continuousScrollFrame);
+            }
             if (browser && window.speechSynthesis) {
                 window.speechSynthesis.cancel();
             }
@@ -1392,7 +1564,13 @@
         </div>
     </div>
 
-    <div class="book-viewport" style="position: relative;" class:opened={isOpened} bind:this={bookViewportEl}>
+    <div
+        class="book-viewport"
+        style="position: relative;"
+        class:opened={isOpened}
+        bind:this={bookViewportEl}
+        onscroll={handleContinuousScroll}
+    >
         {#if isLoadingTranslation}
             <div class="translation-loader" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; color: #fff; border-radius: 8px; backdrop-filter: blur(4px);">
                 <div class="spinner" style="border: 4px solid rgba(255, 255, 255, 0.1); border-left-color: #8b5cf6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 12px;"></div>
@@ -1413,6 +1591,7 @@
             tabindex="0"
             bind:this={bookEl}
             id="book"
+            class:continuous-open={viewMode === 'vertical' && isOpened}
         >
             <!-- はみ出ししおり用のスロット -->
             {#if bookmarkHtml}
@@ -1438,8 +1617,59 @@
                 {/if}
             </div>
 
-            <!-- 見開き中身 -->
-            <div class="book-content" style:opacity={isOpened ? 1 : 0}>
+            {#if viewMode === 'vertical' && isOpened}
+                <div class="continuous-page-list">
+                    {#each pages.slice(0, continuousLoadedCount) as page, pageIndex}
+                        <section
+                            class="page-side continuous-page"
+                            class:full-layout={pageLayout === 'full' || pageLayout === 'fill'}
+                            data-continuous-page={pageIndex}
+                            aria-label={`Page ${pageIndex + 1}`}
+                        >
+                            <div class="markdown-body continuous-markdown">
+                                {@html renderPage(page, true)}
+                            </div>
+                            <div class="page-number">
+                                {pageIndex + 1}
+                            </div>
+                        </section>
+                    {/each}
+
+                    {#if continuousLoadedCount < pages.length}
+                        <div
+                            class="continuous-load-marker"
+                            aria-hidden="true"
+                            use:observeContinuousLoadMarker
+                        >
+                            <span></span>
+                        </div>
+                    {/if}
+
+                    {#if continuousLoadedCount >= pages.length && hasBio}
+                        <section
+                            class="page-side continuous-page continuous-bio"
+                            data-continuous-special="bio"
+                            aria-label="Author"
+                        >
+                            {#if authorImage}
+                                <div class="image-container">
+                                    <img
+                                        src={normalizePath(authorImage)}
+                                        alt="Author portrait"
+                                        loading="lazy"
+                                        decoding="async"
+                                    />
+                                </div>
+                            {/if}
+                            <div class="markdown-body continuous-markdown">
+                                {@html renderMarkdownOnly(authorBio)}
+                            </div>
+                        </section>
+                    {/if}
+                </div>
+            {:else}
+                <!-- 見開き中身 -->
+                <div class="book-content" style:opacity={isOpened ? 1 : 0}>
                 <!-- 左ページ -->
                 <div class="page-side" class:full-layout={pageLayout === 'full' || pageLayout === 'fill'} style:display={(currentIndex !== -1 && (viewMode === 'spread' || currentSubPage === 0)) ? 'flex' : 'none'}>
                     {#if hasBio && currentIndex === total}
@@ -1496,7 +1726,8 @@
                         {getRightPageNum()}
                     </div>
                 </div>
-            </div>
+                </div>
+            {/if}
         </div>
     </div>
 
@@ -1508,8 +1739,8 @@
             type="range" 
             bind:this={pageSliderEl}
             min="-1" 
-            max={total} 
-            value={currentIndex} 
+            max={viewMode === 'vertical' ? Math.max(pages.length - 1, 0) : total}
+            value={viewMode === 'vertical' && currentIndex !== -1 && !(hasBio && currentIndex === total) ? getPlainPageIndex() : currentIndex}
             oninput={handleSliderInput} 
             class="page-slider"
         >
@@ -2001,6 +2232,7 @@
     .book-workspace.vertical-mode .book-viewport {
         flex: 1 !important;
         height: calc(100vh - 65px) !important;
+        height: calc(100dvh - 65px) !important;
         min-height: 0 !important;
         padding: 0 !important;
         margin: 0 !important;
@@ -2008,6 +2240,11 @@
         display: flex !important;
         align-items: stretch !important;
         justify-content: center !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-gutter: stable;
     }
     .book-workspace.vertical-mode .book-body {
         width: 100vw !important;
@@ -2025,6 +2262,12 @@
         height: 100% !important;
         max-width: 100% !important;
         aspect-ratio: auto !important;
+    }
+    .book-workspace.vertical-mode .book-body.continuous-open {
+        height: auto !important;
+        min-height: 100% !important;
+        align-self: flex-start !important;
+        cursor: default !important;
     }
     .book-workspace.vertical-mode .cover-overlay {
         transform: none !important;
@@ -2047,6 +2290,89 @@
         padding: 24px 16px 40px 16px !important;
         box-sizing: border-box !important;
         flex: none !important;
+    }
+    .book-workspace.vertical-mode .continuous-page-list {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        min-height: 100%;
+        gap: 0;
+        margin: 0;
+        padding: 0;
+        background: var(--page-color);
+    }
+    .book-workspace.vertical-mode .continuous-page-list .continuous-page {
+        display: flex !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: calc(100vh - 65px) !important;
+        min-height: calc(100dvh - 65px) !important;
+        max-height: none !important;
+        margin: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        box-sizing: border-box !important;
+        flex: none !important;
+        overflow: visible !important;
+        content-visibility: auto;
+        contain-intrinsic-size: auto calc(100vh - 65px);
+    }
+    .book-workspace.vertical-mode .continuous-page-list .continuous-markdown {
+        width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        box-sizing: border-box !important;
+    }
+    .book-workspace.vertical-mode .continuous-page-list .continuous-page.full-layout {
+        min-height: 0 !important;
+        padding: 0 !important;
+        justify-content: flex-start !important;
+    }
+    .book-workspace.vertical-mode .continuous-page.full-layout .continuous-markdown {
+        padding: 0 !important;
+        line-height: 0 !important;
+    }
+    .book-workspace.vertical-mode .continuous-page.full-layout .continuous-markdown :global(p:has(> img:only-child)) {
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 0 !important;
+    }
+    .book-workspace.vertical-mode .continuous-page.full-layout .continuous-markdown :global(img) {
+        display: block !important;
+        width: 100% !important;
+        height: auto !important;
+        max-width: 100% !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        object-fit: contain !important;
+    }
+    .book-workspace.vertical-mode .continuous-page.full-layout .page-number {
+        display: none;
+    }
+    .book-workspace.vertical-mode .continuous-bio {
+        gap: 24px;
+        justify-content: center !important;
+    }
+    .book-workspace.vertical-mode .continuous-load-marker {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 48px;
+        background: var(--page-color);
+    }
+    .book-workspace.vertical-mode .continuous-load-marker span {
+        width: 22px;
+        height: 22px;
+        border: 2px solid color-mix(in srgb, var(--text-color) 20%, transparent);
+        border-top-color: var(--text-color);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
     }
     .book-workspace.vertical-mode .control-panel {
         width: 100vw !important;
