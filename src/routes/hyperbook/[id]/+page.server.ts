@@ -2,6 +2,7 @@ import type { PageServerLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
 import fs from 'fs';
 import path from 'path';
+import { isAiLiveBookMarkdown } from '$lib/server/ai-live-book';
 
 export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
     const { id } = params;
@@ -15,6 +16,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
 
     let markdownContent = '';
     let ownerId = 'global';
+    let databaseBookId = '';
 
     // Check if the book ID matches a file in the 'samples' directory (sample books)
     const sampleFilename = id.endsWith('.md') ? id : `${id}.md`;
@@ -43,7 +45,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
         } else {
             // Fallback to database lookup if filesystem file does not exist
             const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-            const query = supabase.from('books').select('markdown_content, user_id');
+            const query = supabase.from('books').select('id, markdown_content, user_id');
             if (isUuid) {
                 query.eq('id', id);
             } else {
@@ -58,11 +60,12 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
             }
             markdownContent = data.markdown_content;
             ownerId = data.user_id || 'global';
+            databaseBookId = data.id;
         }
     } else {
         // 2. Otherwise, query Supabase database as usual
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-        const query = supabase.from('books').select('markdown_content, user_id');
+        const query = supabase.from('books').select('id, markdown_content, user_id');
         if (isUuid) {
             query.eq('id', id);
         } else {
@@ -77,7 +80,20 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
         }
         markdownContent = data.markdown_content;
         ownerId = data.user_id || 'global';
+        databaseBookId = data.id;
     }
+
+        const isAiLiveBook = isAiLiveBookMarkdown(markdownContent);
+        let liveOpenToken = url.searchParams.get('live_open') || '';
+        if (isAiLiveBook && !locals.session) {
+            const next = `${url.pathname}${url.search}`;
+            throw redirect(303, `/login?next=${encodeURIComponent(next)}`);
+        }
+        if (isAiLiveBook && !liveOpenToken) {
+            const redirectUrl = new URL(url);
+            redirectUrl.searchParams.set('live_open', crypto.randomUUID());
+            throw redirect(303, `${redirectUrl.pathname}${redirectUrl.search}`);
+        }
 
         // Check if markdown is actually a "Card" instead of a "Book"
         const isCard = markdownContent.includes('play_mode: card') || (!markdownContent.includes('play_mode: book') && !/Page\s*\d+:/i.test(markdownContent) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(markdownContent));
@@ -108,7 +124,10 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
             backUrl,
             isEmbed,
             currentUserId: ownerId,
-            initialPageIndex
+            initialPageIndex,
+            isAiLiveBook,
+            liveOpenToken,
+            sourceBookId: databaseBookId
         };
 };
 

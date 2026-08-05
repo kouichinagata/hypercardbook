@@ -200,6 +200,8 @@
     // Web Search toggle
     let webSearchEnabled = $state(false);
     let imageGenEnabled = $state(false);
+    let aiLiveBookEnabled = $state(Boolean(data.isAiLiveBook));
+    let aiLiveSourcePrompt = $state(data.aiLivePrompt || '');
     let featureSource = $state<'home' | 'workspace'>('workspace');
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
@@ -550,6 +552,7 @@
         if (fmMatch) {
             const fmLines = fmMatch[1].split('\n');
             for (let line of fmLines) {
+                if (/^\s/.test(line)) continue;
                 const parts = line.split(':');
                 if (parts.length >= 2 && parts[0].trim() === 'id') {
                     return parts.slice(1).join(':').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
@@ -566,6 +569,7 @@
         if (fmMatch) {
             const fmLines = fmMatch[1].split('\n');
             for (let line of fmLines) {
+                if (/^\s/.test(line)) continue;
                 const parts = line.split(':');
                 if (parts.length >= 2 && parts[0].trim() === 'title') {
                     return parts.slice(1).join(':').trim();
@@ -580,6 +584,7 @@
         if (fmMatch) {
             const fmLines = fmMatch[1].split('\n');
             for (let line of fmLines) {
+                if (/^\s/.test(line)) continue;
                 const parts = line.split(':');
                 if (parts.length >= 2 && parts[0].trim() === 'id') {
                     return parts.slice(1).join(':').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
@@ -771,6 +776,7 @@ ${markdown}
             const fmLines = fmMatch[1].split('\n');
             let found = false;
             fmLines.forEach((line: string) => {
+                if (/^\s/.test(line)) return;
                 const parts = line.split(':');
                 if (parts.length >= 2) {
                     const k = parts[0].trim();
@@ -917,7 +923,12 @@ ${markdown}
                 const response = await fetch('/api/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ markdown, id: bookUuid })
+                    body: JSON.stringify({
+                        markdown,
+                        id: bookUuid,
+                        aiLiveBook: aiLiveBookEnabled,
+                        aiLiveSourcePrompt
+                    })
                 });
                 
                 if (response.ok) {
@@ -928,6 +939,10 @@ ${markdown}
                     if (resData.id && (!bookUuid || !isUuid)) {
                         bookUuid = resData.id;
                         goto(`/workspace?id=${resData.id}`, { replaceState: true, noScroll: true, keepFocus: true });
+                    }
+                    if (resData.markdown && resData.markdown !== markdown) {
+                        markdown = resData.markdown;
+                        lastProcessedMarkdown = resData.markdown;
                     }
                 } else {
                     const errData = await response.json();
@@ -1082,7 +1097,8 @@ ${markdown}
                     currentCardIndex: currentCardIndex,
                     activePluginIds: $state.snapshot(activePluginIds),
                     webSearchEnabled: canUseWebSearch,
-                    webSearchSource: requestSource
+                    webSearchSource: requestSource,
+                    aiLiveBook: aiLiveBookEnabled
                 })
             });
 
@@ -1257,6 +1273,8 @@ ${markdown}
             bookUuid = data.bookId || '';
             chatHistory = data.initialChatHistory || [];
             lastProcessedMarkdown = data.markdown || '';
+            aiLiveBookEnabled = Boolean(data.isAiLiveBook);
+            aiLiveSourcePrompt = data.aiLivePrompt || '';
 
             let initPrompt = page.url.searchParams.get('prompt');
             if (!initPrompt) {
@@ -1281,12 +1299,19 @@ ${markdown}
                         imageGenEnabled = true;
                     }
                     sessionStorage.removeItem('workspace_image_gen');
+
+                    const storedAiLiveBook = sessionStorage.getItem('workspace_ai_live_book');
+                    if (storedAiLiveBook === 'true') {
+                        aiLiveBookEnabled = true;
+                    }
+                    sessionStorage.removeItem('workspace_ai_live_book');
                 } catch (err) {
                     console.error('Failed to read prompt from sessionStorage:', err);
                 }
             }
 
             if (initPrompt) {
+                if (aiLiveBookEnabled && !aiLiveSourcePrompt) aiLiveSourcePrompt = initPrompt;
                 await sendPrompt(initPrompt);
             } else if (!data.bookId) {
                 errorMsg = 'Please enter a prompt first.';

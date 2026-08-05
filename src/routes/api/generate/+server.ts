@@ -384,7 +384,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             currentCardIndex = -1,
             activePluginIds = [],
             webSearchEnabled = false,
-            webSearchSource = 'workspace'
+            webSearchSource = 'workspace',
+            aiLiveBook = false
         } = await request.json();
         const session = locals.session;
         const supabase = locals.supabase;
@@ -439,6 +440,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         let activeSystemInstruction = mode === 'card' ? cardSystemInstruction : systemInstruction;
 
         activeSystemInstruction += `\n\nAUTHOR INFO:\n- The author of this book/card is strictly "${authorName}". You MUST populate the "author: ${authorName}" field in the YAML frontmatter.`;
+
+        if (aiLiveBook && mode === 'book') {
+            activeSystemInstruction += `\n\nAI LIVE BOOK CREATION RULES:
+- Create a complete HyperBook in Markdown whose content can be regenerated differently on every new BookPlayer opening.
+- Add "ai_live_book: true" and "is_public: true" to the YAML frontmatter.
+- Create a reusable, detailed generation prompt from the user's request and store it as an editable multiline YAML block exactly in this form:
+  ai_live_prompt: |
+    First prompt line
+    Additional prompt lines
+- The ai_live_prompt must describe the concept, structure, tone, constraints, and allowed variation. It must not merely copy the user's request.
+- Do not invent lineage IDs or history. The server adds those after the first save.
+- Biography is private context. Adapt only broad interests, experience, preferred tone, or themes. Never quote the Biography, and never reveal addresses, contact details, account identifiers, exact private events, health data, or other sensitive facts.
+- The result must remain play_mode: book. Never generate a Card.`;
+        }
 
         // A book biography is opt-in. Book.svelte renders it as the final spread
         // whenever author_bio is present in the generated YAML frontmatter.

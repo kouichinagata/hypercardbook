@@ -37,6 +37,8 @@
     // Web Search toggle
     let webSearchEnabled = $state(false);
     let imageGenEnabled = $state(false);
+    let aiLiveBookEnabled = $state(false);
+    let showCreateMenu = $state(false);
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
     );
@@ -266,6 +268,16 @@
             invalidateAll();
         };
         window.addEventListener('focus', handleWindowFocus);
+        const closeCreateMenu = (event: MouseEvent) => {
+            const target = event.target as Element | null;
+            if (target?.closest('.create-menu-wrapper')) return;
+            showCreateMenu = false;
+        };
+        const closeCreateMenuOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') showCreateMenu = false;
+        };
+        window.addEventListener('click', closeCreateMenu);
+        window.addEventListener('keydown', closeCreateMenuOnEscape);
 
         // Check launch_robo URL parameter and auto-launch if present
         const urlParams = new URLSearchParams(window.location.search);
@@ -285,6 +297,8 @@
 
         return () => {
             window.removeEventListener('focus', handleWindowFocus);
+            window.removeEventListener('click', closeCreateMenu);
+            window.removeEventListener('keydown', closeCreateMenuOnEscape);
         };
     });
 
@@ -461,6 +475,7 @@
             sessionStorage.setItem('workspace_init_prompt', finalPrompt);
             sessionStorage.setItem('workspace_web_search', String(webSearchEnabled));
             sessionStorage.setItem('workspace_image_gen', String(imageGenEnabled));
+            sessionStorage.setItem('workspace_ai_live_book', String(aiLiveBookEnabled));
             sessionStorage.setItem('workspace_feature_source', 'home');
         } catch (err) {
             console.error('Failed to store prompt in sessionStorage:', err);
@@ -2037,19 +2052,40 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 <div class="prompt-bottom-row">
                     <div class="prompt-bottom-left">
                         <!-- 1. Attach Button -->
-                        <button
-                            type="button"
-                            class="attach-trigger-btn"
-                            onclick={() => fileInputEl?.click()}
-                            disabled={!data.currentUserId || isSubmitting}
-                            title="Attach files (Image/Text)"
-                        >
-                            ➕
-                        </button>
+                        <div class="create-menu-wrapper">
+                            <button
+                                type="button"
+                                class="attach-trigger-btn"
+                                class:active={webSearchEnabled || imageGenEnabled || aiLiveBookEnabled}
+                                onclick={() => { showCreateMenu = !showCreateMenu; }}
+                                disabled={!data.currentUserId || isSubmitting}
+                                title="Creation options"
+                                aria-haspopup="menu"
+                                aria-expanded={showCreateMenu}
+                            >
+                                ➕
+                            </button>
+                            {#if showCreateMenu}
+                                <div class="create-menu" role="menu">
+                                    <button type="button" role="menuitemcheckbox" aria-checked={imageGenEnabled} class:active={imageGenEnabled} onclick={() => { imageGenEnabled = !imageGenEnabled; }}>
+                                        <span>🏙️</span> Generate image
+                                    </button>
+                                    <button type="button" role="menuitemcheckbox" aria-checked={webSearchEnabled} class:active={webSearchEnabled} onclick={() => { webSearchEnabled = !webSearchEnabled; }}>
+                                        <span>🔍</span> Internet search
+                                    </button>
+                                    <button type="button" role="menuitem" onclick={() => { showCreateMenu = false; fileInputEl?.click(); }}>
+                                        <span>🗄️</span> Add file
+                                    </button>
+                                    <button type="button" role="menuitemcheckbox" aria-checked={aiLiveBookEnabled} class:active={aiLiveBookEnabled} onclick={() => { aiLiveBookEnabled = !aiLiveBookEnabled; if (aiLiveBookEnabled) selectedMode = 'book'; }}>
+                                        <span>📚</span> AI Live Book
+                                    </button>
+                                </div>
+                            {/if}
+                        </div>
                         <!-- 2. Mode Toggle (Card / Book) -->
                         <div class="mode-toggle-container">
                             <label class="mode-toggle-label">
-                                <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
+                                <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting || aiLiveBookEnabled} />
                                 <span>Card</span>
                             </label>
                             <label class="mode-toggle-label">
@@ -2057,30 +2093,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 <span>Book</span>
                             </label>
                         </div>
-                        <!-- 3. Web Search Toggle (Enabled for Free on Home) -->
-                        <button
-                            type="button"
-                            class="web-search-btn"
-                            class:active={webSearchEnabled}
-                            disabled={!data.currentUserId || isSubmitting}
-                            onclick={() => { webSearchEnabled = !webSearchEnabled; }}
-                            title={webSearchEnabled ? 'Web Search: ON' : 'Web Search: OFF'}
-                            aria-label="Toggle Web Search"
-                        >
-                            🔍 Web
-                        </button>
-                        <!-- 4. 🏙️ Image Generation Toggle (Enabled for Free on Home) -->
-                        <button
-                            type="button"
-                            class="image-gen-btn"
-                            class:active={imageGenEnabled}
-                            disabled={!data.currentUserId || isSubmitting}
-                            onclick={() => { imageGenEnabled = !imageGenEnabled; }}
-                            title={imageGenEnabled ? 'Image Generation: ON (NanoBanana Lite)' : 'Image Generation: OFF'}
-                            aria-label="Toggle Image Generation"
-                        >
-                            🏙️ Image
-                        </button>
                     </div>
 
                     <button type="submit" class="submit-btn" disabled={!data.currentUserId || isSubmitting || (!prompt.trim() && attachedFiles.length === 0)}>
@@ -4492,96 +4504,63 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         cursor: not-allowed;
     }
 
-    /* Web Search Toggle Button */
-    .web-search-toggle-wrapper {
-        display: flex;
-        align-items: center;
-    }
-    .web-search-btn {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        padding: 5px 10px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 500;
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.13);
-        color: rgba(255, 255, 255, 0.55);
-        cursor: pointer;
-        transition: background 0.18s, border-color 0.18s, color 0.18s;
-        white-space: nowrap;
-    }
-    .web-search-btn:hover:not(.disabled-plan):not(:disabled) {
-        background: rgba(255, 255, 255, 0.13);
-        color: rgba(255, 255, 255, 0.85);
-    }
-    .web-search-btn.active {
-        background: rgba(66, 133, 244, 0.22);
-        border-color: rgba(66, 133, 244, 0.55);
-        color: #8ab4f8;
+    .create-menu-wrapper {
+        position: relative;
     }
 
-    /* 🏙️ Image Generation Button */
-    .image-gen-btn {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        padding: 5px 10px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 500;
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.13);
-        color: rgba(255, 255, 255, 0.55);
-        cursor: pointer;
-        transition: background 0.18s, border-color 0.18s, color 0.18s;
-        white-space: nowrap;
-    }
-    .image-gen-btn:hover:not(:disabled) {
-        background: rgba(255, 255, 255, 0.13);
-        color: rgba(255, 255, 255, 0.85);
-    }
-    .image-gen-btn.active {
-        background: rgba(168, 85, 247, 0.22);
-        border-color: rgba(168, 85, 247, 0.55);
-        color: #c084fc;
+    .attach-trigger-btn.active {
+        color: #111827;
+        background: #f5ebe0;
+        border-color: #f5ebe0;
     }
 
-    .web-search-btn.active:hover:not(.disabled-plan) {
-        background: rgba(66, 133, 244, 0.32);
+    .create-menu {
+        position: absolute;
+        left: 0;
+        bottom: calc(100% + 8px);
+        z-index: 80;
+        width: 210px;
+        padding: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 10px;
+        background: #18191f;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
     }
-    .web-search-btn.disabled-plan {
-        opacity: 0.35;
-        cursor: not-allowed;
+
+    .create-menu button {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        padding: 9px 10px;
+        border: 0;
+        border-radius: 7px;
+        color: rgba(255, 255, 255, 0.78);
+        background: transparent;
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
     }
-    .landing-container[data-theme="light"] .web-search-btn {
-        background: rgba(0, 0, 0, 0.05);
-        border-color: rgba(0, 0, 0, 0.12);
-        color: rgba(0, 0, 0, 0.45);
+
+    .create-menu button:hover,
+    .create-menu button.active {
+        color: #111827;
+        background: #f5ebe0;
     }
-    .landing-container[data-theme="light"] .web-search-btn.active {
-        background: rgba(66, 133, 244, 0.12);
-        border-color: rgba(66, 133, 244, 0.4);
-        color: #1a73e8;
+
+    .create-menu button span {
+        width: 20px;
+        text-align: center;
     }
-    .landing-container[data-theme="light"] .image-gen-btn {
-        background: rgba(0, 0, 0, 0.05);
-        border-color: rgba(0, 0, 0, 0.12);
-        color: rgba(0, 0, 0, 0.55);
+
+    :global([data-theme="light"]) .create-menu {
+        border-color: rgba(17, 24, 39, 0.14);
+        background: #fffaf5;
+        box-shadow: 0 16px 40px rgba(17, 24, 39, 0.18);
     }
-    .landing-container[data-theme="light"] .image-gen-btn:hover:not(:disabled) {
-        background: rgba(0, 0, 0, 0.09);
-        color: rgba(0, 0, 0, 0.78);
-    }
-    .landing-container[data-theme="light"] .image-gen-btn.active {
-        background: rgba(168, 85, 247, 0.12);
-        border-color: rgba(126, 34, 206, 0.4);
-        color: #7e22ce;
-    }
-    .landing-container[data-theme="light"] .image-gen-btn.active:hover:not(:disabled) {
-        background: rgba(168, 85, 247, 0.18);
-        color: #6b21a8;
+
+    :global([data-theme="light"]) .create-menu button {
+        color: rgba(17, 24, 39, 0.75);
     }
 
     /* Attached files preview bar */

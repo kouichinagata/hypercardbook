@@ -169,6 +169,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
             if (fmMatch) {
                 const fmLines = fmMatch[1].split('\n');
                 fmLines.forEach((line: string) => {
+                    if (/^\s/.test(line)) return;
                     const parts = line.split(':');
                     if (parts.length >= 2) {
                         const k = parts[0].trim();

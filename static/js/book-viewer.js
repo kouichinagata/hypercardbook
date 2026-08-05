@@ -56,12 +56,13 @@
             if (fmMatch) {
                 const lines = fmMatch[1].split('\n');
                 lines.forEach(line => {
+                    if (/^\s/.test(line)) return;
                     const parts = line.split(':');
                     if (parts.length >= 2) {
                         const k = parts[0].trim();
                         const v = parts.slice(1).join(':').trim();
                         if (k === 'title') this.title = v;
-                        if (k === 'author') this.author = v;
+                        if (k === 'author') this.author = v.replace(/^['"]|['"]$/g, '');
                         if (k === 'cover_image') this.coverImage = this.normalizePath(v);
                         if (k === 'author_image') this.authorImage = this.normalizePath(v);
                         if (k === 'theme_color') this.themeColor = v;

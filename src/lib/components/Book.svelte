@@ -733,13 +733,14 @@
         if (fmMatch) {
             const fmLines = fmMatch[1].split('\n');
             fmLines.forEach(line => {
+                if (/^\s/.test(line)) return;
                 const parts = line.split(':');
                 if (parts.length >= 2) {
                     const k = parts[0].trim();
                     const v = parts.slice(1).join(':').trim();
                     if (k === 'id') parsedIdLocal = v.replace(/[^a-zA-Z0-9_\-]/g, '');
                     if (k === 'title') parsedTitle = v;
-                    if (k === 'author') parsedAuthor = v;
+                    if (k === 'author') parsedAuthor = v.replace(/^['"]|['"]$/g, '');
                     if (k === 'cover_image') parsedCoverImage = normalizePath(v);
                     if (k === 'author_image') parsedAuthorImage = normalizePath(v);
                     if (k === 'theme_color') parsedThemeColor = v;

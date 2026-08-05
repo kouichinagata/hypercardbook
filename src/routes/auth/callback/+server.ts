@@ -3,7 +3,8 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
     const code = url.searchParams.get('code');
-    const next = url.searchParams.get('next') ?? '/';
+    const requestedNext = url.searchParams.get('next') ?? '/';
+    const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '/';
 
     if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);

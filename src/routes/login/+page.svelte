@@ -1,6 +1,7 @@
 <script lang="ts">
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
+    import { page } from '$app/state';
 
     const supabase = createBrowserClient(
         env.PUBLIC_SUPABASE_URL || '',
@@ -13,10 +14,14 @@
     async function loginWithGoogle() {
         loading = true;
         errorMessage = '';
+        const requestedNext = page.url.searchParams.get('next') || '/';
+        const safeNext = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '/';
+        const callbackUrl = new URL('/auth/callback', window.location.origin);
+        callbackUrl.searchParams.set('next', safeNext);
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: `${window.location.origin}/auth/callback`
+                redirectTo: callbackUrl.toString()
             }
         });
         if (error) {

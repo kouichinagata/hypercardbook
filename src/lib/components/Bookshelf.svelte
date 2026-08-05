@@ -167,6 +167,9 @@
         if (booksParam) params.set('books', booksParam);
         if (titleParam) params.set('title', titleParam);
         if (logoParam) params.set('logo', logoParam);
+        if (book.isAiLiveBook || /(?:^|\n)ai_live_book:\s*true\s*(?:\n|$)/i.test(book.markdownContent || '')) {
+            params.set('live_open', crypto.randomUUID());
+        }
         
         const path = isCard ? `/hypercard/${bookId}` : `/hyperbook/${bookId}`;
         window.open(`${path}?${params.toString()}`, '_blank');
