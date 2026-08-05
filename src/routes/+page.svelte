@@ -4508,12 +4508,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         position: relative;
     }
 
-    .attach-trigger-btn.active {
-        color: #111827;
-        background: #f5ebe0;
-        border-color: #f5ebe0;
-    }
-
     .create-menu {
         position: absolute;
         left: 0;
