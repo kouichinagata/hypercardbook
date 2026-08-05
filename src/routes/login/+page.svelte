@@ -16,12 +16,12 @@
         errorMessage = '';
         const requestedNext = page.url.searchParams.get('next') || '/';
         const safeNext = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '/';
-        const callbackUrl = new URL('/auth/callback', window.location.origin);
-        callbackUrl.searchParams.set('next', safeNext);
+        const secureCookie = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = `hypercardbook_auth_next=${encodeURIComponent(safeNext)}; Path=/; Max-Age=600; SameSite=Lax${secureCookie}`;
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: callbackUrl.toString()
+                redirectTo: `${window.location.origin}/auth/callback`
             }
         });
         if (error) {
