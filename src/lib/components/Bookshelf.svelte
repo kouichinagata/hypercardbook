@@ -158,6 +158,13 @@
         return trimmed;
     }
 
+    function isAiLiveBook(book: any): boolean {
+        return Boolean(book?.isAiLiveBook) ||
+            /(?:^|\n)ai_live_book:\s*true\s*(?:\n|$)/i.test(
+                book?.markdownContent || book?.markdown_content || ''
+            );
+    }
+
     function handleBookClick(book: any) {
         const isCard = book.isCard;
         const bookId = book.id;
@@ -167,7 +174,7 @@
         if (booksParam) params.set('books', booksParam);
         if (titleParam) params.set('title', titleParam);
         if (logoParam) params.set('logo', logoParam);
-        if (book.isAiLiveBook || /(?:^|\n)ai_live_book:\s*true\s*(?:\n|$)/i.test(book.markdownContent || '')) {
+        if (isAiLiveBook(book)) {
             params.set('live_open', crypto.randomUUID());
         }
         
@@ -296,7 +303,10 @@
                 pixelRatio: window.devicePixelRatio || 2,
                 cacheBust: true,
                 filter: (node) => {
-                    if (node.classList && node.classList.contains('book-tooltip')) {
+                    if (node.classList && (
+                        node.classList.contains('book-tooltip') ||
+                        node.classList.contains('ai-live-book-label')
+                    )) {
                         return false;
                     }
                     return true;
@@ -657,6 +667,9 @@
                                         data-theme-color={isPreset ? book.themeColor : 'black'}
                                         style={!isPreset && book.themeColor ? `background: ${book.themeColor};` : ''}
                                     >
+                                        {#if isAiLiveBook(book)}
+                                            <div class="ai-live-book-label">AI Live Book</div>
+                                        {/if}
                                         {#if book.coverImage}
                                             <img 
                                                 src={normalizePath(book.coverImage)} 
@@ -964,6 +977,19 @@
         object-fit: contain;
         margin-bottom: 8px;
         transition: 0.3s;
+    }
+
+    .ai-live-book-label {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        z-index: 2;
+        padding: 3px 4px;
+        border-radius: 2px;
+        background: #000;
+        color: #22c55e;
+        font: 700 0.42rem/1 system-ui, sans-serif;
+        white-space: nowrap;
     }
 
     .book-cover-title {
