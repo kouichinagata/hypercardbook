@@ -4,10 +4,12 @@
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
     import Bookshelf from '$lib/components/Bookshelf.svelte';
+    import PublicSearchMenu from '$lib/components/PublicSearchMenu.svelte';
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
     import { LANGUAGES } from '$lib/languages';
     import { activePromotionFromUser, effectivePlanFromUser } from '$lib/plan';
+    import { DDC_CLASSES } from '$lib/ddc';
 
     let { data } = $props();
 
@@ -228,6 +230,13 @@
     const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
     onMount(() => {
+        if (publicBooksList.length === 0 && data.publicBooks?.length) {
+            publicBooksList = [...data.publicBooks];
+        }
+        if (data.hasMorePublic !== undefined) {
+            hasMorePublic = data.hasMorePublic;
+        }
+
         const savedTheme = localStorage.getItem('shelf-theme');
         if (savedTheme) {
             uiTheme = savedTheme;
@@ -570,8 +579,11 @@
 
     let showPublicSection = $state(false);
     let publicBooksList = $state<any[]>([]);
-    let hasMorePublic = $state(false);
+    let hasMorePublic = $state(true);
     let isLoadingMorePublic = $state(false);
+    let publicBooksRequestId = 0;
+    let publicBooksAbortController: AbortController | undefined;
+    let publicSearchTimerId: number | undefined;
 
     let myBooksList = $derived(data.books.filter((b: any) => !b.isSample && !b.isQuarkChoice));
     let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample));
@@ -592,41 +604,113 @@
     let quarksChoiceListLocalized = $derived(quarksChoiceList.map(localizeBook));
     let publicBooksListLocalized = $derived(publicBooksList.map(localizeBook));
 
-    $effect(() => {
-        if (data.publicBooks) {
-            publicBooksList = [...data.publicBooks];
-        }
-        if (data.hasMorePublic !== undefined) {
-            hasMorePublic = data.hasMorePublic;
-        }
-    });
+    /* ===== Public Books 絞り込み ===== */
+    let pbTypeFilter = $state('all');
+    let pbDdcMajor = $state('');
+    let pbDdcMinor = $state('');
+    let pbTitleQuery = $state('');
+    let pbAuthorQuery = $state('');
+    let pbDdcMinorOptions = $derived(DDC_CLASSES.find(c => c.code === pbDdcMajor)?.divisions || []);
+
+    const PB_TYPE_FILTERS: { id: string; label: string }[] = [
+        { id: 'all', label: 'All' },
+        { id: 'book', label: 'Books' },
+        { id: 'graphic', label: 'Graphic Books' },
+        { id: 'ai_live', label: 'AI Live Books' },
+        { id: 'hyperrobo', label: 'HyperRobo' },
+        { id: 'paperobo', label: 'PapeRobo' },
+        { id: 'hypertv', label: 'Scenario Books' },
+        { id: 'card', label: 'Card' }
+    ];
+
+    let filteredPublicBooksList = $derived(publicBooksListLocalized);
 
     async function handleLoadPublicBooks() {
         showPublicSection = true;
-        if (publicBooksList.length === 0) {
+        if (hasMorePublic) {
             await loadMorePublicBooks();
         }
     }
 
-    async function loadMorePublicBooks() {
-        if (isLoadingMorePublic) return;
+    function handlePublicTypeFilter(value: string) {
+        pbTypeFilter = value;
+        void refreshPublicBooks();
+    }
+
+    function handlePublicDdcMajor(value: string) {
+        pbDdcMajor = value;
+        pbDdcMinor = '';
+        void refreshPublicBooks();
+    }
+
+    function handlePublicDdcMinor(value: string) {
+        pbDdcMinor = value;
+        void refreshPublicBooks();
+    }
+
+    function handlePublicTitleQuery(value: string) {
+        pbTitleQuery = value;
+        showPublicSection = true;
+        clearTimeout(publicSearchTimerId);
+        publicSearchTimerId = window.setTimeout(() => void refreshPublicBooks(), 250);
+    }
+
+    function handlePublicAuthorQuery(value: string) {
+        pbAuthorQuery = value;
+        showPublicSection = true;
+        clearTimeout(publicSearchTimerId);
+        publicSearchTimerId = window.setTimeout(() => void refreshPublicBooks(), 250);
+    }
+
+    async function refreshPublicBooks() {
+        showPublicSection = true;
+        await loadMorePublicBooks(true);
+    }
+
+    async function loadMorePublicBooks(reset = false) {
+        if (isLoadingMorePublic && !reset) return;
+        if (reset) {
+            publicBooksAbortController?.abort();
+            publicBooksList = [];
+            hasMorePublic = true;
+        }
+
+        const requestId = ++publicBooksRequestId;
+        const abortController = new AbortController();
+        publicBooksAbortController = abortController;
         isLoadingMorePublic = true;
         try {
-            const offset = publicBooksList.length;
-            const res = await fetch(`/api/public-books?offset=${offset}&limit=100`);
+            const params = new URLSearchParams({
+                offset: String(reset ? 0 : publicBooksList.length),
+                limit: '100',
+                type: pbTypeFilter
+            });
+            const ddc = pbDdcMinor || pbDdcMajor;
+            if (ddc) params.set('ddc', ddc);
+            if (pbTitleQuery.trim()) params.set('title', pbTitleQuery.trim());
+            if (pbAuthorQuery.trim()) params.set('author', pbAuthorQuery.trim());
+
+            const res = await fetch(`/api/public-books?${params.toString()}`, {
+                signal: abortController.signal
+            });
+            if (requestId !== publicBooksRequestId) return;
             if (res.ok) {
                 const result = await res.json();
-                const existingIds = new Set(publicBooksList.map((book: any) => book.id));
+                const baseBooks = reset ? [] : publicBooksList;
+                const existingIds = new Set(baseBooks.map((book: any) => book.id));
                 const newBooks = result.books.filter((book: any) => !existingIds.has(book.id));
-                publicBooksList = [...publicBooksList, ...newBooks];
+                publicBooksList = [...baseBooks, ...newBooks];
                 hasMorePublic = result.hasMore;
             } else {
                 console.error('Failed to load public books:', await res.text());
             }
         } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
             console.error('Error fetching public books:', err);
         } finally {
-            isLoadingMorePublic = false;
+            if (requestId === publicBooksRequestId) {
+                isLoadingMorePublic = false;
+            }
         }
     }
 
@@ -1684,6 +1768,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         if (githubPollInterval) {
             clearInterval(githubPollInterval);
         }
+        clearTimeout(publicSearchTimerId);
+        publicBooksAbortController?.abort();
     });
 
     async function handleAvatarUpload(e: Event) {
@@ -2177,9 +2263,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDeleteBook={handleDeleteBook}
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
-                    showStackBtn={true}
                     showPapeRoboBtn={true}
-                    showHyperRoboBtn={true}
+                    showHyperCardTvBtn={true}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
@@ -2210,7 +2295,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDeleteBook={handleDeleteBook}
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
-                    showStackBtn={false}
+                    showStackBtn={true}
+                    showHyperRoboBtn={true}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
@@ -2242,6 +2328,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
                     showStackBtn={myBooksList.length === 0}
+                    showHyperRoboBtn={myBooksList.length === 0}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
@@ -2253,52 +2340,72 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
                     onHyperRoboClick={openHyperRoboView}
                     showMoreBtn={!showPublicSection}
+                    moreDisabled={!hasMorePublic || isLoadingMorePublic}
                     onMoreClick={handleLoadPublicBooks}
                 />
             {/if}
 
             <!-- Render Public Books if showPublicSection is true -->
-            {#if showPublicSection && publicBooksList && publicBooksList.length > 0}
+            {#if showPublicSection}
                 <div class="public-books-separator">
-                    <div 
-                        class="golden-plate clickable-plate" 
-                        onclick={() => showPublicSection = false}
-                        onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (showPublicSection = false)}
-                        role="button"
-                        tabindex="0"
-                        title="Hide Public Books"
-                    >
-                        Public Books
-                    </div>
+                    <div class="golden-plate no-pointer">Public Books</div>
                 </div>
-                <Bookshelf
-                    books={publicBooksListLocalized}
-                    translationLanguage={translationLanguageReady ? currentLanguage : ''}
-                    onBookVisible={translateVisibleBookCover}
-                    currentUserId={data.currentUserId ?? 'global'}
-                    showActions={true}
-                    isPublicShelf={true}
-                    bind:selectedBookId={selectedBookId}
-                    onPromptSelect={handlePromptSelect}
-                    onEditBook={handleEditBook}
-                    onDeleteBook={handleDeleteBook}
-                    onDownloadBook={handleDownloadBook}
-                    fromPage="home"
-                    showStackBtn={false}
-                    isStackSelection={isStackSelectionMode}
-                    selectedStackBookIds={selectedStackBookIds}
-                    isHyperRoboSelection={isHyperRoboSelectionMode}
-                    selectedHyperRoboBookIds={selectedHyperRoboBookIds}
-                    onToggleSelection={handleToggleSelectionWrapper}
-                    onStackClick={handleStackClick}
-                    onDuplicateStack={handleDuplicateStack}
-                    onToggleStackSelectionMode={toggleStackSelectionMode}
-                    onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
-                    onHyperRoboClick={openHyperRoboView}
-                    showMoreBtn={hasMorePublic}
-                    onMoreClick={loadMorePublicBooks}
-                />
+
+                {#if isLoadingMorePublic && publicBooksList.length === 0}
+                    <div class="empty-shelf">
+                        <p>Loading Public Books...</p>
+                    </div>
+                {:else if filteredPublicBooksList.length === 0}
+                    <div class="empty-shelf">
+                        <p>No public books match the current filters.</p>
+                    </div>
+                {:else}
+                    <Bookshelf
+                        books={filteredPublicBooksList}
+                        translationLanguage={translationLanguageReady ? currentLanguage : ''}
+                        onBookVisible={translateVisibleBookCover}
+                        currentUserId={data.currentUserId ?? 'global'}
+                        showActions={true}
+                        isPublicShelf={true}
+                        bind:selectedBookId={selectedBookId}
+                        onPromptSelect={handlePromptSelect}
+                        onEditBook={handleEditBook}
+                        onDeleteBook={handleDeleteBook}
+                        onDownloadBook={handleDownloadBook}
+                        fromPage="home"
+                        showStackBtn={false}
+                        isStackSelection={isStackSelectionMode}
+                        selectedStackBookIds={selectedStackBookIds}
+                        isHyperRoboSelection={isHyperRoboSelectionMode}
+                        selectedHyperRoboBookIds={selectedHyperRoboBookIds}
+                        onToggleSelection={handleToggleSelectionWrapper}
+                        onStackClick={handleStackClick}
+                        onDuplicateStack={handleDuplicateStack}
+                        onToggleStackSelectionMode={toggleStackSelectionMode}
+                        onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
+                        onHyperRoboClick={openHyperRoboView}
+                        showMoreBtn={true}
+                        moreDisabled={!hasMorePublic || isLoadingMorePublic}
+                        onMoreClick={handleLoadPublicBooks}
+                    />
+                {/if}
             {/if}
+
+            <PublicSearchMenu
+                typeFilters={PB_TYPE_FILTERS}
+                typeValue={pbTypeFilter}
+                onTypeChange={handlePublicTypeFilter}
+                ddcClasses={DDC_CLASSES}
+                ddcMajor={pbDdcMajor}
+                ddcMinor={pbDdcMinor}
+                ddcMinorOptions={pbDdcMinorOptions}
+                onDdcMajorChange={handlePublicDdcMajor}
+                onDdcMinorChange={handlePublicDdcMinor}
+                titleQuery={pbTitleQuery}
+                onTitleChange={handlePublicTitleQuery}
+                authorQuery={pbAuthorQuery}
+                onAuthorChange={handlePublicAuthorQuery}
+            />
         {/if}
     </div>
 
@@ -5200,28 +5307,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         bottom: 2px;
         border: 1px solid rgba(93, 64, 16, 0.4);
         pointer-events: none;
-    }
-
-    .golden-plate.clickable-plate {
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-
-    .golden-plate.clickable-plate:hover {
-        filter: brightness(1.15);
-        transform: translateY(-2px);
-        box-shadow: 
-            inset 0 1px 0 rgba(255,255,255,0.4),
-            inset 0 -1px 0 rgba(0,0,0,0.4),
-            0 6px 14px rgba(0,0,0,0.4);
-    }
-
-    .golden-plate.clickable-plate:active {
-        transform: translateY(0);
-        box-shadow: 
-            inset 0 1px 0 rgba(255,255,255,0.4),
-            inset 0 -1px 0 rgba(0,0,0,0.4),
-            0 2px 4px rgba(0,0,0,0.3);
     }
 
     .golden-plate.no-pointer {

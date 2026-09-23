@@ -25,10 +25,12 @@
         onDuplicateStack = null,
         onToggleStackSelectionMode = null,
         showMoreBtn = false,
+        moreDisabled = false,
         onMoreClick = null,
         isPublicShelf = false,
         showPapeRoboBtn = false,
         showHyperRoboBtn = false,
+        showHyperCardTvBtn = false,
         isHyperRoboSelection = false,
         selectedHyperRoboBookIds = [],
         onToggleHyperRoboSelectionMode = null,
@@ -37,7 +39,10 @@
         onBookVisible = null
     } = $props();
 
-    let displayBooks = $derived(showMoreBtn ? [...books, { id: 'more-btn-virtual', isMoreBtn: true, title: 'more…' }] : books);
+    let displayBooks = $derived([
+        ...books,
+        ...(showMoreBtn ? [{ id: 'more-btn-virtual', isMoreBtn: true, title: 'more…' }] : [])
+    ]);
     const visibleBooks = new Map<string, any>();
 
     let measureElements = $state<HTMLDivElement[]>([]);
@@ -334,14 +339,23 @@
 
 
 <div class="shelf-container" id="shelfContainer">
-    {#if showPapeRoboBtn || showHyperRoboBtn || showStackBtn}
+    {#if showPapeRoboBtn || showHyperRoboBtn || showStackBtn || showHyperCardTvBtn}
         <div class="top-shelf-actions">
+            {#if showHyperCardTvBtn}
+                <button
+                    type="button"
+                    class="top-shelf-hypercardtv-btn"
+                    onclick={() => window.open('https://www.tatetop.com/hypercardtv/hypertv', '_blank')}
+                >
+                    📺 HyperCard-TV
+                </button>
+            {/if}
+
             {#if showPapeRoboBtn}
                 <button 
                     type="button" 
-                    class="top-shelf-paperobo-btn" 
+                    class="top-shelf-paperobo-btn"
                     onclick={handlePapeRoboLaunch}
-                    disabled={!currentUserId || currentUserId === 'global'}
                 >
                     🧸 PapeRobo
                 </button>
@@ -379,14 +393,17 @@
                         {#if book.isMoreBtn}
                             <div 
                                 class="book-item is-more-btn" 
-                                onclick={() => onMoreClick?.()}
+                                class:disabled={moreDisabled}
+                                onclick={() => !moreDisabled && onMoreClick?.()}
                                 onkeydown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
+                                    if (!moreDisabled && (e.key === 'Enter' || e.key === ' ')) {
+                                        e.preventDefault();
                                         onMoreClick?.();
                                     }
                                 }}
                                 role="button"
-                                tabindex="0"
+                                aria-disabled={moreDisabled}
+                                tabindex={moreDisabled ? -1 : 0}
                             >
                                 <div class="book-cover more-cover">
                                     <div class="more-icon">📖</div>
@@ -1256,6 +1273,39 @@
         font-family: system-ui, sans-serif;
     }
 
+    .top-shelf-hypercardtv-btn {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--text-color, #f5ebe0);
+        color: var(--text-color, #f5ebe0);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease-in-out;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(10px);
+        font-family: system-ui, sans-serif;
+    }
+
+    .top-shelf-hypercardtv-btn:hover {
+        background: rgba(255, 255, 255, 0.18);
+        transform: scale(1.05);
+    }
+
+    :global([data-theme="light"]) .top-shelf-hypercardtv-btn {
+        background: rgba(61, 37, 22, 0.06);
+        border-color: var(--text-color, #3d2516);
+        color: var(--text-color, #3d2516);
+    }
+
+    :global([data-theme="light"]) .top-shelf-hypercardtv-btn:hover {
+        background: rgba(61, 37, 22, 0.12);
+    }
+
     .top-shelf-paperobo-btn {
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid var(--text-color, #f5ebe0);
@@ -1441,6 +1491,17 @@
         color: #8b5cf6;
         background: rgba(139, 92, 246, 0.08);
         box-shadow: 0 0 15px rgba(139, 92, 246, 0.2);
+    }
+    .book-item.is-more-btn.disabled {
+        cursor: default;
+        opacity: 0.42;
+        transform: none !important;
+    }
+    .book-item.is-more-btn.disabled:hover .book-cover.more-cover {
+        border-color: rgba(255, 255, 255, 0.25);
+        color: #cbd5e1;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+        box-shadow: none;
     }
     .more-icon {
         font-size: 2rem;

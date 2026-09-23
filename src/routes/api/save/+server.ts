@@ -60,6 +60,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         let playMode = 'book';
         let fmIsPublic: boolean | undefined = undefined;
         let fmPublishedAt: string | undefined = undefined;
+        let ddcCode = '';
 
         const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
         if (fmMatch) {
@@ -78,6 +79,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                     if (k === 'play_mode') playMode = v;
                     if (k === 'is_public') fmIsPublic = v === 'true';
                     if (k === 'published_at') fmPublishedAt = v;
+                    if (k === 'ddc_code') ddcCode = v;
                 }
             });
         }
@@ -90,7 +92,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             author: existingAiLive?.canonical_author || author || null,
             cover_image: coverImage || null,
             theme_color: themeColor || (isCard ? 'white' : 'black'),
-            markdown_content: markdown
+            markdown_content: markdown,
+            ddc_code: ddcCode || null
         };
 
         const resolvedIsPublic = requestedAiLive

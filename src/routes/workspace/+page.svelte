@@ -6,6 +6,7 @@
     import Card from '$lib/components/Card.svelte';
     import { marked } from 'marked';
     import { effectivePlanFromUser } from '$lib/plan';
+    import { DDC_CLASSES, getDdcFullLabel } from '$lib/ddc';
 
     let { data } = $props();
 
@@ -790,6 +791,90 @@ ${markdown}
         }
         return false;
     });
+
+    // DDC (Dewey Decimal Classification) 分類設定
+    let showDdcModal = $state(false);
+    let ddcMajorSelect = $state('');
+    let ddcMinorSelect = $state('');
+    let isSavingDdc = $state(false);
+
+    let currentDdcCode = $derived.by(() => {
+        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+        if (fmMatch) {
+            const fmLines = fmMatch[1].split('\n');
+            let found = '';
+            fmLines.forEach((line: string) => {
+                if (/^\s/.test(line)) return;
+                const parts = line.split(':');
+                if (parts.length >= 2) {
+                    const k = parts[0].trim();
+                    const v = parts.slice(1).join(':').trim();
+                    if (k === 'ddc_code') found = v;
+                }
+            });
+            return found;
+        }
+        return '';
+    });
+
+    let ddcMinorOptions = $derived(DDC_CLASSES.find(c => c.code === ddcMajorSelect)?.divisions || []);
+
+    function openDdcModal() {
+        if (currentDdcCode) {
+            const majorCode = currentDdcCode.slice(0, 1) + '00';
+            ddcMajorSelect = majorCode;
+            ddcMinorSelect = currentDdcCode;
+        } else {
+            ddcMajorSelect = '';
+            ddcMinorSelect = '';
+        }
+        showDdcModal = true;
+    }
+
+    async function saveDdcCode() {
+        if (isSavingDdc) return;
+        const newCode = ddcMinorSelect || ddcMajorSelect;
+        isSavingDdc = true;
+        try {
+            let updatedMarkdown = markdown;
+            const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+            if (fmMatch) {
+                let fm = fmMatch[1];
+                if (fm.includes('ddc_code:')) {
+                    fm = newCode
+                        ? fm.replace(/ddc_code:.*/g, `ddc_code: ${newCode}`)
+                        : fm.split('\n').filter((l: string) => !/^\s*ddc_code:/.test(l)).join('\n');
+                } else if (newCode) {
+                    fm += `\nddc_code: ${newCode}`;
+                }
+                updatedMarkdown = updatedMarkdown.replace(/^---\s*[\s\S]*?\s*---/, `---\n${fm.trim()}\n---`);
+            } else if (newCode) {
+                updatedMarkdown = `---\nddc_code: ${newCode}\n---\n${markdown}`;
+            }
+
+            const response = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    markdown: updatedMarkdown,
+                    id: bookUuid
+                })
+            });
+
+            if (response.ok) {
+                markdown = updatedMarkdown;
+                showDdcModal = false;
+            } else {
+                const errData = await response.json();
+                alert(`Failed to save classification: ${errData.error}`);
+            }
+        } catch (err: any) {
+            console.error('Save DDC code error:', err);
+            alert(`Error occurred: ${err.message || err}`);
+        } finally {
+            isSavingDdc = false;
+        }
+    }
 
     function handlePublishBtnClick() {
         if (isPublic) {
@@ -2014,12 +2099,19 @@ ${markdown}
                     </button>
                 {/if}
                 {#if (mode === 'card' && cardSlug) || (mode === 'book' && bookUuid)}
-                    <button 
-                        class="card-action-btn tabs-action-btn" 
-                        onclick={handlePublishBtnClick} 
+                    <button
+                        class="card-action-btn tabs-action-btn"
+                        onclick={handlePublishBtnClick}
                         title={isPublic ? 'Unpublish' : 'Publish'}
                     >
                         {isPublic ? '👤' : '👥'}
+                    </button>
+                    <button
+                        class="card-action-btn tabs-action-btn"
+                        onclick={openDdcModal}
+                        title={currentDdcCode ? `Classification: ${getDdcFullLabel(currentDdcCode)}` : 'Set Classification (DDC)'}
+                    >
+                        🏷️
                     </button>
                     <button 
                         class="card-action-btn tabs-action-btn" 
@@ -2272,6 +2364,47 @@ ${markdown}
                     <button class="btn-cancel" onclick={() => showUnpublishModal = false}>Cancel</button>
                     <button class="btn-publish" onclick={executeUnpublish} disabled={isPublishing}>
                         {isPublishing ? 'Updating...' : 'Make Private'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- DDC Classification modal -->
+    {#if showDdcModal}
+        <div class="modal-overlay" onclick={() => showDdcModal = false} role="presentation">
+            <div class="publish-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
+                <div class="publish-modal-body">
+                    <p>Select a classification (DDC) for this work.</p>
+                    <div class="ddc-select-row">
+                        <label for="ddc-major-select">Major class</label>
+                        <select
+                            id="ddc-major-select"
+                            bind:value={ddcMajorSelect}
+                            onchange={() => { ddcMinorSelect = ''; }}
+                        >
+                            <option value="">Uncategorized</option>
+                            {#each DDC_CLASSES as c (c.code)}
+                                <option value={c.code}>{c.label}</option>
+                            {/each}
+                        </select>
+                    </div>
+                    {#if ddcMajorSelect}
+                        <div class="ddc-select-row">
+                            <label for="ddc-minor-select">Division</label>
+                            <select id="ddc-minor-select" bind:value={ddcMinorSelect}>
+                                <option value="">(Major class only)</option>
+                                {#each ddcMinorOptions as d (d.code)}
+                                    <option value={d.code}>{d.label}</option>
+                                {/each}
+                            </select>
+                        </div>
+                    {/if}
+                </div>
+                <div class="publish-modal-footer">
+                    <button class="btn-cancel" onclick={() => showDdcModal = false}>Cancel</button>
+                    <button class="btn-publish" onclick={saveDdcCode} disabled={isSavingDdc}>
+                        {isSavingDdc ? 'Saving...' : 'Save'}
                     </button>
                 </div>
             </div>
@@ -3700,7 +3833,28 @@ ${markdown}
         font-weight: 500;
         opacity: 0.9;
     }
-    
+
+    .ddc-select-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 8px;
+    }
+
+    .ddc-select-row label {
+        font-size: 12px;
+        font-weight: 600;
+        opacity: 0.8;
+    }
+
+    .ddc-select-row select {
+        padding: 8px 10px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: inherit;
+    }
+
+
     .publish-modal-footer {
         display: flex;
         justify-content: flex-end;
