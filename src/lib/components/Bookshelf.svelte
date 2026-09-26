@@ -684,9 +684,11 @@
                                         data-theme-color={isPreset ? book.themeColor : 'black'}
                                         style={!isPreset && book.themeColor ? `background: ${book.themeColor};` : ''}
                                     >
+                                        <!-- AI Live Book: hidden until the spec is finalized
                                         {#if isAiLiveBook(book)}
                                             <div class="ai-live-book-label">AI Live Book</div>
                                         {/if}
+                                        -->
                                         {#if book.coverImage}
                                             <img 
                                                 src={normalizePath(book.coverImage)} 

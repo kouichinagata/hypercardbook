@@ -301,6 +301,22 @@
             }
         }
 
+        // Launch parameters: ?prompt=...&mode=card|book&run=exec
+        const urlPrompt = urlParams.get('prompt');
+        const urlMode = urlParams.get('mode');
+        if (urlMode === 'card' || urlMode === 'book') {
+            selectedMode = urlMode;
+        }
+        if (urlPrompt?.trim()) {
+            prompt = urlPrompt;
+            const canExec = urlParams.get('run') === 'exec' && data.currentUserId && !showOnboardingModal;
+            if (canExec) {
+                launchWorkspace(urlPrompt.trim(), true);
+            } else {
+                tick().then(() => textareaEl?.focus());
+            }
+        }
+
         // Subscribe to realtime changes on the books table to auto-refresh bookshelf
         // (Removed to prevent high database egress from auto-refreshing markdown content)
 
@@ -479,6 +495,11 @@
             finalPrompt += '\n<!-- ATTACHMENTS_END -->';
         }
 
+        launchWorkspace(finalPrompt);
+    }
+
+    // Store the prompt/options and open the workspace, which runs the prompt on mount
+    function launchWorkspace(finalPrompt: string, replaceHistory = false) {
         isSubmitting = true;
         try {
             sessionStorage.setItem('workspace_init_prompt', finalPrompt);
@@ -493,7 +514,7 @@
         if (selectedBookId) {
             targetUrl += `&id=${selectedBookId}`;
         }
-        goto(targetUrl);
+        goto(targetUrl, { replaceState: replaceHistory });
     }
 
     // Edit handler
@@ -616,7 +637,7 @@
         { id: 'all', label: 'All' },
         { id: 'book', label: 'Books' },
         { id: 'graphic', label: 'Graphic Books' },
-        { id: 'ai_live', label: 'AI Live Books' },
+        // { id: 'ai_live', label: 'AI Live Books' }, // AI Live Book: hidden until the spec is finalized
         { id: 'hyperrobo', label: 'HyperRobo' },
         { id: 'paperobo', label: 'PapeRobo' },
         { id: 'hypertv', label: 'Scenario Books' },
@@ -2040,7 +2061,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 Logout
             </button>
         {:else}
-            <button class="theme-switch login-btn" onclick={() => goto('/login')}>
+            <button class="theme-switch login-btn" onclick={() => goto(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>
                 Login
             </button>
         {/if}
@@ -2162,9 +2183,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     <button type="button" role="menuitem" onclick={() => { showCreateMenu = false; fileInputEl?.click(); }}>
                                         <span>🗄️</span> Add file
                                     </button>
+                                    <!-- AI Live Book: hidden until the spec is finalized
                                     <button type="button" role="menuitemcheckbox" aria-checked={aiLiveBookEnabled} class:active={aiLiveBookEnabled} onclick={() => { aiLiveBookEnabled = !aiLiveBookEnabled; if (aiLiveBookEnabled) selectedMode = 'book'; }}>
                                         <span>📚</span> AI Live Book
                                     </button>
+                                    -->
                                 </div>
                             {/if}
                         </div>
