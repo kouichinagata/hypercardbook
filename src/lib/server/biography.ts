@@ -91,20 +91,131 @@ function sectionMarker(section: string) {
     return `<!-- biography_section: ${section} -->`;
 }
 
+export const BIOGRAPHY_SECTIONS = [
+    '基本情報',
+    '生い立ち',
+    '仕事・学び',
+    '家族・人間関係',
+    '趣味・関心',
+    '成果物の好み',
+    '価値観・性格',
+    'エピソード',
+    '現在'
+] as const;
+
+export type BiographyFact = { section: string; text: string };
+
+const MAX_FACT_LENGTH = 300;
+
+function normalizeSection(section: string) {
+    const cleaned = String(section || '').replace(/[\r\n]+/g, ' ').replace(/-->/g, '').trim();
+    return cleaned || 'その他';
+}
+
+function normalizeFactText(text: string) {
+    return String(text || '')
+        .replace(/\r?\n/g, ' ')
+        .replace(/^\s*[-*]\s*/, '')
+        .trim()
+        .slice(0, MAX_FACT_LENGTH);
+}
+
+// 出典〔…〕を除いた本文で重複を判定する
+function factKey(line: string) {
+    return line
+        .replace(/^\s*[-*]\s*/, '')
+        .replace(/\s*〔[^〕]*〕\s*$/, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
 /**
- * 指定セクションのページを、内容が既存すれば置換、なければ追加する形でBiography本文を更新する。
- * call-history webhookの upsertCallPage と同じマーカーベースの方式。
+ * 事実を該当セクションページの末尾に箇条書きで追記する(無ければページを新設)。
+ * 既存の内容(旧形式の伝記文を含む)は消さず、同じ文は追加しない。
  */
-export function upsertBiographySection(markdown: string, section: string, content: string) {
-    const marker = sectionMarker(section);
-    const page = `${marker}\n\n${content.trim()}\n`;
+export function appendBiographyFacts(markdown: string, facts: BiographyFact[], sourceLabel: string) {
     const { frontmatter, pages } = splitBiographyMarkdown(markdown);
+    let added = 0;
 
-    const existingIndex = pages.findIndex((item) => item.includes(marker));
-    const newPages =
-        existingIndex >= 0
-            ? pages.map((item, index) => (index === existingIndex ? page : item))
-            : [...pages, page];
+    for (const fact of facts) {
+        const text = normalizeFactText(fact.text);
+        if (!text) continue;
 
-    return [frontmatter, ...newPages].filter(Boolean).join('\n\n***\n\n');
+        const section = normalizeSection(fact.section);
+        const marker = sectionMarker(section);
+        let index = pages.findIndex((item) => item.includes(marker));
+        if (index < 0) {
+            pages.push(`${marker}\n\n## ${section}`);
+            index = pages.length - 1;
+        }
+
+        const page = pages[index].trim();
+        const known = page
+            .split('\n')
+            .filter((line) => /^\s*-\s+/.test(line))
+            .map(factKey);
+        if (known.includes(factKey(text))) continue;
+
+        const lastLine = page.split('\n').pop() || '';
+        const separator = /^\s*-\s+/.test(lastLine) ? '\n' : '\n\n';
+        pages[index] = `${page}${separator}- ${text} 〔${sourceLabel}〕`;
+        added++;
+    }
+
+    return {
+        markdown: added > 0 ? [frontmatter, ...pages].filter(Boolean).join('\n\n***\n\n') : markdown,
+        added
+    };
+}
+
+export function biographySourceLabel(source: string) {
+    return `${source} ${new Date().toISOString().slice(0, 10)}`;
+}
+
+/**
+ * Biography Bookを読み込み(無ければ作成し)、事実を追記して保存する。
+ * HyperCardBookチャットとPapeRobo通話履歴の両方から使う唯一の書き込み口。
+ */
+export async function appendFactsToBiographyBook(
+    supabase: any,
+    userId: string,
+    facts: BiographyFact[],
+    sourceLabel: string,
+    userMetadata: Record<string, any> = {}
+): Promise<{ ok: true; added: number } | { ok: false; error: string }> {
+    const slug = biographySlug(userId);
+    const load = () =>
+        supabase.from('books').select('id, markdown_content').eq('user_id', userId).eq('slug', slug).maybeSingle();
+
+    let { data: book, error } = await load();
+    if (!error && !book) {
+        await ensureBiographyBook(supabase, userId, userMetadata);
+        ({ data: book, error } = await load());
+    }
+    if (error || !book) {
+        return { ok: false, error: error?.message || 'Biography book not found.' };
+    }
+
+    const result = appendBiographyFacts(book.markdown_content || '', facts, sourceLabel);
+    if (result.added === 0) return { ok: true, added: 0 };
+
+    const { error: updateError } = await supabase
+        .from('books')
+        .update({ markdown_content: result.markdown })
+        .eq('id', book.id);
+
+    return updateError ? { ok: false, error: updateError.message } : { ok: true, added: result.added };
+}
+
+/**
+ * AIに渡すための整形済みBiography。frontmatterとマーカーを除き、上限文字数で切る。
+ */
+export function buildBiographyContext(markdown: string, maxChars = 12000) {
+    const { pages } = splitBiographyMarkdown(markdown);
+    const text = pages
+        .map((page) => page.replace(/<!--\s*biography_section:[^>]*-->/g, '').trim())
+        .filter(Boolean)
+        .join('\n\n');
+    return text.length > maxChars ? `${text.slice(0, maxChars)}\n…(truncated)` : text;
 }
