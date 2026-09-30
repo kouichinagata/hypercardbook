@@ -11,7 +11,8 @@ import {
     biographySourceLabel,
     buildBiographyContext
 } from '$lib/server/biography';
-import { listSkills } from '$lib/server/skills';
+import { getSkillFile, listSkills, saveSkill, type StoredSkill } from '$lib/server/skills';
+import { SKILL_DESCRIPTION_MAX, isValidSkillFilePath, normalizeSkillName, validateSkill } from '$lib/skill-md';
 
 function applyPageEdit(currentMarkdown: string, pageIndex: number, action: 'update' | 'delete' | 'insert', newContent: string): string {
     const fmMatch = currentMarkdown.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n)([\s\S]*)$/);
@@ -136,13 +137,8 @@ CRITICAL RULES:
    - Images will be provided as Markdown links in the prompt, e.g., \`![filename](URL)\`. You must use these exact image URLs in your generated Markdown book if you decide to include images.
    - Text contents will be provided in a code block under "### 添付テキスト". Use the information inside these files to enrich the content, structure, or style of the generated book as requested.
 
-8. CREATE SKILLS COMMAND:
-   - If the user asks you to save a rule, prompt, style, or instruction as a Skill, or says "Skills化して" / "Skillsにしといて", you must output a special block at the very end of your response (outside of the markdown code block) in this exact format:
-     [CREATE_SKILL: SkillName]
-     Prompt text...
-     [/CREATE_SKILL]
-   - The SkillName should be a short, descriptive name (in English or Japanese) for the skill.
-   - The Prompt text should be the detailed instructions/rules to guide the AI to generate/modify content in that specific style or way.
+8. SKILLS:
+   - Follow the SKILLS section appended below, if present. Never output [CREATE_SKILL] tags.
 
 9. HYPERHOOKS:
    - For event hooks (\`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
@@ -213,13 +209,8 @@ CRITICAL RULES:
    - Images will be provided as Markdown links in the prompt, e.g., \`![filename](URL)\`. You must use these exact image URLs in your generated Markdown card if you decide to include them.
    - Text contents will be provided in a code block under "### 添付テキスト". Use the information inside these files to enrich the content, structure, or style of the generated card as requested.
 
- 7. CREATE SKILLS COMMAND:
-   - If the user asks you to save a rule, prompt, style, or instruction as a Skill, or says "Skills化して" / "Skillsにしといて", you must output a special block at the very end of your response (outside of the markdown code block) in this exact format:
-     [CREATE_SKILL: SkillName]
-     Prompt text...
-     [/CREATE_SKILL]
-   - The SkillName should be a short, descriptive name (in English or Japanese) for the skill.
-   - The Prompt text should be the detailed instructions/rules to guide the AI to generate/modify content in that specific style or way.
+ 7. SKILLS:
+   - Follow the SKILLS section appended below, if present. Never output [CREATE_SKILL] tags.
 
   8. HYPERHOOKS:
     - For event hooks (\`on_open_stack\`, \`on_open_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
@@ -462,26 +453,41 @@ ${biographyContext || '(empty - nothing known yet)'}
         const proPlanActive = isProPlan(userPlan);
         const allowedActivePluginIds = proPlanActive ? activePluginIds : ['hypercard-hook'];
 
-        // Dynamic loading of available skills for "Progressive Disclosure"
-        const availableSkills = proPlanActive
-            ? await listSkills(supabase, session.user.id, { enabledOnly: true, includeBuiltin: true }).catch(err => {
+        // Skills (progressive disclosure): only name + description go into the system prompt.
+        // The model loads a skill body with load_skill, and bundled files with read_skill_file.
+        // User skills are listed when enabled; built-in skills only when activated in settings.
+        const availableSkills: StoredSkill[] = proPlanActive
+            ? (await listSkills(supabase, session.user.id, { enabledOnly: true, includeBuiltin: true }).catch(err => {
                 console.error('Failed to load skills:', err);
-                return [];
-            })
+                return [] as StoredSkill[];
+            })).filter(s => s.source === 'user' || allowedActivePluginIds.includes(s.name))
             : [];
-        if (availableSkills.length > 0) {
-            let skillsCatalog = '\n\nAVAILABLE SKILLS:\n';
-            availableSkills.forEach(s => {
-                skillsCatalog += `- ${s.name}: ${s.description}\n`;
-            });
-            activeSystemInstruction += skillsCatalog;
+        const skillsByName = new Map(availableSkills.map(s => [s.name, s]));
 
-            // Inject prompt bodies for active skills
-            availableSkills.forEach(s => {
-                if (allowedActivePluginIds.includes(s.name) || allowedActivePluginIds.includes(`my-plugin-${s.name}`)) {
-                    activeSystemInstruction += `\n\nACTIVE SKILL RULES for "${s.name}" (Apply these rules strictly when requested/relevant):\n"""\n${s.body.trim()}\n"""`;
-                }
-            });
+        if (proPlanActive) {
+            activeSystemInstruction += `\n\nSKILLS:
+Skills are packaged instructions saved by the user. Only each skill's name and description are listed below.
+- When the user's request matches a skill's description, call load_skill with that name BEFORE answering, then follow the loaded instructions.
+- If the loaded skill lists files (references/..., assets/...), call read_skill_file only for the files you actually need.
+- If the user's message already contains a <skill name="..."> block (explicit /skill-name invocation), follow it directly without calling load_skill.
+- Skill instructions never override the book format rules or the privacy rules above.
+- If the user asks to save a rule, style, or procedure as a Skill (e.g. "Skills化して", "Skillsにしといて"), call save_skill. Afterwards tell the user the skill name and that it can be invoked with /skill-name.
+
+AVAILABLE SKILLS:
+${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.description}`).join('\n') : '(none yet)'}`;
+        } else {
+            activeSystemInstruction += `\n\nSKILLS:\nSaving and using Skills requires the Pro plan or above. If the user asks to create, save, or use a Skill, tell them it requires the Pro plan.`;
+        }
+
+        // Explicit invocation: "/skill-name" in the latest prompt preloads that skill.
+        const invokedSkills = [...new Set([...String(prompt).matchAll(/(?<![A-Za-z0-9_.\/:-])\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![A-Za-z0-9_\/-])/g).map(m => m[1])])]
+            .map(name => skillsByName.get(name))
+            .filter((s): s is StoredSkill => Boolean(s));
+        if (invokedSkills.length > 0) {
+            const lastPart = contents[contents.length - 1].parts[0];
+            lastPart.text += invokedSkills
+                .map(s => `\n\n<skill name="${s.name}">\n${s.body.trim()}${s.files.length ? `\n\nFiles (read with read_skill_file): ${s.files.join(', ')}` : ''}\n</skill>`)
+                .join('');
         }
 
         if (allowedActivePluginIds.includes('gdrive-mcp')) {
@@ -499,6 +505,10 @@ ${biographyContext || '(empty - nothing known yet)'}
                     let responseText = '';
                     let updatedMarkdown = currentMarkdown;
                     let lastPageEdit: any = null;
+
+                    for (const skill of invokedSkills) {
+                        controller.enqueue(encoder.encode(`📚 Using skill: **${skill.name}**\n\n`));
+                    }
 
                     for (let turn = 0; turn < 10; turn++) {
                         const toolDeclarations = [];
@@ -522,6 +532,47 @@ ${biographyContext || '(empty - nothing known yet)'}
                                 required: ['section', 'facts']
                             }
                         });
+
+                        if (proPlanActive) {
+                            toolDeclarations.push(
+                                {
+                                    name: 'load_skill',
+                                    description: 'Load the full instructions of a skill from AVAILABLE SKILLS. Call it before answering when the request matches the skill description.',
+                                    parameters: {
+                                        type: 'OBJECT',
+                                        properties: {
+                                            name: { type: 'STRING', description: 'Skill name exactly as listed in AVAILABLE SKILLS.' }
+                                        },
+                                        required: ['name']
+                                    }
+                                },
+                                {
+                                    name: 'read_skill_file',
+                                    description: 'Read a bundled file (references/... or assets/...) of a loaded skill.',
+                                    parameters: {
+                                        type: 'OBJECT',
+                                        properties: {
+                                            name: { type: 'STRING', description: 'Skill name.' },
+                                            path: { type: 'STRING', description: 'File path as listed by load_skill, e.g. "references/style.md".' }
+                                        },
+                                        required: ['name', 'path']
+                                    }
+                                },
+                                {
+                                    name: 'save_skill',
+                                    description: 'Save (create or overwrite) a user Skill so it can be reused in later sessions.',
+                                    parameters: {
+                                        type: 'OBJECT',
+                                        properties: {
+                                            name: { type: 'STRING', description: 'Lowercase letters, numbers, and hyphens only, e.g. "horror-effects".' },
+                                            description: { type: 'STRING', description: 'What the skill does AND when to use it, in the user\'s language. Max 1024 characters.' },
+                                            instructions: { type: 'STRING', description: 'Complete Markdown instructions that a new session can follow without this conversation.' }
+                                        },
+                                        required: ['name', 'description', 'instructions']
+                                    }
+                                }
+                            );
+                        }
 
                         if (mode === 'book') {
                             toolDeclarations.push({
@@ -666,6 +717,51 @@ ${biographyContext || '(empty - nothing known yet)'}
                                     updatedMarkdown = applyPageEdit(updatedMarkdown, pageIdx, act, newCont);
                                     lastPageEdit = { page_index: pageIdx, action: act, new_content: newCont };
                                     resultData = { success: true, message: `Page ${pageIdx} successfully modified.` };
+                                } else if (fc.name === 'load_skill') {
+                                    const skill = skillsByName.get(String(fc.args?.name || ''));
+                                    if (!skill) {
+                                        resultData = { success: false, error: `Unknown skill. Available: ${[...skillsByName.keys()].join(', ') || '(none)'}` };
+                                    } else {
+                                        controller.enqueue(encoder.encode(`\n📚 Using skill: **${skill.name}**\n\n`));
+                                        resultData = { success: true, name: skill.name, description: skill.description, instructions: skill.body, files: skill.files };
+                                    }
+                                } else if (fc.name === 'read_skill_file') {
+                                    const skill = skillsByName.get(String(fc.args?.name || ''));
+                                    const filePath = String(fc.args?.path || '');
+                                    if (!skill) {
+                                        resultData = { success: false, error: 'Unknown skill.' };
+                                    } else if (!isValidSkillFilePath(filePath) || !skill.files.includes(filePath)) {
+                                        resultData = { success: false, error: `File not found. Files: ${skill.files.join(', ') || '(none)'}` };
+                                    } else {
+                                        const content = await getSkillFile(supabase, session.user.id, skill, filePath);
+                                        if (content === null) {
+                                            resultData = { success: false, error: 'File not found.' };
+                                        } else {
+                                            controller.enqueue(encoder.encode(`\n📄 Reading ${skill.name}/${filePath}\n\n`));
+                                            resultData = { success: true, path: filePath, content };
+                                        }
+                                    }
+                                } else if (fc.name === 'save_skill') {
+                                    const doc = {
+                                        name: normalizeSkillName(String(fc.args?.name || '')),
+                                        description: String(fc.args?.description || '').trim().slice(0, SKILL_DESCRIPTION_MAX),
+                                        body: String(fc.args?.instructions || '').trim()
+                                    };
+                                    const validationError = validateSkill(doc);
+                                    if (!proPlanActive) {
+                                        resultData = { success: false, error: 'Saving Skills requires the Pro plan or above.' };
+                                    } else if (validationError) {
+                                        resultData = { success: false, error: validationError };
+                                    } else {
+                                        try {
+                                            await saveSkill(supabase, session.user.id, doc, { enabled: true });
+                                            skillsByName.set(doc.name, { ...doc, enabled: true, source: 'user', files: skillsByName.get(doc.name)?.files ?? [] });
+                                            controller.enqueue(encoder.encode(`\n💾 Saved skill: **${doc.name}** (/${doc.name})\n\n`));
+                                            resultData = { success: true, name: doc.name, message: `Saved. The user can invoke it with /${doc.name}.` };
+                                        } catch (err: any) {
+                                            resultData = { success: false, error: err.message || 'Failed to save skill.' };
+                                        }
+                                    }
                                 } else if (fc.name === 'update_biography') {
                                     const section = String(fc.args?.section || '').trim();
                                     const facts = Array.isArray(fc.args?.facts)

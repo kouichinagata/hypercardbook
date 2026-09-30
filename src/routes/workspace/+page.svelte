@@ -71,43 +71,6 @@
         });
     });
 
-    interface Plugin {
-        id: string;
-        name: string;
-        description: string;
-        kinds: string;
-        owner: string;
-        skill: string;
-    }
-
-    const SYSTEM_PLUGINS: Plugin[] = [
-        {
-            id: 'reading-aloud',
-            name: 'Reading aloud',
-            kinds: 'HyperPlugin',
-            owner: 'HyperCardBook',
-            description: 'Enable native vocal read-aloud option for pages using browser SpeechSynthesis.',
-            skill: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
-        },
-        {
-            id: 'bookmark-postit',
-            name: 'Bookmark (Post-it style)',
-            kinds: 'Skill',
-            owner: 'HyperCardBook',
-            description: 'Add a sticky bookmark to save and restore your reading position.',
-            skill: 'Generate bookmark_html (sticky design) and on_open_stack / on_close_card hooks in YAML frontmatter to auto-save and restore the reading position.'
-        },
-        {
-            id: 'hypercard-hook',
-            name: 'HyperCardHook',
-            kinds: 'HyperHook',
-            owner: 'HyperCardBook',
-            description: 'Execute custom logic on card open event (openCard).',
-            skill: ''
-        }
-    ];
-
-    let userPlugins = $state<Plugin[]>([]);
     let activePluginIds = $state<string[]>([]);
     let markdownHistory = $state<string[]>([]);
     let currentCardIndex = $state(-1);
@@ -188,11 +151,6 @@
             scrollToBottom();
         });
     }
-
-    let allPlugins = $derived.by(() => {
-        const activeSystem = SYSTEM_PLUGINS.filter(sp => activePluginIds.includes(sp.id));
-        return [...userPlugins, ...activeSystem];
-    });
 
     let currentInput = $state('');
     let isGenerating = $state(false);
@@ -1085,16 +1043,6 @@ ${markdown}
         }
 
         let finalPrompt = visiblePrompt;
-        let skillDirectives = '';
-        allPlugins.forEach(p => {
-            const command = `/${p.name}`;
-            if (promptText.includes(command)) {
-                skillDirectives += `\n\n[Skill Directive: ${p.name}]\n${p.skill}`;
-            }
-        });
-        if (skillDirectives) {
-            finalPrompt += skillDirectives;
-        }
 
         const historyForApi = $state.snapshot(chatHistory);
         const requestSource = featureSource;
@@ -1240,76 +1188,6 @@ ${markdown}
                 }
             }
 
-            // Check for automatic skill creation tag
-            const skillMatch = accumulatedText.match(/\[CREATE_SKILL:\s*(.+?)\]\n?([\s\S]*?)\[\/CREATE_SKILL\]/i);
-            if (skillMatch) {
-                const skillName = skillMatch[1].trim();
-                const skillPrompt = skillMatch[2].trim();
-                
-                if (!isProPlan) {
-                    chatHistory[lastIndex].text = accumulatedText.replace(/\[CREATE_SKILL:\s*.+?\]\n?[\s\S]*?\[\/CREATE_SKILL\]/i, '').trim() + 
-                        `\n\n💡 **System: Custom skill creation requires Pro plan or above**`;
-                } else {
-                    const safeSkillName = skillName.replace(/[^a-zA-Z0-9_\-]/g, '');
-                    const skillDirName = safeSkillName || `skill-${Date.now()}`;
-                    const newId = `my-plugin-${skillDirName}`;
-                    const skillMd = `---\nname: ${skillName}\ndescription: \n---\n${skillPrompt}`;
-                    
-                    // Add to user plugins list
-                    const newSkill = {
-                        id: newId,
-                        name: skillName,
-                        description: '',
-                        kinds: 'Skill',
-                        owner: 'My plugin',
-                        skill: skillPrompt
-                    };
-                    
-                    const existIdx = userPlugins.findIndex(up => up.id === newId);
-                    if (existIdx !== -1) {
-                        userPlugins[existIdx] = newSkill;
-                    } else {
-                        userPlugins.push(newSkill);
-                    }
-
-                    if (!activePluginIds.includes(newId)) {
-                        activePluginIds.push(newId);
-                    }
-                    
-                    // Call physical folder integration API via POST to save Skill on physical server
-                    try {
-                        await fetch('/api/skills', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                skillName: skillDirName,
-                                skillMd: skillMd
-                            })
-                        });
-                    } catch (apiErr) {
-                        console.error('Failed to call physical skill save API:', apiErr);
-                    }
-                    
-                    // Persist user plugins and active plugins to Supabase user metadata
-                    try {
-                        const { error: updateError } = await supabase.auth.updateUser({
-                            data: {
-                                user_plugins: $state.snapshot(userPlugins),
-                                active_plugin_ids: $state.snapshot(activePluginIds)
-                            }
-                        });
-                        if (updateError) throw updateError;
-                        
-                        // Show registered notice and remove raw tag from chat log display
-                        chatHistory[lastIndex].text = accumulatedText.replace(/\[CREATE_SKILL:\s*.+?\]\n?[\s\S]*?\[\/CREATE_SKILL\]/i, '').trim() + 
-                            `\n\n💡 **System: Registered new Skill "${skillName}"**`;
-                        
-                        await invalidateAll();
-                    } catch (saveErr) {
-                        console.error('Failed to auto-save created skill:', saveErr);
-                    }
-                }
-            }
         } catch (err: any) {
             console.error('Generation failed:', err);
             errorMsg = err.message || 'API Key error. Check GEMINI_API_KEY.';
@@ -1433,7 +1311,6 @@ ${markdown}
         }
 
         const metadata = data.session?.user?.user_metadata || {};
-        userPlugins = metadata.user_plugins || [];
         activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
 
         const urlMode = page.url.searchParams.get('mode');

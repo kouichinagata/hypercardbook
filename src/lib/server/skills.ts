@@ -54,6 +54,19 @@ type SkillRow = {
     skill_files: { path: string }[] | null;
 };
 
+const SKILL_COLUMNS = 'name, description, body, enabled, skill_files(path)';
+
+function toStoredSkill(row: SkillRow): StoredSkill {
+    return {
+        name: row.name,
+        description: row.description,
+        body: row.body,
+        enabled: row.enabled,
+        source: 'user',
+        files: (row.skill_files ?? []).map(file => file.path).sort()
+    };
+}
+
 // ユーザー Skill と組み込み Skill を返す。同名ならユーザー Skill が優先される。
 export async function listSkills(
     supabase: SupabaseClient,
@@ -62,21 +75,14 @@ export async function listSkills(
 ): Promise<StoredSkill[]> {
     let query = supabase
         .from('skills')
-        .select('name, description, body, enabled, skill_files(path)')
+        .select(SKILL_COLUMNS)
         .eq('user_id', userId)
         .order('name');
     if (options.enabledOnly) query = query.eq('enabled', true);
     const { data, error } = await query;
     if (error) throw error;
 
-    const userSkills: StoredSkill[] = ((data ?? []) as SkillRow[]).map(row => ({
-        name: row.name,
-        description: row.description,
-        body: row.body,
-        enabled: row.enabled,
-        source: 'user',
-        files: (row.skill_files ?? []).map(file => file.path).sort()
-    }));
+    const userSkills = ((data ?? []) as SkillRow[]).map(toStoredSkill);
     if (!options.includeBuiltin) return userSkills;
 
     const userNames = new Set(userSkills.map(skill => skill.name));
@@ -84,6 +90,26 @@ export async function listSkills(
         .map(entry => entry.skill)
         .filter(skill => !userNames.has(skill.name));
     return [...userSkills, ...builtins];
+}
+
+// references/ や assets/ のファイル内容を取得。skill は listSkills で得たもの（組み込みかどうかで読み先が変わる）
+export async function getSkillFile(
+    supabase: SupabaseClient,
+    userId: string,
+    skill: StoredSkill,
+    path: string
+): Promise<string | null> {
+    if (skill.source === 'builtin') return builtinSkills.get(skill.name)?.files.get(path) ?? null;
+
+    const { data, error } = await supabase
+        .from('skills')
+        .select('skill_files(content)')
+        .eq('user_id', userId)
+        .eq('name', skill.name)
+        .eq('skill_files.path', path)
+        .maybeSingle();
+    if (error) throw error;
+    return (data as { skill_files: { content: string }[] | null } | null)?.skill_files?.[0]?.content ?? null;
 }
 
 // files を渡した場合は、そのスキルのファイル一式を置き換える。省略時は既存ファイルを維持する。
