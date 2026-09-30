@@ -1,6 +1,6 @@
 # HyperCardBook Skills Specification
 
-本書は、Anthropic（Claude Code）のSkills設計思想と、それに基づいて開発されたHyperCardBookのSkills拡張管理機能の仕様書です。
+本書は、Anthropic（Claude Code）のSkills設計思想と、それに基づいて開発されたHyperCardBookのSkills機能の仕様書です。
 
 ---
 
@@ -40,48 +40,41 @@ AIエージェントへの具体的な動作ルール、フォーマットの指
 
 ## 2. HyperCardBook の Skills 仕様と設計
 
-HyperCardBookでは、この `SKILL.md` の仕様をカプセル化した軽量な管理構造を採用し、AI（Gemini 3.5 Flash）とフロントエンドを統合しています。
+HyperCardBook の Skills は、上記の Agent Skills（SKILL.md）形式に準拠し、段階的開示によって AI（Gemini）に読み込ませます。プログラム（`scripts/`）の実行は、ブラウザ・サーバーともに行いません。Skills の作成・利用は Pro プラン以上の機能です。
 
-### データ構造 (JSON)
-メタデータおよびSkill文を、Supabaseのユーザープロファイル（`user_metadata`）に以下のJSONオブジェクト配列として保持します。
+### 2.1 Skill の構成
+| 要素 | 内容 | 制約 |
+|---|---|---|
+| `name` | 識別子。`/name` で明示呼び出しに使う | 小文字英数字とハイフン、64文字以内 |
+| `description` | 「何をするか」と「いつ使うか」 | 必須、1024文字以内 |
+| 本文 | AI が従う Markdown の指示 | 100,000文字以内 |
+| 添付ファイル | `references/…`（参考資料）、`assets/…`（CSS やテンプレート） | 1 Skill あたり20ファイル、各200,000文字以内 |
 
-```typescript
-interface Plugin {
-    id: string;          // ユニーク識別子
-    name: string;        // Skill名（YAML name に相当）
-    description: string; // 説明文（YAML description に相当、最大200文字）
-    kinds: string;       // 種別。ユーザーが編集可能なのは "Skills" のみ
-    owner: string;       // 所有者（"HyperCardBook" もしくは "My plugin"）
-    skill: string;       // Skill文（指示文本体、YAMLボディに相当）
-}
-```
+解析・生成・検証は `src/lib/skill-md.ts`（`parseSkillMd` / `serializeSkillMd` / `validateSkill`）に集約しています。
 
-### 編集・作成時の振る舞い
+### 2.2 保存先
+* **ユーザー Skill**: Supabase の `skills`（name, description, body, enabled）と `skill_files`（path, content）。RLS により本人のみ読み書きできます（`supabase_migration_skills.sql`）。
+* **組み込み Skill**: リポジトリの `src/lib/server/builtin-skills/<name>/SKILL.md`。ビルドに同梱され、設定画面で有効化したもの（`user_metadata.active_plugin_ids` に name を含むもの）だけが使われます。同名のユーザー Skill がある場合はユーザー Skill が優先されます。
+* API: `/api/skills`（GET 一覧 / GET `?name=` 1件と添付ファイル / POST 作成・更新・有効切替 / DELETE）。サーバー側の処理は `src/lib/server/skills.ts`。
+* 旧方式（`data/skills/` と `user_metadata.user_plugins`）からの移行は `npm run skills:migrate`（`--dry-run` 対応）で行います。
 
-#### 1. システムスキルのインプレース自作化（クローン）
-* 設定画面のテーブルから `Reading aloud`（Kinds: `Skills`, Owner: `HyperCardBook`）を選択した場合でも、下部の編集フォームで直接編集が可能です。
-* ユーザーがフォーム（Name, Description, Skill文のいずれか）を編集した瞬間に、自動で `Owner` を `My plugin` に書き換え、ユーザー独自のカスタムスキルとして `userPlugins` 配列に挿入します。
-* 再度元の標準システムスキルに戻したい場合は、画面上部の「Add」からいつでもオリジナルを再読込できます。
-* `Kinds` が `Skills` 以外のプラグインは、ユーザーによる編集を許可しません（Read Only）。
+### 2.3 実行時の動き（`/api/generate`）
+1. **一覧（第1段階）**: 有効な Skill の `name: description` だけをシステムプロンプトの `AVAILABLE SKILLS` に載せます。
+2. **読み込み（第2段階）**: AI は依頼が description に合うと判断したとき `load_skill(name)` を呼び、本文と添付ファイルの一覧を受け取ります。
+3. **添付ファイル（第3段階）**: 必要なときだけ `read_skill_file(name, path)` で `references/` や `assets/` を読みます。
+* **明示呼び出し**: ユーザーの入力に `/skill-name` が含まれる場合、サーバーがその Skill の本文を `<skill name="…">` ブロックとして入力に付けて渡します。
+* **保存**: 「Skills にしといて」などの依頼では、AI が `save_skill(name, description, instructions)` を呼んで保存します。
+* チャットには `📚 Using skill` / `📄 Reading` / `💾 Saved skill` の表示が流れます。
+* 本やカードは Skill なしで表示されるため、Skill が CSS を提供する場合、AI は使う CSS を本の `<style>` に書き込みます。
 
-#### 2. インライン新規作成（New）
-* `New` ボタンを押すと、テーブルの選択をクリアし、下部の編集フォーム（Name, Description, Skill文）を空にします（画面遷移なしのインライン方式）。
-* 編集フォーム横の「Create」を押した時点で正式に新規スキルとして登録・アクティブ化されます。
+### 2.4 設定画面（Settings → Plugin）
+* **Skills**: ユーザー Skill と組み込み Skill の一覧。チェックボックスで有効／無効を切り替えます（ユーザー Skill は即時に DB へ保存、組み込み Skill は `active_plugin_ids` に即時保存）。
+* **編集フォーム**: Name / Description / Instructions / Files を編集し、「Save skill」でその Skill だけを保存します。名前を変えた場合は新しい名前で保存してから旧 Skill を削除し、無効状態を引き継ぎます。
+* **組み込み Skill**: 読み取り専用で表示し、「Duplicate to edit」で同名のユーザー Skill として複製できます。
+* **AI Skill Generator / Refiner**: `/api/generate-skill` が指示から name / description / 本文の下書きを作ります。保存は「Save skill」を押したときに行います。
+* **Plugins**: Skill ではない組み込み機能（Reading aloud、HyperCardHook）の有効／無効。
 
-#### 3. AIによる自動生成・修正
-* 編集エリアの直下に「AI指示（AIプロンプト）」の入力欄と「Run」ボタンを配置しています。
-* サーバー側のAPIエンドポイント `/api/generate-skill` を呼び出し、AIに以下の挙動を行わせます。
-  - **新規作成**: ユーザーの指示から「適切な名称」「役割説明」「Skill文テンプレート」を一度に自動生成する。
-  - **既存修正**: 現在エディタに入力されているSkill文を入力として受け取り、その文脈を損なわずに新しい要件をマージする。
-* AIは以下の構造化されたJSONデータを返し、フォームに即時反映します。
-  ```json
-  {
-    "name": "スキル名",
-    "description": "説明文",
-    "skill": "Skill指示文"
-  }
-  ```
-
-### 4. 実行時（Workspace）の動き
-* チャットプロンプト内で `/スキル名` が入力された場合、送信時に対応するSkill文（`p.skill`）を `[Skill Directive: ...]` タグで結合し、AIに送信します（チャットの画面ログには余計な指示文は残りません）。
-* AIとの会話中に「〜をSkillsにしといて」とチャットで依頼した際、AIの回答末尾の `[CREATE_SKILL: 名前]` タグをパースして自動保存する処理も、このデータ構造（`skill` および `description`）と同期して機能します。
+### 2.5 対応しないもの
+* `scripts/` などのプログラム実行（ブラウザでの `index.js` 実行を含む）
+* 表示時に Skill の CSS を本へ後付けすること
+* 本文中の `/!event: skill` ページ hook（行は表示から取り除かれるだけで実行されません）

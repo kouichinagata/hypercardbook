@@ -566,7 +566,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                         type: 'OBJECT',
                                         properties: {
                                             name: { type: 'STRING', description: 'Lowercase letters, numbers, and hyphens only, e.g. "horror-effects".' },
-                                            description: { type: 'STRING', description: 'What the skill does AND when to use it, in the user\'s language. Max 1024 characters.' },
+                                            description: { type: 'STRING', description: 'In the user\'s language, BOTH what the skill does AND when to use it, e.g. "…する。…したいとき、…と頼まれたときに使う。". This is the only text used to decide when to load the skill. Max 1024 characters.' },
                                             instructions: { type: 'STRING', description: 'Complete Markdown instructions that a new session can follow without this conversation.' }
                                         },
                                         required: ['name', 'description', 'instructions']

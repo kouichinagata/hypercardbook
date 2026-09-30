@@ -46,6 +46,10 @@ const builtinSkills = new Map<string, { skill: StoredSkill; files: Map<string, s
     }
 }
 
+export function listBuiltinSkills(): StoredSkill[] {
+    return [...builtinSkills.values()].map(entry => entry.skill);
+}
+
 type SkillRow = {
     name: string;
     description: string;
@@ -110,6 +114,36 @@ export async function getSkillFile(
         .maybeSingle();
     if (error) throw error;
     return (data as { skill_files: { content: string }[] | null } | null)?.skill_files?.[0]?.content ?? null;
+}
+
+// 1件を添付ファイルの中身込みで取得（設定画面の編集用、ユーザー Skill のみ）
+export async function getSkillWithFiles(
+    supabase: SupabaseClient,
+    userId: string,
+    name: string
+): Promise<(StoredSkill & { fileContents: SkillFile[] }) | null> {
+    const { data, error } = await supabase
+        .from('skills')
+        .select('name, description, body, enabled, skill_files(path, content)')
+        .eq('user_id', userId)
+        .eq('name', name)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    const row = data as SkillRow & { skill_files: SkillFile[] | null };
+    const fileContents = [...(row.skill_files ?? [])].sort((a, b) => a.path.localeCompare(b.path));
+    return { ...toStoredSkill(row), fileContents };
+}
+
+export async function setSkillEnabled(supabase: SupabaseClient, userId: string, name: string, enabled: boolean): Promise<boolean> {
+    const { data, error } = await supabase
+        .from('skills')
+        .update({ enabled, updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('name', name)
+        .select('name');
+    if (error) throw error;
+    return (data ?? []).length > 0;
 }
 
 // files を渡した場合は、そのスキルのファイル一式を置き換える。省略時は既存ファイルを維持する。

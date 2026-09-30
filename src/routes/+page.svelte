@@ -10,6 +10,7 @@
     import { LANGUAGES } from '$lib/languages';
     import { activePromotionFromUser, effectivePlanFromUser } from '$lib/plan';
     import { DDC_CLASSES } from '$lib/ddc';
+    import { SKILL_DESCRIPTION_MAX, normalizeSkillName, serializeSkillMd, validateSkill, type SkillFile } from '$lib/skill-md';
 
     let { data } = $props();
 
@@ -258,7 +259,6 @@
         // Check onboarding trigger (new logins with empty profile data)
         if (data.session?.user) {
             const metadata = data.session.user.user_metadata || {};
-            userPlugins = metadata.user_plugins || [];
             activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
             
             if (!metadata.nickname || !metadata.language) {
@@ -1301,178 +1301,237 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     let githubPollInterval: any = null;
     let githubPollSeconds = 5;
 
-    // Plugins management states
-    interface Plugin {
+    // Skills / Plugins management states
+    interface SystemPlugin {
         id: string;
         name: string;
         description: string;
-        kinds: string;
-        owner: string;
-        skill: string;
     }
 
-    const SYSTEM_PLUGINS: Plugin[] = [
+    // Skill ではない組み込みプラグイン（activePluginIds で有効化する）
+    const SYSTEM_PLUGINS: SystemPlugin[] = [
         {
             id: 'reading-aloud',
             name: 'Reading aloud',
-            kinds: 'HyperPlugin',
-            owner: 'HyperCardBook',
-            description: 'Enable native vocal read-aloud option for pages using browser SpeechSynthesis.',
-            skill: 'When generating or modifying books/cards, ensure that any written content is suitable for text-to-speech reading. Also, enable the vocal read-aloud option for pages.'
-        },
-        {
-            id: 'bookmark-postit',
-            name: 'Bookmark (Post-it style)',
-            kinds: 'Skill',
-            owner: 'HyperCardBook',
-            description: 'Add a sticky bookmark to save and restore your reading position.',
-            skill: 'Generate bookmark_html (sticky design) and on_open_stack / on_close_card hooks in YAML frontmatter to auto-save and restore the reading position.'
+            description: 'Enable native vocal read-aloud option for pages using browser SpeechSynthesis.'
         },
         {
             id: 'hypercard-hook',
             name: 'HyperCardHook',
-            kinds: 'HyperHook',
-            owner: 'HyperCardBook',
-            description: 'Execute custom logic on card open event (openCard).',
-            skill: ''
+            description: 'Execute custom logic on card open event (openCard).'
         }
     ];
 
-    let userPlugins = $state<Plugin[]>([]);
+    interface SkillListItem {
+        name: string;
+        description: string;
+        enabled: boolean;
+    }
+
+    interface BuiltinSkillItem {
+        name: string;
+        description: string;
+        body: string;
+    }
+
     let activePluginIds = $state<string[]>([]);
-    let selectedPluginId = $state<string>('');
-    let selectedPluginName = $state<string>('');
-    let selectedPluginDescription = $state<string>('');
-    let selectedPluginSkill = $state<string>('');
-    let pluginSubView = $state<'list' | 'add'>('list');
-    let selectedAddPluginId = $state<string>('');
+    let userSkills = $state<SkillListItem[]>([]);
+    let builtinSkills = $state<BuiltinSkillItem[]>([]);
+    let skillsLoadError = $state('');
 
-    let allPlugins = $derived.by(() => {
-        const activeSystem = SYSTEM_PLUGINS.filter(sp => activePluginIds.includes(sp.id));
-        return [...userPlugins, ...activeSystem];
-    });
+    // 編集フォーム（skillOriginalName が空なら新規作成）
+    let skillEditorOpen = $state(false);
+    let skillReadOnly = $state(false);
+    let skillOriginalName = $state('');
+    let skillFormName = $state('');
+    let skillFormDescription = $state('');
+    let skillFormBody = $state('');
+    let skillFormFiles = $state<SkillFile[]>([]);
+    let skillFormError = $state('');
+    let skillFormNotice = $state('');
+    let isSavingSkill = $state(false);
 
-    let selectedPlugin = $derived(allPlugins.find(p => p.id === selectedPluginId));
+    async function loadSkills() {
+        skillsLoadError = '';
+        try {
+            const res = await fetch('/api/skills');
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+            userSkills = (body.skills || []).map((s: any) => ({ name: s.name, description: s.description, enabled: s.enabled }));
+            builtinSkills = body.builtin || [];
+        } catch (err: any) {
+            userSkills = [];
+            builtinSkills = [];
+            skillsLoadError = err.message || 'Failed to load skills.';
+        }
+    }
 
-    function selectPlugin(p: Plugin) {
-        selectedPluginId = p.id;
-        selectedPluginName = p.name;
-        selectedPluginDescription = p.description || '';
-        selectedPluginSkill = p.skill || '';
+    function resetSkillForm() {
+        skillEditorOpen = false;
+        skillReadOnly = false;
+        skillOriginalName = '';
+        skillFormName = '';
+        skillFormDescription = '';
+        skillFormBody = '';
+        skillFormFiles = [];
+        skillFormError = '';
+        skillFormNotice = '';
         aiInstructionInput = '';
     }
 
-    function updateSelectedSkillFields(name: string, description: string, skillText: string) {
-        if (!selectedPluginId) return;
+    function newSkill() {
+        resetSkillForm();
+        skillEditorOpen = true;
+    }
 
-        // If editing a system plugin, clone it to custom user plugin
-        const current = allPlugins.find(p => p.id === selectedPluginId);
-        if (current && current.owner === 'HyperCardBook') {
-            const newId = `my-plugin-${current.id}-${Date.now()}`;
-            const cloned: Plugin = {
-                id: newId,
-                name: name,
-                description: description,
-                kinds: current.kinds,
-                owner: 'My plugin',
-                skill: skillText
-            };
-            userPlugins.push(cloned);
-            
-            // Deactivate system plugin, activate custom plugin
-            activePluginIds = activePluginIds.filter(id => id !== current.id);
-            if (!activePluginIds.includes(newId)) {
-                activePluginIds.push(newId);
-            }
-            
-            selectedPluginId = newId;
-            selectedPluginName = name;
-            selectedPluginDescription = description;
-            selectedPluginSkill = skillText;
+    async function openUserSkill(name: string) {
+        resetSkillForm();
+        skillEditorOpen = true;
+        skillOriginalName = name;
+        skillFormName = name;
+        try {
+            const res = await fetch(`/api/skills?name=${encodeURIComponent(name)}`);
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+            skillFormDescription = body.skill.description;
+            skillFormBody = body.skill.body;
+            skillFormFiles = body.skill.files || [];
+        } catch (err: any) {
+            skillFormError = err.message || 'Failed to load skill.';
+        }
+    }
+
+    function openBuiltinSkill(skill: BuiltinSkillItem) {
+        resetSkillForm();
+        skillEditorOpen = true;
+        skillReadOnly = true;
+        skillFormName = skill.name;
+        skillFormDescription = skill.description;
+        skillFormBody = skill.body;
+    }
+
+    // 組み込み Skill を同名のユーザー Skill として複製する（同名ならユーザー Skill が優先される）
+    function duplicateBuiltinSkill() {
+        skillReadOnly = false;
+        skillOriginalName = '';
+        skillFormNotice = 'Edit and press "Save skill" to create your own copy. It will override the built-in skill.';
+    }
+
+    function addSkillFile() {
+        skillFormFiles = [...skillFormFiles, { path: 'references/', content: '' }];
+    }
+
+    function removeSkillFile(index: number) {
+        skillFormFiles = skillFormFiles.filter((_, i) => i !== index);
+    }
+
+    async function postSkillEnabled(name: string, enabled: boolean) {
+        const res = await fetch('/api/skills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ skillName: name, enabled })
+        });
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${res.status}`);
+        }
+    }
+
+    async function toggleUserSkill(name: string, enabled: boolean) {
+        const skill = userSkills.find(s => s.name === name);
+        if (!skill) return;
+        skill.enabled = enabled;
+        try {
+            await postSkillEnabled(name, enabled);
+        } catch (err: any) {
+            skill.enabled = !enabled;
+            alert(`Failed to update skill: ${err.message || err}`);
+        }
+    }
+
+    // 組み込み Skill と Plugins は activePluginIds で有効化し、その場で保存する
+    async function toggleActivePlugin(id: string) {
+        const previous = activePluginIds;
+        activePluginIds = previous.includes(id) ? previous.filter(x => x !== id) : [...previous, id];
+        const { error: updateError } = await supabase.auth.updateUser({
+            data: { active_plugin_ids: $state.snapshot(activePluginIds) }
+        });
+        if (updateError) {
+            activePluginIds = previous;
+            alert(`Failed to update plugins: ${updateError.message}`);
+        }
+    }
+
+    async function saveCurrentSkill() {
+        skillFormError = '';
+        skillFormNotice = '';
+        const doc = {
+            name: normalizeSkillName(skillFormName),
+            description: skillFormDescription.trim(),
+            body: skillFormBody.trim()
+        };
+        const files = skillFormFiles.map(f => ({ path: f.path.trim(), content: f.content }));
+        const validationError = validateSkill(doc, files);
+        if (validationError) {
+            skillFormError = validationError;
+            return;
+        }
+        if (doc.name !== skillOriginalName && userSkills.some(s => s.name === doc.name)) {
+            skillFormError = `A skill named "${doc.name}" already exists.`;
             return;
         }
 
-        // Otherwise, update existing user plugin in place
-        const idx = userPlugins.findIndex(up => up.id === selectedPluginId);
-        if (idx !== -1) {
-            userPlugins[idx].name = name;
-            userPlugins[idx].description = description;
-            userPlugins[idx].skill = skillText;
-            
-            selectedPluginName = name;
-            selectedPluginDescription = description;
-            selectedPluginSkill = skillText;
-        }
-    }
+        isSavingSkill = true;
+        try {
+            const res = await fetch('/api/skills', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ skillName: doc.name, skillMd: serializeSkillMd(doc), files })
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
 
-    function handleNameInput() {
-        updateSelectedSkillFields(selectedPluginName, selectedPluginDescription, selectedPluginSkill);
-    }
-
-    function handleDescriptionInput() {
-        updateSelectedSkillFields(selectedPluginName, selectedPluginDescription, selectedPluginSkill);
-    }
-
-    function handleSkillInput() {
-        updateSelectedSkillFields(selectedPluginName, selectedPluginDescription, selectedPluginSkill);
-    }
-
-    function openAddPluginView() {
-        pluginSubView = 'add';
-        selectedAddPluginId = '';
-    }
-
-    function installSelectedSystemPlugin() {
-        if (!selectedAddPluginId) return;
-        if (!activePluginIds.includes(selectedAddPluginId)) {
-            activePluginIds.push(selectedAddPluginId);
-        }
-        pluginSubView = 'list';
-        selectedPluginId = selectedAddPluginId;
-        const found = SYSTEM_PLUGINS.find(p => p.id === selectedAddPluginId);
-        if (found) {
-            selectPlugin(found);
-        }
-    }
-
-    async function deleteSelectedPlugin() {
-        if (!selectedPluginId) return;
-        const skillToDelete = userPlugins.find(up => up.id === selectedPluginId);
-        activePluginIds = activePluginIds.filter(id => id !== selectedPluginId);
-        userPlugins = userPlugins.filter(up => up.id !== selectedPluginId);
-        const deletedId = selectedPluginId;
-        selectedPluginId = '';
-        selectedPluginName = '';
-        selectedPluginDescription = '';
-        selectedPluginSkill = '';
-
-        if (skillToDelete && deletedId.startsWith('my-plugin-')) {
-            try {
+            // 名前の変更: 新しい名前で保存できてから古い Skill を削除し、無効状態を引き継ぐ
+            if (skillOriginalName && skillOriginalName !== doc.name) {
+                const previous = userSkills.find(s => s.name === skillOriginalName);
                 await fetch('/api/skills', {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ skillName: deletedId })
+                    body: JSON.stringify({ skillName: skillOriginalName })
                 });
-            } catch (err) {
-                console.error('Failed to call delete skill API:', err);
+                if (previous && !previous.enabled) await postSkillEnabled(doc.name, false);
             }
-        }
 
-        try {
-            const { error: updateError } = await supabase.auth.updateUser({
-                data: {
-                    user_plugins: $state.snapshot(userPlugins),
-                    active_plugin_ids: $state.snapshot(activePluginIds)
-                }
-            });
-            if (updateError) throw updateError;
-            await invalidateAll();
-        } catch (err) {
-            console.error('Failed to sync updated plugins list to Supabase:', err);
+            skillOriginalName = doc.name;
+            skillFormName = doc.name;
+            skillFormNotice = `Saved. Invoke it with /${doc.name}, or let the AI load it when relevant.`;
+            await loadSkills();
+        } catch (err: any) {
+            skillFormError = err.message || 'Failed to save skill.';
+        } finally {
+            isSavingSkill = false;
         }
     }
 
-
+    async function deleteCurrentSkill() {
+        if (!skillOriginalName || skillReadOnly) return;
+        if (!confirm(`Delete the skill "${skillOriginalName}"?`)) return;
+        try {
+            const res = await fetch('/api/skills', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ skillName: skillOriginalName })
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || `HTTP ${res.status}`);
+            }
+            resetSkillForm();
+            await loadSkills();
+        } catch (err: any) {
+            alert(`Failed to delete skill: ${err.message || err}`);
+        }
+    }
 
     // AI Refiner State & Actions
     let aiInstructionInput = $state('');
@@ -1484,6 +1543,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             return;
         }
         isGeneratingSkill = true;
+        skillFormError = '';
+        skillFormNotice = '';
         try {
             const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
             const res = await fetch('/api/generate-skill', {
@@ -1493,9 +1554,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
                 },
                 body: JSON.stringify({
-                    name: selectedPluginName,
-                    description: selectedPluginDescription,
-                    skill: selectedPluginSkill,
+                    name: skillFormName,
+                    description: skillFormDescription,
+                    skill: skillFormBody,
                     instruction: aiInstructionInput
                 })
             });
@@ -1504,11 +1565,14 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 throw new Error(errData.error || 'Failed to generate skill.');
             }
             const data = await res.json();
-            updateSelectedSkillFields(data.name || '', data.description || '', data.skill || '');
+            skillFormName = normalizeSkillName(data.name || '') || skillFormName;
+            skillFormDescription = data.description || skillFormDescription;
+            skillFormBody = data.skill || skillFormBody;
             aiInstructionInput = '';
+            skillFormNotice = 'AI draft applied. Review it, then press "Save skill".';
         } catch (err: any) {
             console.error(err);
-            alert(err.message || 'AI generation failed.');
+            skillFormError = err.message || 'AI generation failed.';
         } finally {
             isGeneratingSkill = false;
         }
@@ -1546,29 +1610,20 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         githubRepo = metadata.github_repo || '';
         
         activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
-        selectedPluginId = '';
-        selectedPluginName = '';
-        selectedPluginDescription = '';
-        selectedPluginSkill = '';
-        pluginSubView = 'list';
+        resetSkillForm();
         
         settingsActiveTab = 'profile';
         deleteStep = 'none';
         deleteConfirmEmail = '';
         deleteErrorMsg = '';
 
-        // Load physical custom skills from server storage
-        try {
-            const res = await fetch('/api/skills');
-            if (res.ok) {
-                const listData = await res.json();
-                userPlugins = listData.skills || [];
-            } else {
-                userPlugins = metadata.user_plugins || [];
-            }
-        } catch (err) {
-            console.error('Failed to load user skills from server:', err);
-            userPlugins = metadata.user_plugins || [];
+        // Skills are stored in Supabase (Pro plan or above)
+        if (isProPlan) {
+            await loadSkills();
+        } else {
+            userSkills = [];
+            builtinSkills = [];
+            skillsLoadError = '';
         }
         
         if (typeof window !== 'undefined') {
@@ -1621,24 +1676,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         isSavingSettings = true;
         
         try {
-            // Update all custom skills' physical files on server
-            for (const up of userPlugins) {
-                if (up.owner === 'My plugin' || up.id.startsWith('my-plugin-')) {
-                    const safeSkillName = up.id.replace('my-plugin-', '').replace(/[^a-zA-Z0-9_\-]/g, '');
-                    if (safeSkillName) {
-                        const skillMd = `---\nname: ${up.name}\ndescription: ${up.description}\n---\n${up.skill}`;
-                        await fetch('/api/skills', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                skillName: safeSkillName,
-                                skillMd: skillMd
-                            })
-                        });
-                    }
-                }
-            }
-
             const { error: updateError } = await supabase.auth.updateUser({
                 data: {
                     nickname: profileNickname,
@@ -1647,7 +1684,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     use_author_bio_in_book: profileUseAuthorBioInBook,
                     language: profileLanguage,
                     hypercardbook_md: profileHypercardbookMd,
-                    user_plugins: $state.snapshot(userPlugins),
                     active_plugin_ids: $state.snapshot(activePluginIds),
                     github_owner: githubOwner,
                     github_repo: githubRepo
@@ -2936,159 +2972,231 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                         </div>
                     {:else if settingsActiveTab === 'plugin'}
                         <div class="tab-pane plugin-tab-layout">
-                            {#if pluginSubView === 'list'}
-                                <div class="plugin-main-section">
-                                    <div class="plugin-list-wrapper">
-                                        <table class="plugin-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Plugin</th>
-                                                    <th>Kinds</th>
-                                                    <th>Owner</th>
+                            <div class="plugin-main-section">
+                                <h4 class="skill-section-title">Skills</h4>
+                                {#if !isProPlan}
+                                    <p class="skill-hint">Skills are available on the Pro plan or above.</p>
+                                {:else if skillsLoadError}
+                                    <p class="skill-error">{skillsLoadError}</p>
+                                {/if}
+                                <div class="plugin-list-wrapper">
+                                    <table class="plugin-table">
+                                        <thead>
+                                            <tr>
+                                                <th class="skill-toggle-cell">On</th>
+                                                <th>Skill</th>
+                                                <th>Description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {#each userSkills as s (s.name)}
+                                                <tr
+                                                    class="plugin-row"
+                                                    class:selected={skillEditorOpen && !skillReadOnly && skillOriginalName === s.name}
+                                                    onclick={() => openUserSkill(s.name)}
+                                                >
+                                                    <td class="skill-toggle-cell">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={s.enabled}
+                                                            disabled={!isProPlan}
+                                                            aria-label="Enable {s.name}"
+                                                            onclick={(e) => e.stopPropagation()}
+                                                            onchange={(e) => toggleUserSkill(s.name, e.currentTarget.checked)}
+                                                        />
+                                                    </td>
+                                                    <td>{s.name}</td>
+                                                    <td class="skill-desc-cell">{s.description}</td>
                                                 </tr>
-                                            </thead>
-                                            <tbody>
-                                                {#each allPlugins as p}
-                                                    <tr 
-                                                        class="plugin-row" 
-                                                        class:selected={selectedPluginId === p.id}
-                                                        onclick={() => selectPlugin(p)}
-                                                    >
-                                                        <td>
-                                                            {activePluginIds.includes(p.id) ? '＊' : ''}{p.name}
-                                                        </td>
-                                                        <td>{p.kinds}</td>
-                                                        <td>{p.owner}</td>
-                                                    </tr>
-                                                {/each}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    
-                                    <div class="plugin-actions-row">
-                                        <button type="button" class="plugin-action-btn" onclick={openAddPluginView} disabled={!isProPlan}>Add</button>
-                                        <button type="button" class="plugin-action-btn" onclick={deleteSelectedPlugin} disabled={!isProPlan || !selectedPluginId}>Delete</button>
-                                    </div>
+                                            {/each}
+                                            {#each builtinSkills as s (s.name)}
+                                                <tr
+                                                    class="plugin-row"
+                                                    class:selected={skillEditorOpen && skillReadOnly && skillFormName === s.name}
+                                                    onclick={() => openBuiltinSkill(s)}
+                                                >
+                                                    <td class="skill-toggle-cell">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={activePluginIds.includes(s.name)}
+                                                            disabled={!isProPlan}
+                                                            aria-label="Enable {s.name}"
+                                                            onclick={(e) => e.stopPropagation()}
+                                                            onchange={() => toggleActivePlugin(s.name)}
+                                                        />
+                                                    </td>
+                                                    <td>{s.name} <span class="skill-badge">Built-in</span></td>
+                                                    <td class="skill-desc-cell">{s.description}</td>
+                                                </tr>
+                                            {/each}
+                                        </tbody>
+                                    </table>
                                 </div>
 
-                                {#if selectedPlugin}
-                                    <div class="plugin-prompt-section" style="border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 12px; display: flex; flex-direction: column; gap: 12px;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                                            <h4 style="margin: 0; font-size: 13px; font-weight: 600;">
-                                                Edit Skill Details
-                                            </h4>
-                                        </div>
+                                <div class="plugin-actions-row">
+                                    <button type="button" class="plugin-action-btn" onclick={newSkill} disabled={!isProPlan}>New</button>
+                                    <button type="button" class="plugin-action-btn" onclick={deleteCurrentSkill} disabled={!isProPlan || !skillOriginalName || skillReadOnly}>Delete</button>
+                                </div>
+                            </div>
 
-                                        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
-                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Skill Name</label>
-                                            <input 
-                                                type="text" 
-                                                class="plugin-name-input" 
-                                                bind:value={selectedPluginName} 
-                                                oninput={handleNameInput} 
-                                                placeholder="e.g. polite-tone"
-                                                style="width: 100%; box-sizing: border-box;"
-                                                disabled={!isProPlan || (selectedPlugin && selectedPlugin.owner !== 'My plugin')}
-                                            />
-                                        </div>
- 
-                                        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
-                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Description</label>
-                                            <input 
-                                                type="text" 
-                                                class="plugin-name-input" 
-                                                bind:value={selectedPluginDescription} 
-                                                oninput={handleDescriptionInput} 
-                                                placeholder="e.g. Convert text to polite tone."
-                                                style="width: 100%; box-sizing: border-box;"
-                                                disabled={!isProPlan || (selectedPlugin && selectedPlugin.owner !== 'My plugin')}
-                                            />
-                                        </div>
- 
-                                        <div class="form-group" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
-                                            <label style="font-size: 12px; font-weight: 600; opacity: 0.8;">Skill Prompt</label>
-                                            <textarea 
-                                                class="md-editor-textarea" 
-                                                bind:value={selectedPluginSkill} 
-                                                oninput={handleSkillInput}
-                                                rows="6"
-                                                placeholder="Enter skill instructions/directives..."
-                                                style="width: 100%; box-sizing: border-box; resize: vertical;"
-                                                disabled={!isProPlan || (selectedPlugin && selectedPlugin.owner !== 'My plugin')}
-                                            ></textarea>
-                                        </div>
+                            {#if skillEditorOpen}
+                                <div class="plugin-prompt-section skill-editor">
+                                    <h4 class="skill-section-title">
+                                        {skillReadOnly ? 'Built-in Skill (read only)' : skillOriginalName ? 'Edit Skill' : 'New Skill'}
+                                    </h4>
 
-                                        {#if selectedPlugin && selectedPlugin.owner === 'My plugin'}
-                                            <div class="ai-assistant-pane" style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-                                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                                    <span style="font-size: 12px; font-weight: 600; color: #c084fc;">AI Skill Generator / Refiner</span>
+                                    <div class="skill-field">
+                                        <label for="skill-name-input">Name</label>
+                                        <input
+                                            id="skill-name-input"
+                                            type="text"
+                                            class="plugin-name-input skill-full-width"
+                                            bind:value={skillFormName}
+                                            placeholder="e.g. polite-tone"
+                                            disabled={!isProPlan || skillReadOnly}
+                                        />
+                                        <span class="skill-hint">Lowercase letters, numbers, and hyphens. Invoke it with /{normalizeSkillName(skillFormName) || 'skill-name'}.</span>
+                                    </div>
+
+                                    <div class="skill-field">
+                                        <label for="skill-description-input">Description</label>
+                                        <textarea
+                                            id="skill-description-input"
+                                            class="md-editor-textarea skill-full-width"
+                                            bind:value={skillFormDescription}
+                                            rows="3"
+                                            maxlength={SKILL_DESCRIPTION_MAX}
+                                            placeholder="What the skill does AND when to use it. e.g. 丁寧語に書き換える。敬語にしてと頼まれたときに使う。"
+                                            disabled={!isProPlan || skillReadOnly}
+                                        ></textarea>
+                                        <span class="skill-hint">The AI sees only this text when deciding whether to load the skill. {skillFormDescription.length}/{SKILL_DESCRIPTION_MAX}</span>
+                                    </div>
+
+                                    <div class="skill-field">
+                                        <label for="skill-body-input">Instructions (SKILL.md body)</label>
+                                        <textarea
+                                            id="skill-body-input"
+                                            class="md-editor-textarea skill-full-width"
+                                            bind:value={skillFormBody}
+                                            rows="10"
+                                            placeholder="Markdown instructions the AI follows after loading this skill..."
+                                            disabled={!isProPlan || skillReadOnly}
+                                        ></textarea>
+                                    </div>
+
+                                    {#if !skillReadOnly}
+                                        <div class="skill-field">
+                                            <span class="skill-field-label">Files</span>
+                                            <span class="skill-hint">Optional reference material or assets the AI reads only when needed (references/… or assets/…).</span>
+                                            {#each skillFormFiles as file, i}
+                                                <div class="skill-file">
+                                                    <div class="skill-file-header">
+                                                        <input
+                                                            type="text"
+                                                            class="plugin-name-input skill-file-path"
+                                                            bind:value={file.path}
+                                                            placeholder="references/guide.md"
+                                                            aria-label="File path"
+                                                            disabled={!isProPlan}
+                                                        />
+                                                        <button type="button" class="plugin-action-btn" onclick={() => removeSkillFile(i)} disabled={!isProPlan}>Remove</button>
+                                                    </div>
+                                                    <textarea
+                                                        class="md-editor-textarea skill-full-width"
+                                                        bind:value={file.content}
+                                                        rows="4"
+                                                        aria-label="File content"
+                                                        disabled={!isProPlan}
+                                                    ></textarea>
                                                 </div>
-                                                <div style="display: flex; gap: 8px; width: 100%;">
-                                                    <input 
-                                                        type="text" 
-                                                        class="plugin-name-input" 
-                                                        bind:value={aiInstructionInput} 
-                                                        placeholder="e.g., Translate to English, or make it more polite..."
-                                                        style="flex: 1; min-width: 0;"
-                                                        onkeydown={(e) => e.key === 'Enter' && runAIGenerator()}
-                                                        disabled={!isProPlan || isGeneratingSkill}
-                                                    />
-                                                    <button 
-                                                        type="button" 
-                                                        class="plugin-action-btn" 
-                                                        onclick={runAIGenerator}
-                                                        disabled={!isProPlan || isGeneratingSkill || !aiInstructionInput.trim()}
-                                                        style="background: #8b5cf6; border-color: #8b5cf6; color: #ffffff;"
-                                                    >
-                                                        {isGeneratingSkill ? 'Running...' : 'Run'}
-                                                    </button>
-                                                </div>
+                                            {/each}
+                                            <div>
+                                                <button type="button" class="plugin-action-btn" onclick={addSkillFile} disabled={!isProPlan}>+ Add file</button>
                                             </div>
+                                        </div>
+
+                                        <div class="ai-assistant-pane" style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                                            <span style="font-size: 12px; font-weight: 600; color: #c084fc;">AI Skill Generator / Refiner</span>
+                                            <div style="display: flex; gap: 8px; width: 100%;">
+                                                <input 
+                                                    type="text" 
+                                                    class="plugin-name-input" 
+                                                    bind:value={aiInstructionInput} 
+                                                    placeholder="e.g., Create a skill for polite tone, or make it stricter..."
+                                                    style="flex: 1; min-width: 0;"
+                                                    onkeydown={(e) => e.key === 'Enter' && runAIGenerator()}
+                                                    disabled={!isProPlan || isGeneratingSkill}
+                                                />
+                                                <button 
+                                                    type="button" 
+                                                    class="plugin-action-btn" 
+                                                    onclick={runAIGenerator}
+                                                    disabled={!isProPlan || isGeneratingSkill || !aiInstructionInput.trim()}
+                                                    style="background: #8b5cf6; border-color: #8b5cf6; color: #ffffff;"
+                                                >
+                                                    {isGeneratingSkill ? 'Running...' : 'Run'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    {/if}
+
+                                    {#if skillFormError}
+                                        <p class="skill-error">{skillFormError}</p>
+                                    {/if}
+                                    {#if skillFormNotice}
+                                        <p class="skill-notice">{skillFormNotice}</p>
+                                    {/if}
+
+                                    <div class="plugin-actions-row skill-editor-actions">
+                                        {#if skillReadOnly}
+                                            <button type="button" class="plugin-action-btn" onclick={duplicateBuiltinSkill} disabled={!isProPlan}>Duplicate to edit</button>
+                                        {:else}
+                                            <button type="button" class="plugin-action-btn" onclick={resetSkillForm}>Close</button>
+                                            <button
+                                                type="button"
+                                                class="plugin-action-btn"
+                                                onclick={saveCurrentSkill}
+                                                disabled={!isProPlan || isSavingSkill}
+                                                style="background: #8b5cf6; border-color: #8b5cf6; color: #ffffff;"
+                                            >
+                                                {isSavingSkill ? 'Saving...' : 'Save skill'}
+                                            </button>
                                         {/if}
-                                    </div>
-                                {/if}
-                            {:else if pluginSubView === 'add'}
-                                <div class="plugin-add-section">
-                                    <h3>Add System Plugins</h3>
-                                    <div class="plugin-list-wrapper">
-                                        <table class="plugin-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Plugin</th>
-                                                    <th>Kinds</th>
-                                                    <th>Owner</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {#each SYSTEM_PLUGINS as p}
-                                                    <tr 
-                                                        class="plugin-row" 
-                                                        class:selected={selectedAddPluginId === p.id}
-                                                        onclick={() => selectedAddPluginId = p.id}
-                                                    >
-                                                        <td>
-                                                            {activePluginIds.includes(p.id) ? '＊' : ''}{p.name}
-                                                        </td>
-                                                        <td>{p.kinds}</td>
-                                                        <td>{p.owner}</td>
-                                                    </tr>
-                                                {/each}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <div class="plugin-add-actions">
-                                        <button type="button" class="plugin-action-btn" onclick={() => pluginSubView = 'list'}>Cancel</button>
-                                        <button 
-                                            type="button" 
-                                            class="plugin-action-btn" 
-                                            onclick={installSelectedSystemPlugin} 
-                                            disabled={!isProPlan || !selectedAddPluginId || activePluginIds.includes(selectedAddPluginId)}
-                                        >
-                                            Add
-                                        </button>
                                     </div>
                                 </div>
                             {/if}
+
+                            <div class="plugin-main-section">
+                                <h4 class="skill-section-title">Plugins</h4>
+                                <div class="plugin-list-wrapper">
+                                    <table class="plugin-table">
+                                        <thead>
+                                            <tr>
+                                                <th class="skill-toggle-cell">On</th>
+                                                <th>Plugin</th>
+                                                <th>Description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {#each SYSTEM_PLUGINS as p (p.id)}
+                                                <tr>
+                                                    <td class="skill-toggle-cell">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={activePluginIds.includes(p.id)}
+                                                            disabled={!isProPlan}
+                                                            aria-label="Enable {p.name}"
+                                                            onchange={() => toggleActivePlugin(p.id)}
+                                                        />
+                                                    </td>
+                                                    <td>{p.name}</td>
+                                                    <td class="skill-desc-cell">{p.description}</td>
+                                                </tr>
+                                            {/each}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     {:else if settingsActiveTab === 'github'}
                         <div class="tab-pane">
@@ -5450,26 +5558,95 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         background: rgba(255, 255, 255, 0.5);
         border-color: rgba(61, 37, 22, 0.15);
     }
-    .plugin-add-section {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        padding: 12px;
-        border: 1px dashed rgba(255, 255, 255, 0.15);
-        border-radius: 8px;
-    }
-    .landing-container[data-theme="light"] .plugin-add-section {
-        border-color: rgba(61, 37, 22, 0.2);
-    }
-    .plugin-add-section h3 {
+    .skill-section-title {
         margin: 0;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 600;
     }
-    .plugin-add-actions {
+    .skill-toggle-cell {
+        width: 36px;
+        text-align: center;
+    }
+    .skill-desc-cell {
+        max-width: 320px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        opacity: 0.8;
+    }
+    .skill-badge {
+        margin-left: 6px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 600;
+        background: rgba(139, 92, 246, 0.2);
+        color: #c084fc;
+    }
+    .skill-editor {
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        padding-top: 12px;
+        gap: 12px;
+    }
+    .landing-container[data-theme="light"] .skill-editor {
+        border-top-color: rgba(61, 37, 22, 0.15);
+    }
+    .skill-field {
         display: flex;
-        justify-content: flex-end;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+    }
+    .skill-field label,
+    .skill-field-label {
+        font-size: 12px;
+        font-weight: 600;
+        opacity: 0.8;
+    }
+    .skill-full-width {
+        width: 100%;
+        box-sizing: border-box;
+        resize: vertical;
+    }
+    .skill-hint {
+        margin: 0;
+        font-size: 11px;
+        opacity: 0.65;
+    }
+    .skill-error {
+        margin: 0;
+        font-size: 12px;
+        color: #f87171;
+    }
+    .skill-notice {
+        margin: 0;
+        font-size: 12px;
+        color: #34d399;
+    }
+    .landing-container[data-theme="light"] .skill-notice {
+        color: #047857;
+    }
+    .skill-file {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px;
+        border: 1px dashed rgba(255, 255, 255, 0.15);
+        border-radius: 6px;
+    }
+    .landing-container[data-theme="light"] .skill-file {
+        border-color: rgba(61, 37, 22, 0.2);
+    }
+    .skill-file-header {
+        display: flex;
         gap: 8px;
+    }
+    .skill-file-path {
+        flex: 1;
+        min-width: 0;
+    }
+    .skill-editor-actions {
+        justify-content: flex-end;
     }
 
     /* Language Selector Flag Dropdown */

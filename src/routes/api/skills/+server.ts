@@ -9,7 +9,7 @@ import {
     validateSkill,
     type SkillFile
 } from '$lib/skill-md';
-import { deleteSkill, listSkills, saveSkill } from '$lib/server/skills';
+import { deleteSkill, getSkillWithFiles, listBuiltinSkills, listSkills, saveSkill, setSkillEnabled } from '$lib/server/skills';
 
 function requireProSession(locals: App.Locals): { userId: string; error?: undefined } | { userId?: undefined; error: Response } {
     const session = locals.session;
@@ -20,11 +20,27 @@ function requireProSession(locals: App.Locals): { userId: string; error?: undefi
     return { userId: session.user.id };
 }
 
-// GET /api/skills: ログイン中ユーザーの Skill 一覧
-export const GET: RequestHandler = async ({ locals }) => {
+// GET /api/skills: ログイン中ユーザーの Skill 一覧（builtin に組み込み Skill）
+// GET /api/skills?name=<name>: 1件を添付ファイルの中身込みで返す
+export const GET: RequestHandler = async ({ url, locals }) => {
     const auth = requireProSession(locals);
     if (auth.error) return auth.error;
     try {
+        const requestedName = url.searchParams.get('name');
+        if (requestedName !== null) {
+            const skill = await getSkillWithFiles(locals.supabase, auth.userId, normalizeSkillName(requestedName));
+            if (!skill) return json({ error: 'Skill not found' }, { status: 404 });
+            return json({
+                skill: {
+                    name: skill.name,
+                    description: skill.description,
+                    body: skill.body,
+                    enabled: skill.enabled,
+                    files: skill.fileContents
+                }
+            });
+        }
+
         const skills = await listSkills(locals.supabase, auth.userId);
         return json({
             skills: skills.map(skill => ({
@@ -36,6 +52,12 @@ export const GET: RequestHandler = async ({ locals }) => {
                 skill: skill.body,
                 enabled: skill.enabled,
                 files: skill.files
+            })),
+            builtin: listBuiltinSkills().map(skill => ({
+                name: skill.name,
+                description: skill.description,
+                body: skill.body,
+                files: skill.files
             }))
         });
     } catch (err: any) {
@@ -45,11 +67,19 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 // POST /api/skills: Skill の作成・更新 { skillName, skillMd, files?, enabled? }
+// skillMd を省略して { skillName, enabled } だけを送ると有効／無効の切り替えのみ行う
 export const POST: RequestHandler = async ({ request, locals }) => {
     const auth = requireProSession(locals);
     if (auth.error) return auth.error;
     try {
         const { skillName, skillMd, files, enabled } = await request.json();
+        if (skillMd === undefined && typeof enabled === 'boolean') {
+            const name = normalizeSkillName(String(skillName || '').replace(/^my-plugin-/, ''));
+            if (!name) return json({ error: 'Missing skillName' }, { status: 400 });
+            const updated = await setSkillEnabled(locals.supabase, auth.userId, name, enabled);
+            if (!updated) return json({ error: 'Skill not found' }, { status: 404 });
+            return json({ success: true, skillId: name, enabled });
+        }
         if (typeof skillMd !== 'string' || !skillMd.trim()) {
             return json({ error: 'Missing skillMd' }, { status: 400 });
         }
