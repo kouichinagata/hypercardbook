@@ -33,7 +33,6 @@
         return markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
     });
 
-    let pluginStyles = $state('');
     const styleBlockPattern = new RegExp('<' + 'style>([\\s\\S]*?)<' + '[\\/]style>', 'gi');
 
     let cardLocalStyles = $derived.by(() => {
@@ -47,35 +46,7 @@
         return styles;
     });
 
-    let cardUserStyles = $derived(cardLocalStyles + '\n' + pluginStyles);
-
-    $effect(() => {
-        const ids = activePluginIds || [];
-        const uId = currentUserId || 'global';
-        const myPlugins = ids.filter((pId: string) => pId.startsWith('my-plugin-'));
-        console.log('[Card.svelte Plugin CSS] activePluginIds:', ids, 'currentUserId:', uId, 'filtered myPlugins:', myPlugins);
-        if (myPlugins.length > 0) {
-            const url = `/api/skills/css?userId=${encodeURIComponent(uId)}&pluginIds=${encodeURIComponent(myPlugins.join(','))}`;
-            console.log('[Card.svelte Plugin CSS] Fetching URL:', url);
-            fetch(url)
-                .then(res => {
-                    console.log('[Card.svelte Plugin CSS] Fetch response status:', res.status);
-                    if (res.ok) return res.json();
-                    throw new Error(`Failed to fetch plugin CSS, status: ${res.status}`);
-                })
-                .then(data => {
-                    console.log('[Card.svelte Plugin CSS] Received CSS length:', (data.css || '').length);
-                    pluginStyles = data.css || '';
-                })
-                .catch(err => {
-                    console.error('[Card.svelte Plugin CSS] Fetch error:', err);
-                    pluginStyles = '';
-                });
-        } else {
-            console.log('[Card.svelte Plugin CSS] No custom plugins to fetch.');
-            pluginStyles = '';
-        }
-    });
+    let cardUserStyles = $derived(cardLocalStyles);
 
     $effect(() => {
         if (!browser) return;

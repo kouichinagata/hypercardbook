@@ -235,76 +235,10 @@
     let bookId = $derived(id || parsedId);
     let spreads = $state<Array<{ title: string; leftMarkdown: string; rightMarkdown: string }>>([]);
     let bookLocalStyles = $state('');
-    let pluginStyles = $state('');
-    let userStyles = $derived(bookLocalStyles + '\n' + pluginStyles);
+    let userStyles = $derived(bookLocalStyles);
     let bookmarkHtml = $state('');
     let hooks = $state<{ [key: string]: string }>({});
-    let pageHooks = $state<{ [pageIndex: number]: Array<{ eventName: string, skillName: string, args: string[] }> }>({});
     const styleBlockPattern = new RegExp('<' + 'style>([\\s\\S]*?)<' + '[\\/]style>', 'gi');
-
-    // Dynamic ES Module Skill runner using Blob URL
-    async function runPageSkill(skillName: string, args: string[]) {
-        try {
-            // 1. Try user custom skill first
-            let url = `/api/skills/${currentUserId}/${skillName}/index.js`;
-            let res = await fetch(url);
-            if (!res.ok) {
-                // 2. Fallback to global skill
-                url = `/api/skills/global/${skillName}/index.js`;
-                res = await fetch(url);
-            }
-            if (!res.ok) {
-                console.warn(`[SkillRunner] Skill "${skillName}" not found in user or global directory.`);
-                return;
-            }
-
-            const code = await res.text();
-            const blob = new Blob([code], { type: 'application/javascript' });
-            const blobUrl = URL.createObjectURL(blob);
-            const module = await import(blobUrl);
-            const executeFn = module.default;
-            URL.revokeObjectURL(blobUrl);
-
-            if (typeof executeFn === 'function') {
-                const context = {
-                    goCard: (index: number) => {
-                        if (index !== undefined && index !== null && index >= 0) {
-                            currentIndex = index;
-                            currentSubPage = 0;
-                        }
-                    },
-                    saveData: (key: string, value: any) => {
-                        if (browser) localStorage.setItem(key, JSON.stringify(value));
-                    },
-                    getData: (key: string) => {
-                        if (!browser) return null;
-                        const item = localStorage.getItem(key);
-                        try { return item ? JSON.parse(item) : null; } catch { return item; }
-                    },
-                    alert: (msg: string) => {
-                        if (browser) window.alert(msg);
-                    },
-                    stackId: bookId,
-                    currentCard: currentIndex,
-                    cardText: getCardText(currentIndex)
-                };
-                await executeFn(context, ...args);
-            }
-        } catch (err) {
-            console.error(`[SkillRunner] Error executing page skill "${skillName}":`, err);
-        }
-    }
-
-    async function executePageHooks(eventName: string, plainPageIdx: number) {
-        if (!isProPlan) return;
-        const hooksForPage = pageHooks[plainPageIdx];
-        if (!hooksForPage) return;
-        for (const h of hooksForPage) {
-            if (h.eventName.toLowerCase() === eventName.toLowerCase()) {
-                await runPageSkill(h.skillName, h.args);
-            }
-        }
-    }
 
     // HyperHooks Execution Engine
     function getCardText(index: number): string {
@@ -436,22 +370,10 @@
                 // closeCard
                 if (prevIndex !== -1) {
                     executeHook('closeCard', { prevCard: prevIndex, prevSub: prevSubPage });
-                    
-                    const prevPlainIdx = getPlainPageIndexFor(prevIndex, prevSubPage);
-                    executePageHooks('onClosePage', prevPlainIdx);
-                    if (viewMode === 'spread') {
-                        executePageHooks('onClosePage', prevPlainIdx + 1);
-                    }
                 }
                 // openCard
                 if (currentIdx !== -1) {
                     executeHook('openCard', { currentCard: currentIdx, currentSub: currentSub });
-                    
-                    const leftIdx = getPlainPageIndex();
-                    executePageHooks('onOpenPage', leftIdx);
-                    if (viewMode === 'spread') {
-                        executePageHooks('onOpenPage', leftIdx + 1);
-                    }
                 }
             }
             prevIndex = currentIdx;
@@ -549,34 +471,6 @@
     $effect(() => {
         if (displayMarkdown) {
             parseBookMarkdown(displayMarkdown);
-        }
-    });
-
-    $effect(() => {
-        const ids = activePluginIds || [];
-        const uId = currentUserId || 'global';
-        const myPlugins = ids.filter((pId: string) => pId.startsWith('my-plugin-'));
-        console.log('[Book.svelte Plugin CSS] activePluginIds:', ids, 'currentUserId:', uId, 'filtered myPlugins:', myPlugins);
-        if (myPlugins.length > 0) {
-            const url = `/api/skills/css?userId=${encodeURIComponent(uId)}&pluginIds=${encodeURIComponent(myPlugins.join(','))}`;
-            console.log('[Book.svelte Plugin CSS] Fetching URL:', url);
-            fetch(url)
-                .then(res => {
-                    console.log('[Book.svelte Plugin CSS] Fetch response status:', res.status);
-                    if (res.ok) return res.json();
-                    throw new Error(`Failed to fetch plugin CSS, status: ${res.status}`);
-                })
-                .then(data => {
-                    console.log('[Book.svelte Plugin CSS] Received CSS length:', (data.css || '').length);
-                    pluginStyles = data.css || '';
-                })
-                .catch(err => {
-                    console.error('[Book.svelte Plugin CSS] Fetch error:', err);
-                    pluginStyles = '';
-                });
-        } else {
-            console.log('[Book.svelte Plugin CSS] No custom plugins to fetch.');
-            pluginStyles = '';
         }
     });
 
@@ -794,35 +688,8 @@
         let pagesRaw = contentWithoutFm.split(/(?:Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
         pagesRaw = pagesRaw.map(p => p.trim()).filter(p => p.length > 0);
 
-        // Parse page-level hooks and clean from rendering markdown
-        let parsedPageHooks: typeof pageHooks = {};
-        pagesRaw = pagesRaw.map((p, idx) => {
-            const lines = p.split('\n');
-            const cleanLines: string[] = [];
-            const hooksList: Array<{ eventName: string, skillName: string, args: string[] }> = [];
-            lines.forEach(line => {
-                const trimmed = line.trim();
-                if (trimmed.startsWith('/!')) {
-                    const content = trimmed.substring(2).trim();
-                    const parts = content.split(':');
-                    if (parts.length >= 2) {
-                        const eventName = parts[0].trim();
-                        const rest = parts.slice(1).join(':').trim();
-                        const restParts = rest.split(/\s+/);
-                        const skillName = restParts[0].trim();
-                        const args = restParts.slice(1).map(arg => arg.replace(/,$/, '').trim()).filter(Boolean);
-                        hooksList.push({ eventName, skillName, args });
-                    }
-                } else {
-                    cleanLines.push(line);
-                }
-            });
-            if (hooksList.length > 0) {
-                parsedPageHooks[idx] = hooksList;
-            }
-            return cleanLines.join('\n').trim();
-        });
-        pageHooks = parsedPageHooks;
+        // "/!event: skill" 行（旧ページhook）は実行せず、表示からだけ取り除く
+        pagesRaw = pagesRaw.map(p => p.split('\n').filter(line => !line.trim().startsWith('/!')).join('\n').trim());
         if (pagesRaw.length === 0 && contentWithoutFm.length > 0) {
             pagesRaw = [contentWithoutFm];
         }

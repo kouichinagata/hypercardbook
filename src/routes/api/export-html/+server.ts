@@ -1,12 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { marked } from 'marked';
-import fs from 'fs';
-import path from 'path';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
-        const { markdown, id, activePluginIds = [], userId = 'global' } = await request.json();
+        const { markdown, id } = await request.json();
         const supabase = locals.supabase;
         const session = locals.session;
         
@@ -17,26 +15,6 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
         if (!markdown) {
             return json({ error: 'No markdown content provided.' }, { status: 400 });
-        }
-
-        // Extract CSS from active custom plugins
-        let pluginStyles = '';
-        const safeUserId = String(userId).replace(/[^a-zA-Z0-9_\-]/g, '');
-        for (const pId of activePluginIds) {
-            if (typeof pId === 'string' && pId.startsWith('my-plugin-')) {
-                const skillName = pId.substring('my-plugin-'.length).replace(/[^a-zA-Z0-9_\-]/g, '');
-                if (!skillName) continue;
-                
-                const skillMdPath = path.resolve('data/skills', safeUserId, skillName, 'SKILL.md');
-                if (fs.existsSync(skillMdPath)) {
-                    const skillMd = fs.readFileSync(skillMdPath, 'utf-8');
-                    const cssRegex = /```css\r?\n([\s\S]*?)\r?\n```/g;
-                    let match;
-                    while ((match = cssRegex.exec(skillMd)) !== null) {
-                        pluginStyles += match[1] + '\n';
-                    }
-                }
-            }
         }
 
         // Parse frontmatter
@@ -78,9 +56,6 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${cardTitle}</title>
     <link rel="stylesheet" href="${origin}/css/book-viewer.css">
-    <style>
-        ${pluginStyles}
-    </style>
 </head>
 <body>
     <div id="hyperbook-viewer"></div>
@@ -102,7 +77,7 @@ ${markdown}
             while ((styleMatch = styleRegex.exec(markdown)) !== null) {
                 localStyles += styleMatch[1] + '\n';
             }
-            const userStyles = localStyles + '\n' + pluginStyles;
+            const userStyles = localStyles;
 
             // Extract script blocks
             const scriptRegex = /<script>([\s\S]*?)<\/script>/gi;
@@ -190,7 +165,7 @@ ${markdown}
         }
 
         // Return SvelteKit proxy URL instead of raw Supabase Storage URL
-        const previewUrl = `/published/${userId}/${slug}.html`;
+        const previewUrl = `/published/${exportUserId}/${slug}.html`;
         return json({ url: previewUrl });
     } catch (err: any) {
         console.error('Export HTML Error:', err);

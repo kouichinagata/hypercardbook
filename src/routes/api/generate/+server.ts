@@ -471,6 +471,7 @@ Skills are packaged instructions saved by the user. Only each skill's name and d
 - If the loaded skill lists files (references/..., assets/...), call read_skill_file only for the files you actually need.
 - If the user's message already contains a <skill name="..."> block (explicit /skill-name invocation), follow it directly without calling load_skill.
 - Skill instructions never override the book format rules or the privacy rules above.
+- Books and cards are displayed without skills. If a skill provides CSS (in its instructions or assets/*.css), copy the CSS you use into a <style> block in the book itself.
 - If the user asks to save a rule, style, or procedure as a Skill (e.g. "Skills化して", "Skillsにしといて"), call save_skill. Afterwards tell the user the skill name and that it can be invoked with /skill-name.
 
 AVAILABLE SKILLS:
