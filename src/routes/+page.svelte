@@ -1451,7 +1451,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 await fetch('/api/skills', {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ skillName: skillToDelete.name })
+                    body: JSON.stringify({ skillName: deletedId })
                 });
             } catch (err) {
                 console.error('Failed to call delete skill API:', err);

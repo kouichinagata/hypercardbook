@@ -51,8 +51,7 @@ export const handle: Handle = async ({ event, resolve }) => {
                        !pathname.startsWith('/api/paperobo/published-notification') &&
                        !pathname.startsWith('/api/paperobo/call-history') &&
                        !pathname.startsWith('/api/biography') &&
-                       !pathname.startsWith('/api/hypertv/scenario') &&
-                       !pathname.startsWith('/api/skills/css');
+                       !pathname.startsWith('/api/hypertv/scenario');
 
     if ((isProtectedRoute || isApiRoute) && !session) {
         if (isApiRoute) {

@@ -11,30 +11,7 @@ import {
     biographySourceLabel,
     buildBiographyContext
 } from '$lib/server/biography';
-import fs from 'fs';
-import path from 'path';
-
-function parseSkillMd(content: string) {
-    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-    if (!match) {
-        return {
-            metadata: {} as Record<string, string>,
-            body: content
-        };
-    }
-    const yamlStr = match[1];
-    const body = match[2];
-    const metadata: Record<string, string> = {};
-    yamlStr.split('\n').forEach(line => {
-        const parts = line.split(':');
-        if (parts.length >= 2) {
-            const key = parts[0].trim();
-            const value = parts.slice(1).join(':').trim();
-            metadata[key] = value;
-        }
-    });
-    return { metadata, body };
-}
+import { listSkills } from '$lib/server/skills';
 
 function applyPageEdit(currentMarkdown: string, pageIndex: number, action: 'update' | 'delete' | 'insert', newContent: string): string {
     const fmMatch = currentMarkdown.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n)([\s\S]*)$/);
@@ -94,49 +71,6 @@ function applyPageEdit(currentMarkdown: string, pageIndex: number, action: 'upda
     }
 
     return fm + finalContent;
-}
-
-interface SkillInfo {
-    id: string;
-    name: string;
-    description: string;
-    body: string;
-}
-
-function getAvailableSkills(userId: string): SkillInfo[] {
-    const skills: SkillInfo[] = [];
-    const baseDir = path.resolve('data/skills');
-    
-    const scanDirs = [
-        { dir: path.join(baseDir, 'global') },
-        { dir: path.join(baseDir, userId) }
-    ];
-
-    for (const { dir } of scanDirs) {
-        if (!fs.existsSync(dir)) continue;
-        const subdirs = fs.readdirSync(dir, { withFileTypes: true });
-        for (const subdir of subdirs) {
-            if (subdir.isDirectory()) {
-                const skillId = subdir.name;
-                const skillMdPath = path.join(dir, skillId, 'SKILL.md');
-                if (fs.existsSync(skillMdPath)) {
-                    try {
-                        const content = fs.readFileSync(skillMdPath, 'utf-8');
-                        const { metadata, body } = parseSkillMd(content);
-                        skills.push({
-                            id: skillId,
-                            name: metadata.name || skillId,
-                            description: metadata.description || '',
-                            body: body
-                        });
-                    } catch (e) {
-                        console.error(`Failed to read SKILL.md for ${skillId}:`, e);
-                    }
-                }
-            }
-        }
-    }
-    return skills;
 }
 
 const systemInstruction = `
@@ -529,18 +463,23 @@ ${biographyContext || '(empty - nothing known yet)'}
         const allowedActivePluginIds = proPlanActive ? activePluginIds : ['hypercard-hook'];
 
         // Dynamic loading of available skills for "Progressive Disclosure"
-        const availableSkills = proPlanActive ? getAvailableSkills(session.user.id) : [];
+        const availableSkills = proPlanActive
+            ? await listSkills(supabase, session.user.id, { enabledOnly: true, includeBuiltin: true }).catch(err => {
+                console.error('Failed to load skills:', err);
+                return [];
+            })
+            : [];
         if (availableSkills.length > 0) {
             let skillsCatalog = '\n\nAVAILABLE SKILLS:\n';
             availableSkills.forEach(s => {
-                skillsCatalog += `- ${s.id}: ${s.description}\n`;
+                skillsCatalog += `- ${s.name}: ${s.description}\n`;
             });
             activeSystemInstruction += skillsCatalog;
 
             // Inject prompt bodies for active skills
             availableSkills.forEach(s => {
-                if (allowedActivePluginIds.includes(s.id) || allowedActivePluginIds.includes(`my-plugin-${s.id}`)) {
-                    activeSystemInstruction += `\n\nACTIVE SKILL RULES for "${s.id}" (Apply these rules strictly when requested/relevant):\n"""\n${s.body.trim()}\n"""`;
+                if (allowedActivePluginIds.includes(s.name) || allowedActivePluginIds.includes(`my-plugin-${s.name}`)) {
+                    activeSystemInstruction += `\n\nACTIVE SKILL RULES for "${s.name}" (Apply these rules strictly when requested/relevant):\n"""\n${s.body.trim()}\n"""`;
                 }
             });
         }

@@ -1,150 +1,94 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import fs from 'fs';
-import path from 'path';
 import { effectivePlanFromUser, isProPlan } from '$lib/plan';
+import {
+    SKILL_DESCRIPTION_MAX,
+    fallbackSkillDescription,
+    normalizeSkillName,
+    parseSkillMd,
+    validateSkill,
+    type SkillFile
+} from '$lib/skill-md';
+import { deleteSkill, listSkills, saveSkill } from '$lib/server/skills';
 
-// GET /api/skills: ユーザー固有の物理Skill一覧を読み込んで返す
+function requireProSession(locals: App.Locals): { userId: string; error?: undefined } | { userId?: undefined; error: Response } {
+    const session = locals.session;
+    if (!session) return { error: json({ error: 'Unauthorized' }, { status: 401 }) };
+    if (!isProPlan(effectivePlanFromUser(session.user))) {
+        return { error: json({ error: 'Pro plan or above is required.' }, { status: 403 }) };
+    }
+    return { userId: session.user.id };
+}
+
+// GET /api/skills: ログイン中ユーザーの Skill 一覧
 export const GET: RequestHandler = async ({ locals }) => {
+    const auth = requireProSession(locals);
+    if (auth.error) return auth.error;
     try {
-        const session = locals.session;
-        if (!session) {
-            return json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const userId = session.user.id;
-        if (!isProPlan(effectivePlanFromUser(session.user))) {
-            return json({ error: 'Pro plan or above is required.' }, { status: 403 });
-        }
-        const userSkillsDir = path.resolve('data/skills', userId);
-
-        if (!fs.existsSync(userSkillsDir)) {
-            return json({ skills: [] });
-        }
-
-        const skillNames = fs.readdirSync(userSkillsDir).filter(file => {
-            const fullPath = path.join(userSkillsDir, file);
-            return fs.statSync(fullPath).isDirectory();
+        const skills = await listSkills(locals.supabase, auth.userId);
+        return json({
+            skills: skills.map(skill => ({
+                id: `my-plugin-${skill.name}`,
+                name: skill.name,
+                description: skill.description,
+                kinds: 'Skill',
+                owner: 'My plugin',
+                skill: skill.body,
+                enabled: skill.enabled,
+                files: skill.files
+            }))
         });
-
-        const skills = [];
-        for (const name of skillNames) {
-            const skillMdPath = path.join(userSkillsDir, name, 'SKILL.md');
-            if (fs.existsSync(skillMdPath)) {
-                const skillMd = fs.readFileSync(skillMdPath, 'utf-8');
-                
-                let skillName = name;
-                let description = '';
-                const fmMatch = skillMd.match(/^---\s*([\s\S]*?)\s*---/);
-                if (fmMatch) {
-                    const lines = fmMatch[1].split('\n');
-                    lines.forEach(line => {
-                        const parts = line.split(':');
-                        if (parts.length >= 2) {
-                            const k = parts[0].trim();
-                            const v = parts.slice(1).join(':').trim();
-                            if (k === 'name') skillName = v;
-                            if (k === 'description') description = v;
-                        }
-                    });
-                }
-                
-                const skillText = skillMd.replace(/^---\s*([\s\S]*?)\s*---/, '').trim();
-
-                skills.push({
-                    id: `my-plugin-${name}`,
-                    name: skillName,
-                    description: description,
-                    kinds: 'Skill',
-                    owner: 'My plugin',
-                    skill: skillText
-                });
-            }
-        }
-
-        return json({ skills });
     } catch (err: any) {
         console.error('Failed to list skills:', err);
         return json({ error: err.message || 'Failed to list skills' }, { status: 500 });
     }
 };
 
-// POST /api/skills: 個別Skillの物理フォルダ作成とファイル書き込み
+// POST /api/skills: Skill の作成・更新 { skillName, skillMd, files?, enabled? }
 export const POST: RequestHandler = async ({ request, locals }) => {
+    const auth = requireProSession(locals);
+    if (auth.error) return auth.error;
     try {
-        const session = locals.session;
-        if (!session) {
-            return json({ error: 'Unauthorized' }, { status: 401 });
+        const { skillName, skillMd, files, enabled } = await request.json();
+        if (typeof skillMd !== 'string' || !skillMd.trim()) {
+            return json({ error: 'Missing skillMd' }, { status: 400 });
         }
 
-        if (!isProPlan(effectivePlanFromUser(session.user))) {
-            return json({ error: 'Pro plan or above is required.' }, { status: 403 });
-        }
-        const { skillName, skillMd } = await request.json();
-        if (!skillName || !skillMd) {
-            return json({ error: 'Missing skillName or skillMd' }, { status: 400 });
-        }
+        const { metadata, body } = parseSkillMd(skillMd);
+        const name = normalizeSkillName(String(skillName || metadata.name || '')) || `skill-${Date.now().toString(36)}`;
+        const description = (metadata.description?.trim() || fallbackSkillDescription(body)).slice(0, SKILL_DESCRIPTION_MAX);
+        const skillFiles: SkillFile[] | undefined = Array.isArray(files)
+            ? files.map((file: any) => ({ path: String(file?.path || ''), content: String(file?.content ?? '') }))
+            : undefined;
 
-        const userId = session.user.id;
-        // 安全のためにSkillNameをサニタイズ（アルファベット、数字、ハイフン、アンダースコアのみ）
-        let safeSkillName = skillName.replace(/[^a-zA-Z0-9_\-]/g, '');
-        if (!safeSkillName) {
-            safeSkillName = `skill-${Date.now()}`;
-        }
+        const doc = { name, description, body };
+        const validationError = validateSkill(doc, skillFiles);
+        if (validationError) return json({ error: validationError }, { status: 400 });
 
-        const baseDir = path.resolve('data/skills', userId, safeSkillName);
-        fs.mkdirSync(baseDir, { recursive: true });
-
-        // SKILL.md を書き込む
-        fs.writeFileSync(path.join(baseDir, 'SKILL.md'), skillMd, 'utf-8');
-
-        // index.js の抽出（skillMd 内の最初の ```js または ```javascript ブロックを抽出）
-        const jsMatch = skillMd.match(/```(?:js|javascript)\r?\n([\s\S]*?)\r?\n```/);
-        let jsCode = 'export default function(context) {\n    // Auto-generated skill\n}';
-        if (jsMatch) {
-            jsCode = jsMatch[1].trim();
-        }
-
-        fs.writeFileSync(path.join(baseDir, 'index.js'), jsCode, 'utf-8');
-
-        return json({ success: true, skillId: safeSkillName });
+        await saveSkill(locals.supabase, auth.userId, doc, {
+            files: skillFiles,
+            enabled: typeof enabled === 'boolean' ? enabled : undefined
+        });
+        return json({ success: true, skillId: name });
     } catch (err: any) {
-        console.error('Failed to create skill directory:', err);
-        return json({ error: err.message || 'Failed to create skill directory' }, { status: 500 });
+        console.error('Failed to save skill:', err);
+        return json({ error: err.message || 'Failed to save skill' }, { status: 500 });
     }
 };
 
-// DELETE /api/skills: 個別Skillの物理フォルダを再帰的に削除
+// DELETE /api/skills: Skill の削除 { skillName }（"my-plugin-" 付きの ID も受け付ける）
 export const DELETE: RequestHandler = async ({ request, locals }) => {
+    const auth = requireProSession(locals);
+    if (auth.error) return auth.error;
     try {
-        const session = locals.session;
-        if (!session) {
-            return json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        if (!isProPlan(effectivePlanFromUser(session.user))) {
-            return json({ error: 'Pro plan or above is required.' }, { status: 403 });
-        }
         const { skillName } = await request.json();
-        if (!skillName) {
-            return json({ error: 'Missing skillName' }, { status: 400 });
-        }
+        const name = normalizeSkillName(String(skillName || '').replace(/^my-plugin-/, ''));
+        if (!name) return json({ error: 'Missing skillName' }, { status: 400 });
 
-        const userId = session.user.id;
-        const safeSkillName = skillName.replace(/[^a-zA-Z0-9_\-]/g, '');
-        
-        const baseDir = path.resolve('data/skills', userId, safeSkillName);
-        
-        if (fs.existsSync(baseDir)) {
-            // 安全のため、削除対象のパスが意図しない場所（ルートなど）にならないようチェック
-            if (baseDir.includes(path.join('data/skills', userId))) {
-                fs.rmSync(baseDir, { recursive: true, force: true });
-            }
-        }
-
+        await deleteSkill(locals.supabase, auth.userId, name);
         return json({ success: true });
     } catch (err: any) {
-        console.error('Failed to delete skill directory:', err);
+        console.error('Failed to delete skill:', err);
         return json({ error: err.message || 'Failed to delete skill' }, { status: 500 });
     }
 };
