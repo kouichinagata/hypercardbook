@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
 import { getActiveGeminiApiKey } from '$lib/server/plan';
+import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
@@ -28,7 +29,7 @@ Title: "${title}"
 Author: "${author || ''}"`;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3.5-flash',
+            model: GEMINI_TEXT_MODEL,
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
                 systemInstruction: 'You are an expert translator. Output only valid JSON matching the requested structure.',

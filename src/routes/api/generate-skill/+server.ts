@@ -5,6 +5,7 @@ import { env } from '$env/dynamic/private';
 import { getActiveGeminiApiKey } from '$lib/server/plan';
 import { effectivePlanFromUser, isProPlan } from '$lib/plan';
 import { SKILL_DESCRIPTION_MAX, normalizeSkillName } from '$lib/skill-md';
+import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 
 const systemInstruction = `You are a meta-prompt engineer who writes Agent Skills for an AI agent (HyperCardBook Creator), which creates card-style books and cards in Markdown.
 A Skill is a SKILL.md file. The agent first sees only each skill's name and description, and loads the full instructions only when a request matches the description.
@@ -58,7 +59,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         }
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3.5-flash',
+            model: GEMINI_TEXT_MODEL,
             contents: [
                 {
                     role: 'user',

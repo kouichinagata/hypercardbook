@@ -13,6 +13,7 @@ import {
 } from '$lib/server/biography';
 import { getSkillFile, listSkills, saveSkill, type StoredSkill } from '$lib/server/skills';
 import { SKILL_DESCRIPTION_MAX, isValidSkillFilePath, normalizeSkillName, validateSkill } from '$lib/skill-md';
+import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 
 function applyPageEdit(currentMarkdown: string, pageIndex: number, action: 'update' | 'delete' | 'insert', newContent: string): string {
     const fmMatch = currentMarkdown.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n)([\s\S]*)$/);
@@ -667,7 +668,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         }
 
                         const responseStream = await ai.models.generateContentStream({
-                            model: 'gemini-3.5-flash',
+                            model: GEMINI_TEXT_MODEL,
                             contents: localContents,
                             config: {
                                 systemInstruction: activeSystemInstruction,

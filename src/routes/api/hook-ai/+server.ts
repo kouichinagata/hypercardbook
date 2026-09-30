@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
 import { getActiveGeminiApiKey } from '$lib/server/plan';
 import { effectivePlanFromUser, isProPlan } from '$lib/plan';
+import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 
 const systemInstruction = `You are an AI assistant executing a HyperHook for a HyperCardBook.
 The user is reading a page (Card) in a book (Stack).
@@ -52,7 +53,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         query += `Instruction to execute: "${instruction}"`;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3.5-flash',
+            model: GEMINI_TEXT_MODEL,
             contents: [
                 {
                     role: 'user',

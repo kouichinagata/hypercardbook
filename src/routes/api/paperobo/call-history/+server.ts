@@ -10,6 +10,7 @@ import {
 	biographySourceLabel,
 	type BiographyFact
 } from '$lib/server/biography';
+import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 
 const specialBookKey = 'call_history';
 const sourceApp = 'paperobo';
@@ -290,7 +291,7 @@ async function rememberFromCall(supabase: any, ownerUserId: string, payload: Nor
 
 		const ai = new GoogleGenAI({ apiKey });
 		const response = await ai.models.generateContent({
-			model: 'gemini-3.5-flash',
+			model: GEMINI_TEXT_MODEL,
 			contents: `CALL TRANSCRIPT:\n${transcript}`,
 			config: {
 				systemInstruction: memoryExtractionInstruction,

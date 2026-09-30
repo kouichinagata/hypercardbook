@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
 import { getActiveGeminiApiKey } from '$lib/server/plan';
+import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 
 const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
@@ -87,7 +88,7 @@ CRITICAL RULES:
 `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3.5-flash',
+            model: GEMINI_TEXT_MODEL,
             contents: [{ role: 'user', parts: [{ text: originalMarkdown }] }],
             config: {
                 systemInstruction: systemPrompt,

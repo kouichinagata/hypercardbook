@@ -9,6 +9,7 @@ import {
     topLevelFrontmatterValue,
     type AiLiveHistoryEntry
 } from '$lib/server/ai-live-book';
+import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -137,7 +138,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const basePrompt = targetMeta?.prompt || sourceMeta.prompt;
         const biographyContext = String(biographyRow?.markdown_content || '(empty)').slice(0, 12000);
         const response = await ai.models.generateContent({
-            model: 'gemini-3.5-flash',
+            model: GEMINI_TEXT_MODEL,
             contents: `REGISTERED PROMPT:\n${basePrompt}\n\nCURRENT HYPERBOOK:\n\`\`\`markdown\n${baseBook.markdown_content}\n\`\`\`\n\nPRIVATE READER BIOGRAPHY:\n${biographyContext}`,
             config: {
                 temperature: 0.9,
