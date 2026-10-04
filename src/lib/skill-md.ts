@@ -7,8 +7,12 @@ export const SKILL_FILE_MAX = 200_000;
 export const SKILL_FILES_MAX = 20;
 
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-// references/ と assets/ のみ許可。各セグメントは "." で始められないので ".." も通らない。
-const SKILL_FILE_PATH_PATTERN = /^(references|assets)\/[A-Za-z0-9_-][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/;
+// references/ と assets/ に加えて、scripts/ は .py と .js のみ許可（Vercel Sandbox で実行する）。
+// 各セグメントは "." で始められないので ".." も通らない。
+const SEGMENT = '[A-Za-z0-9_-][A-Za-z0-9._-]*';
+const SKILL_FILE_PATH_PATTERN = new RegExp(
+    `^(?:(?:references|assets)(?:/${SEGMENT})+|scripts(?:/${SEGMENT})*/[A-Za-z0-9_-][A-Za-z0-9_-]*\\.(?:py|js))$`
+);
 
 export interface SkillDoc {
     name: string;
@@ -103,7 +107,7 @@ export function validateSkill(doc: SkillDoc, files: SkillFile[] = []): string | 
     if (doc.body.length > SKILL_BODY_MAX) return `Skill body must be ${SKILL_BODY_MAX} characters or fewer.`;
     if (files.length > SKILL_FILES_MAX) return `A skill can contain at most ${SKILL_FILES_MAX} files.`;
     for (const file of files) {
-        if (!isValidSkillFilePath(file.path)) return `Invalid skill file path: ${file.path} (only references/ and assets/ are supported).`;
+        if (!isValidSkillFilePath(file.path)) return `Invalid skill file path: ${file.path} (only references/, assets/ and scripts/*.py|*.js are supported).`;
         if (file.content.length > SKILL_FILE_MAX) return `Skill file ${file.path} must be ${SKILL_FILE_MAX} characters or fewer.`;
     }
     return null;

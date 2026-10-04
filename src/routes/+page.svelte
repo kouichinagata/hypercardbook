@@ -3087,7 +3087,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     {#if !skillReadOnly}
                                         <div class="skill-field">
                                             <span class="skill-field-label">Files</span>
-                                            <span class="skill-hint">Optional reference material or assets the AI reads only when needed (references/… or assets/…).</span>
+                                            <span class="skill-hint">Optional reference material, assets, or scripts the AI uses only when needed (references/…, assets/…, or scripts/….py|.js — scripts run in an isolated sandbox without network access).</span>
                                             {#each skillFormFiles as file, i}
                                                 <div class="skill-file">
                                                     <div class="skill-file-header">

@@ -116,6 +116,21 @@ export async function getSkillFile(
     return (data as { skill_files: { content: string }[] | null } | null)?.skill_files?.[0]?.content ?? null;
 }
 
+// 添付ファイルの中身を全件取得（Sandbox へ展開して scripts/ を実行するときに使う）
+export async function getAllSkillFiles(
+    supabase: SupabaseClient,
+    userId: string,
+    skill: StoredSkill
+): Promise<SkillFile[]> {
+    if (skill.source === 'builtin') {
+        const files = builtinSkills.get(skill.name)?.files;
+        return files ? [...files].map(([path, content]) => ({ path, content })) : [];
+    }
+
+    const loaded = await getSkillWithFiles(supabase, userId, skill.name);
+    return loaded?.fileContents ?? [];
+}
+
 // 1件を添付ファイルの中身込みで取得（設定画面の編集用、ユーザー Skill のみ）
 export async function getSkillWithFiles(
     supabase: SupabaseClient,
