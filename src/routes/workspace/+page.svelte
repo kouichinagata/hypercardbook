@@ -1238,6 +1238,7 @@ ${markdown}
             aiLiveSourcePrompt = data.aiLivePrompt || '';
 
             let initPrompt = page.url.searchParams.get('prompt');
+            let blankRequested = false;
             if (!initPrompt) {
                 try {
                     initPrompt = sessionStorage.getItem('workspace_init_prompt');
@@ -1266,6 +1267,9 @@ ${markdown}
                         aiLiveBookEnabled = true;
                     }
                     sessionStorage.removeItem('workspace_ai_live_book');
+
+                    blankRequested = sessionStorage.getItem('workspace_blank') === '1';
+                    sessionStorage.removeItem('workspace_blank');
                 } catch (err) {
                     console.error('Failed to read prompt from sessionStorage:', err);
                 }
@@ -1275,7 +1279,13 @@ ${markdown}
                 if (aiLiveBookEnabled && !aiLiveSourcePrompt) aiLiveSourcePrompt = initPrompt;
                 await sendPrompt(initPrompt);
             } else if (!data.bookId) {
-                errorMsg = 'Please enter a prompt first.';
+                if (blankRequested) {
+                    markdown = mode === 'card'
+                        ? '---\nid: newcard\ntitle: NewCard\nplay_mode: card\n---\n'
+                        : '---\nid: newbook\ntitle: NewBook\nplay_mode: book\n---\n';
+                } else {
+                    errorMsg = 'Please enter a prompt first.';
+                }
             }
         })();
 

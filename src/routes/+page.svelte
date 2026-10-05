@@ -471,7 +471,7 @@
     // Submit handler
     function handleSubmit(e: SubmitEvent) {
         e.preventDefault();
-        if (!prompt.trim() || isSubmitting) return;
+        if (isSubmitting) return;
 
         const hasPending = attachedFiles.some(f => f.status === 'uploading' || f.status === 'loading');
         if (hasPending) {
@@ -495,14 +495,18 @@
             finalPrompt += '\n<!-- ATTACHMENTS_END -->';
         }
 
-        launchWorkspace(finalPrompt);
+        launchWorkspace(finalPrompt, false, !finalPrompt && successFiles.length === 0);
     }
 
     // Store the prompt/options and open the workspace, which runs the prompt on mount
-    function launchWorkspace(finalPrompt: string, replaceHistory = false) {
+    function launchWorkspace(finalPrompt: string, replaceHistory = false, blank = false) {
         isSubmitting = true;
         try {
-            sessionStorage.setItem('workspace_init_prompt', finalPrompt);
+            if (blank) {
+                sessionStorage.setItem('workspace_blank', '1');
+            } else {
+                sessionStorage.setItem('workspace_init_prompt', finalPrompt);
+            }
             sessionStorage.setItem('workspace_web_search', String(webSearchEnabled));
             sessionStorage.setItem('workspace_image_gen', String(imageGenEnabled));
             sessionStorage.setItem('workspace_ai_live_book', String(aiLiveBookEnabled));
@@ -2134,7 +2138,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             <img src="/favicon.png" alt="HyperCardBook Logo" class="title-logo" />
             HyperCardBook
         </h1>
-        <p class="subtitle">Write once. Publish AI interactive books in 80 languages.</p>
+        <p class="subtitle">Markdown is all you need!</p>
 
         <form bind:this={formEl} onsubmit={handleSubmit} class="prompt-form">
             <div class="prompt-textarea-wrapper">
@@ -2142,15 +2146,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     bind:this={textareaEl}
                     bind:value={prompt}
                     placeholder="Please enter the prompt to create the book."
-                    required
                     rows="4"
                     disabled={!data.currentUserId || isSubmitting}
                     onkeydown={(e) => {
                         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                             e.preventDefault();
-                            if (prompt.trim() || attachedFiles.length > 0) {
-                                formEl?.requestSubmit();
-                            }
+                            formEl?.requestSubmit();
                         }
                     }}
                 ></textarea>
@@ -2240,11 +2241,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                         </div>
                     </div>
 
-                    <button type="submit" class="submit-btn" disabled={!data.currentUserId || isSubmitting || (!prompt.trim() && attachedFiles.length === 0)}>
+                    <button type="submit" class="submit-btn" disabled={!data.currentUserId || isSubmitting}>
                         {#if isSubmitting}
                             <div class="spinner"></div>
                         {:else}
-                            Run ⌘↩︎
+                            {prompt.trim() || attachedFiles.length > 0 ? 'Run' : 'New'} ⌘↩︎
                         {/if}
                     </button>
                 </div>
@@ -4221,6 +4222,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         align-items: center;
         justify-content: center;
         height: 36px;
+        min-width: 88px;
         padding: 0 16px;
         background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
         border: none;
