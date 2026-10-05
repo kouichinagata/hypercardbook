@@ -252,18 +252,16 @@
             }
         }
 
-        let userOpenAiApiKey = '';
-        if (typeof window !== 'undefined') {
-            userOpenAiApiKey = localStorage.getItem('user_openai_api_key') || '';
-        }
-
         let hashParams = [];
         if (session) {
             hashParams.push(`access_token=${encodeURIComponent(session.access_token)}`);
             hashParams.push(`refresh_token=${encodeURIComponent(session.refresh_token)}`);
         }
-        if (userOpenAiApiKey) {
-            hashParams.push(`sync_openai_api_key=${encodeURIComponent(userOpenAiApiKey)}`);
+        if (typeof window !== 'undefined') {
+            for (const provider of ['openai', 'gemini', 'anthropic']) {
+                const key = localStorage.getItem(`user_${provider}_api_key`)?.trim();
+                if (key) hashParams.push(`sync_${provider}_api_key=${encodeURIComponent(key)}`);
+            }
         }
 
         if (hashParams.length > 0) {

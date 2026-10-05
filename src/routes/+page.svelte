@@ -1238,6 +1238,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     let settingsActiveTab = $state('profile'); // 'profile', 'hypercardbook', 'plugin', 'github', 'apiKey', 'plan'
     let userGeminiApiKey = $state('');
     let userOpenAiApiKey = $state('');
+    let userClaudeApiKey = $state('');
+    let claudeSaveSuccess = $state(false);
     let showPapeRoboSyncBtn = $state(false);
     let geminiSaveSuccess = $state(false);
     let openaiSaveSuccess = $state(false);
@@ -1633,10 +1635,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         if (typeof window !== 'undefined') {
             userGeminiApiKey = localStorage.getItem('user_gemini_api_key') || '';
             userOpenAiApiKey = localStorage.getItem('user_openai_api_key') || '';
+            userClaudeApiKey = localStorage.getItem('user_anthropic_api_key') || '';
         }
         showPapeRoboSyncBtn = false;
         geminiSaveSuccess = false;
         openaiSaveSuccess = false;
+        claudeSaveSuccess = false;
 
         showSettingsModal = true;
     }
@@ -1658,6 +1662,16 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         }
     }
 
+    function saveClaudeKey() {
+        if (typeof window !== 'undefined' && userClaudeApiKey.trim()) {
+            userClaudeApiKey = userClaudeApiKey.trim();
+            localStorage.setItem('user_anthropic_api_key', userClaudeApiKey);
+            claudeSaveSuccess = true;
+            showPapeRoboSyncBtn = true;
+            setTimeout(() => { claudeSaveSuccess = false; }, 3000);
+        }
+    }
+
     function launchPapeRoboSync() {
         let targetUrl = 'https://paperobo.hypercardbook.org/ai';
         if (typeof window !== 'undefined') {
@@ -1665,11 +1679,16 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 targetUrl = 'http://localhost:5180/ai';
             }
             const session = data.session;
-            let syncUrl = `${targetUrl}#sync_openai_api_key=${encodeURIComponent(userOpenAiApiKey)}`;
-            if (session) {
-                syncUrl += `&access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`;
+            const params = new URLSearchParams();
+            for (const provider of ['openai', 'gemini', 'anthropic']) {
+                const key = localStorage.getItem(`user_${provider}_api_key`)?.trim();
+                if (key) params.set(`sync_${provider}_api_key`, key);
             }
-            window.open(syncUrl, '_blank');
+            if (session) {
+                params.set('access_token', session.access_token);
+                params.set('refresh_token', session.refresh_token);
+            }
+            window.open(`${targetUrl}#${params.toString()}`, '_blank');
         }
     }
 
@@ -3309,6 +3328,40 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 {/if}
                             </div>
 
+                            <!-- Claude API Key Section -->
+                            <div class="form-group" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px; margin-bottom: 20px;">
+                                <label for="setting-claude-key">Anthropic Claude API Key (for PapeRobo)</label>
+                                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                    <input
+                                        type="password"
+                                        id="setting-claude-key"
+                                        name="hypercardbook-anthropic-api-key"
+                                        autocomplete="off"
+                                        bind:value={userClaudeApiKey}
+                                        placeholder="Enter your Claude API key"
+                                        style="flex: 1;"
+                                        disabled={!isProPlan}
+                                    />
+                                    <button
+                                        type="button"
+                                        class="plan-btn"
+                                        style="width: auto; padding: 0 16px; background: #a78bfa; border-color: #a78bfa; color: white;"
+                                        onclick={saveClaudeKey}
+                                        disabled={!isProPlan || !userClaudeApiKey.trim()}
+                                    >
+                                        Save with PapeRobo
+                                    </button>
+                                </div>
+                                <p style="margin: 8px 0 0 0; font-size: 12px; color: #9ca3af; line-height: 1.4;">
+                                    For security, your API key is saved only in your local browser and is never stored on our servers.
+                                </p>
+                                {#if claudeSaveSuccess}
+                                    <p style="margin: 8px 0 0 0; font-size: 12px; color: #22c55e;">
+                                        ✓ Saved locally! Please synchronize with PapeRobo.
+                                    </p>
+                                {/if}
+                            </div>
+
                             <!-- OpenAI API Key Section -->
                             <div class="form-group">
                                 <label for="setting-openai-key">OpenAI API Key (for PapeRobo)</label>
@@ -3343,7 +3396,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 {#if showPapeRoboSyncBtn}
                                     <div style="margin-top: 16px; padding: 16px; background: rgba(167, 139, 250, 0.1); border: 1px solid rgba(167, 139, 250, 0.2); border-radius: 6px;">
                                         <p style="margin: 0 0 12px 0; font-size: 13px; color: #e9d5ff; line-height: 1.4;">
-                                            To complete syncing your OpenAI API key with PapeRobo, click the button below to launch PapeRobo and store it securely.
+                                            To complete syncing your saved API keys with PapeRobo, click the button below to launch PapeRobo and store them securely.
                                         </p>
                                         <button 
                                             type="button" 
