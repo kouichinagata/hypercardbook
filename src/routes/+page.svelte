@@ -1240,7 +1240,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     let userOpenAiApiKey = $state('');
     let userClaudeApiKey = $state('');
     let claudeSaveSuccess = $state(false);
-    let showPapeRoboSyncBtn = $state(false);
     let geminiSaveSuccess = $state(false);
     let openaiSaveSuccess = $state(false);
 
@@ -1637,7 +1636,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             userOpenAiApiKey = localStorage.getItem('user_openai_api_key') || '';
             userClaudeApiKey = localStorage.getItem('user_anthropic_api_key') || '';
         }
-        showPapeRoboSyncBtn = false;
         geminiSaveSuccess = false;
         openaiSaveSuccess = false;
         claudeSaveSuccess = false;
@@ -1657,7 +1655,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         if (typeof window !== 'undefined') {
             localStorage.setItem('user_openai_api_key', userOpenAiApiKey);
             openaiSaveSuccess = true;
-            showPapeRoboSyncBtn = true;
             setTimeout(() => { openaiSaveSuccess = false; }, 3000);
         }
     }
@@ -1667,7 +1664,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             userClaudeApiKey = userClaudeApiKey.trim();
             localStorage.setItem('user_anthropic_api_key', userClaudeApiKey);
             claudeSaveSuccess = true;
-            showPapeRoboSyncBtn = true;
             setTimeout(() => { claudeSaveSuccess = false; }, 3000);
         }
     }
@@ -3315,7 +3311,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         onclick={saveGeminiKey}
                                         disabled={!isProPlan} 
                                     >
-                                        Save for Gemini
+                                        Save with PapeRobo
                                     </button>
                                 </div>
                                 <p style="margin: 8px 0 0 0; font-size: 12px; color: #9ca3af; line-height: 1.4;">
@@ -3323,7 +3319,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 </p>
                                 {#if geminiSaveSuccess}
                                     <p style="margin: 8px 0 0 0; font-size: 12px; color: #22c55e;">
-                                        ✓ Saved successfully!
+                                        ✓ Saved locally! Please synchronize with PapeRobo.
                                     </p>
                                 {/if}
                             </div>
@@ -3392,22 +3388,21 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         ✓ Saved locally! Please synchronize with PapeRobo.
                                     </p>
                                 {/if}
+                            </div>
 
-                                {#if showPapeRoboSyncBtn}
-                                    <div style="margin-top: 16px; padding: 16px; background: rgba(167, 139, 250, 0.1); border: 1px solid rgba(167, 139, 250, 0.2); border-radius: 6px;">
-                                        <p style="margin: 0 0 12px 0; font-size: 13px; color: #e9d5ff; line-height: 1.4;">
-                                            To complete syncing your saved API keys with PapeRobo, click the button below to launch PapeRobo and store them securely.
-                                        </p>
-                                        <button 
-                                            type="button" 
-                                            class="plan-btn" 
-                                            style="width: auto; padding: 8px 16px; background: #7c3aed; border-color: #7c3aed; color: white;"
-                                            onclick={launchPapeRoboSync}
-                                        >
-                                            Launch PapeRobo to Sync
-                                        </button>
-                                    </div>
-                                {/if}
+                            <!-- PapeRobo Sync (all saved keys: OpenAI / Gemini / Claude) -->
+                            <div style="margin-top: 20px; padding: 16px; background: rgba(167, 139, 250, 0.1); border: 1px solid rgba(167, 139, 250, 0.2); border-radius: 6px;">
+                                <p style="margin: 0 0 12px 0; font-size: 13px; color: #e9d5ff; line-height: 1.4;">
+                                    To sync all saved API keys (OpenAI, Gemini, Claude) with PapeRobo, click the button below to launch PapeRobo and store them securely.
+                                </p>
+                                <button
+                                    type="button"
+                                    class="plan-btn"
+                                    style="width: auto; padding: 8px 16px; background: #7c3aed; border-color: #7c3aed; color: white;"
+                                    onclick={launchPapeRoboSync}
+                                >
+                                    Launch PapeRobo to Sync
+                                </button>
                             </div>
                         </div>
                     {:else if settingsActiveTab === 'plan'}
