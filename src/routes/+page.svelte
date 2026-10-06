@@ -33,7 +33,7 @@
     let prompt = $state('');
     let isSubmitting = $state(false);
     let selectedBookId = $state('');
-    let selectedMode = $state('book'); // 'book' or 'card'
+    let selectedMode = $state('card'); // 'book' or 'card'
     let textareaEl = $state<HTMLTextAreaElement | null>(null);
     let formEl = $state<HTMLFormElement | null>(null);
 
@@ -211,22 +211,9 @@
     }
     
     let currentLanguage = $state('en');
-    let showLangDropdown = $state(false);
-    let showFullLangModal = $state(false);
-    let langSearchQuery = $state('');
     let translatedCovers = $state<Record<string, { title: string; author: string }>>({});
     let translationLanguageReady = $state(false);
     const coverTranslationsInFlight = new Set<string>();
-
-    // Quick access to top languages
-    const QUICK_LANGUAGES = LANGUAGES.filter(l => ['en', 'ja', 'zh-CN', 'es', 'fr'].includes(l.code));
-
-    let filteredLanguages = $derived(
-        LANGUAGES.filter(lang => 
-            lang.label.toLowerCase().includes(langSearchQuery.toLowerCase()) || 
-            lang.code.toLowerCase().includes(langSearchQuery.toLowerCase())
-        )
-    );
 
     const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
@@ -355,18 +342,6 @@
         } catch (err: any) {
             console.error('Failed to save onboarding settings:', err);
             alert(`Failed to save settings: ${err.message || err}`);
-        }
-    }
-
-    async function selectLanguage(lang: string) {
-        currentLanguage = lang;
-        translatedCovers = {};
-        localStorage.setItem('reader-lang', lang);
-        showLangDropdown = false;
-        if (data.session?.user) {
-            await supabase.auth.updateUser({
-                data: { language: lang }
-            });
         }
     }
 
@@ -2089,8 +2064,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         </div>
     </div>
 
-    <!-- Theme switch and login/logout buttons at top right -->
+    <!-- Theme switch and user/login at top right -->
     <div class="theme-switch-container">
+        <button class="theme-switch" onclick={toggleTheme}>
+            {uiTheme === 'dark' ? '☀️' : '🌙'}
+        </button>
         {#if data.session?.user}
             <div 
                 class="user-profile clickable-profile" 
@@ -2112,39 +2090,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     {data.session.user.user_metadata?.nickname || data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name || 'User'}
                 </span>
             </div>
-            <button class="theme-switch logout-btn" onclick={handleLogout}>
-                Logout
-            </button>
         {:else}
             <button class="theme-switch login-btn" onclick={() => goto(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>
                 Login
             </button>
         {/if}
-        <button class="theme-switch" onclick={toggleTheme}>
-            {uiTheme === 'dark' ? '☀️' : '🌙'}
-        </button>
-        
-        <!-- Language selector flag dropdown -->
-        <div class="lang-selector-container">
-            <button class="theme-switch lang-btn" onclick={() => showLangDropdown = !showLangDropdown} title="Select Language">
-                {LANGUAGES.find(l => l.code === currentLanguage)?.flag || '🇺🇸'}
-            </button>
-            {#if showLangDropdown}
-                <div class="lang-dropdown">
-                    {#each QUICK_LANGUAGES as lang}
-                        <button class="lang-option" class:active={currentLanguage === lang.code} onclick={() => selectLanguage(lang.code)}>
-                            <span class="flag-icon">{lang.flag}</span>
-                            <span class="lang-label">{lang.label}</span>
-                        </button>
-                    {/each}
-                    <div style="border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 4px 0;"></div>
-                    <button class="lang-option" onclick={() => { showFullLangModal = true; showLangDropdown = false; langSearchQuery = ''; }}>
-                        <span class="flag-icon">🌐</span>
-                        <span class="lang-label">More...</span>
-                    </button>
-                </div>
-            {/if}
-        </div>
     </div>
 
     <!-- Prompt input box repositioned slightly higher -->
@@ -2777,46 +2727,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         </div>
     {/if}
 
-    {#if showFullLangModal}
-        <div class="modal-overlay" onclick={() => showFullLangModal = false} onkeydown={(e) => e.key === 'Escape' && (showFullLangModal = false)} role="presentation">
-            <div class="settings-modal-card lang-search-modal" onclick={(e) => e.stopPropagation()} role="presentation" style="max-width: 450px; height: 500px; display: flex; flex-direction: column;">
-                <div class="modal-header">
-                    <h2>Select Language</h2>
-                    <button class="close-btn" onclick={() => showFullLangModal = false}>✕</button>
-                </div>
-                <div class="modal-body" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; padding-top: 10px;">
-                    <div class="form-group" style="margin-bottom: 16px;">
-                        <input 
-                            type="text" 
-                            bind:value={langSearchQuery} 
-                            placeholder="Search languages..." 
-                            style="width: 100%; padding: 10px 12px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #fff; font-size: 14px; outline: none; box-sizing: border-box;"
-                        />
-                    </div>
-                    <div class="lang-scroll-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 4px;">
-                        {#each filteredLanguages as lang}
-                            <button 
-                                class="lang-option" 
-                                class:active={currentLanguage === lang.code} 
-                                onclick={() => { selectLanguage(lang.code); showFullLangModal = false; }}
-                                style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; background: transparent; border: none; border-radius: 6px; color: #fff; cursor: pointer; text-align: left; font-size: 14px; transition: background 0.2s;"
-                            >
-                                <span style="font-size: 18px;">{lang.flag}</span>
-                                <span>{lang.label}</span>
-                                {#if currentLanguage === lang.code}
-                                    <span style="margin-left: auto; color: #a78bfa;">✓</span>
-                                {/if}
-                            </button>
-                        {/each}
-                        {#if filteredLanguages.length === 0}
-                            <p style="color: #9ca3af; text-align: center; font-size: 14px; margin-top: 20px;">No languages found.</p>
-                        {/if}
-                    </div>
-                </div>
-            </div>
-        </div>
-    {/if}
-
     {#if showSettingsModal}
         <div class="modal-overlay" onclick={() => showSettingsModal = false} onkeydown={(e) => e.key === 'Escape' && (showSettingsModal = false)} role="presentation">
             <div class="settings-modal-card" class:pricing-modal={settingsActiveTab === 'plan'} onclick={(e) => e.stopPropagation()} role="presentation">
@@ -2926,9 +2836,13 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 </div>
                                 <textarea id="setting-bio" bind:value={profileAuthorBio} rows="4" placeholder=""></textarea>
                             </div>
-                            
 
-                            
+                            <div class="form-group">
+                                <button type="button" class="plan-btn free-btn" style="width: auto; padding: 8px 20px;" onclick={handleLogout}>
+                                    Logout
+                                </button>
+                            </div>
+
                             <div class="danger-zone">
                                 <h3>Delete Account</h3>
                                 {#if deleteStep === 'none'}
@@ -5692,77 +5606,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     }
     .skill-editor-actions {
         justify-content: flex-end;
-    }
-
-    /* Language Selector Flag Dropdown */
-    .lang-selector-container {
-        position: relative;
-        display: inline-block;
-    }
-    .lang-btn {
-        font-size: 18px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0 10px;
-    }
-    .lang-dropdown {
-        position: absolute;
-        top: calc(100% + 8px);
-        right: 0;
-        background: rgba(15, 23, 42, 0.95);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(12px);
-        border-radius: 8px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-        padding: 6px;
-        z-index: 1001;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        min-width: 120px;
-    }
-    .landing-container[data-theme="light"] .lang-dropdown {
-        background: rgba(255, 255, 255, 0.95);
-        border-color: rgba(0, 0, 0, 0.1);
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-    }
-    .lang-option {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        background: transparent;
-        border: none;
-        color: #f1f5f9;
-        padding: 8px 12px;
-        border-radius: 6px;
-        font-family: inherit;
-        font-size: 13px;
-        cursor: pointer;
-        text-align: left;
-        width: 100%;
-        transition: background 0.15s;
-    }
-    .landing-container[data-theme="light"] .lang-option {
-        color: #1e293b;
-    }
-    .lang-option:hover {
-        background: rgba(255, 255, 255, 0.08);
-    }
-    .landing-container[data-theme="light"] .lang-option:hover {
-        background: rgba(0, 0, 0, 0.05);
-    }
-    .lang-option.active {
-        background: rgba(139, 92, 246, 0.15);
-        color: #a78bfa;
-        font-weight: 600;
-    }
-    .landing-container[data-theme="light"] .lang-option.active {
-        background: rgba(139, 92, 246, 0.1);
-        color: #7c3aed;
-    }
-    .flag-icon {
-        font-size: 16px;
     }
 
     /* Header Logo Styles */
