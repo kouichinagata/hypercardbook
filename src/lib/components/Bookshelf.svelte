@@ -1168,71 +1168,82 @@
         height: 160px;
     }
 
-    /* Mobile styles */
+    /* Mobile styles: 2 large columns for readability */
     @media (max-width: 600px) {
+        .shelf-container {
+            width: 100%;
+        }
+
         .shelf-books-area {
-            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-            gap: 20px;
-            padding: 10px 20px 0;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            padding: 10px 12px 0;
             min-height: 200px;
         }
-        
-        .book-item {
-            width: 80px;
-            height: 120px;
+
+        .book-item-wrapper {
+            width: 100%;
         }
-        
+
+        .book-item {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 11 / 16;
+        }
+
         .book-tooltip {
             width: 110px;
         }
-        
+
         .book-cover {
-            padding: 4px;
+            padding: 8px;
         }
-        
+
         .book-cover-img {
-            max-height: 50px;
-            margin-bottom: 4px;
+            max-height: 70px;
+            margin-bottom: 6px;
         }
-        
+
         .book-cover-title {
-            font-size: 0.55rem;
-            line-height: 1.1;
+            font-size: 0.95rem;
+            line-height: 1.2;
+            -webkit-line-clamp: 3;
         }
-        
+
         .book-cover-author {
-            font-size: 0.45rem;
+            font-size: 0.7rem;
         }
 
         .book-action-bar {
-            width: 80px;
-            gap: 2px;
+            width: 100%;
+            gap: 3px;
         }
 
         .action-btn {
-            height: 18px;
-            font-size: 8px;
-            padding: 0 3px;
+            height: 24px;
+            font-size: 11px;
+            padding: 0 5px;
         }
 
         .action-btn.prompt-btn {
-            padding: 0 4px;
+            padding: 0 6px;
         }
 
         .action-btn.icon-btn {
-            width: 16px;
-            height: 18px;
-            font-size: 9px;
+            width: 24px;
+            height: 24px;
+            font-size: 12px;
         }
 
         .measure-container {
-            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-            gap: 20px;
-            padding: 10px 20px 0;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            padding: 10px 12px 0;
         }
         .measure-book {
-            width: 80px;
-            height: 120px;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 11 / 16;
         }
     }
 
