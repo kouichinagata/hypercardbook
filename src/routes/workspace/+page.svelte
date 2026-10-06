@@ -156,6 +156,45 @@
     let isGenerating = $state(false);
     let errorMsg = $state('');
 
+    // + menu and resizable chat panel
+    let showPlusMenu = $state(false);
+    const DEFAULT_CHAT_WIDTH = 400;
+    const MIN_CHAT_WIDTH = 320;
+    const MIN_PREVIEW_WIDTH = 360;
+    let chatWidth = $state(DEFAULT_CHAT_WIDTH);
+    let isResizing = $state(false);
+
+    function clampChatWidth(w: number) {
+        const max = Math.max(
+            MIN_CHAT_WIDTH,
+            Math.min(window.innerWidth - MIN_PREVIEW_WIDTH, window.innerWidth * 0.7)
+        );
+        return Math.round(Math.min(Math.max(w, MIN_CHAT_WIDTH), max));
+    }
+
+    function setChatWidth(w: number) {
+        chatWidth = clampChatWidth(w);
+        try { localStorage.setItem('workspace_chat_width', String(chatWidth)); } catch {}
+    }
+
+    function startResize(e: PointerEvent) {
+        isResizing = true;
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        e.preventDefault();
+    }
+
+    function onResizeMove(e: PointerEvent) {
+        if (!isResizing) return;
+        chatWidth = clampChatWidth(e.clientX);
+    }
+
+    function endResize(e: PointerEvent) {
+        if (!isResizing) return;
+        isResizing = false;
+        try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+        try { localStorage.setItem('workspace_chat_width', String(chatWidth)); } catch {}
+    }
+
     // Web Search toggle
     let webSearchEnabled = $state(false);
     let imageGenEnabled = $state(false);
@@ -1221,6 +1260,22 @@ ${markdown}
 
     onMount(() => {
         document.body.classList.add('scroll-locked');
+
+        try {
+            const savedWidth = Number(localStorage.getItem('workspace_chat_width'));
+            if (savedWidth) chatWidth = clampChatWidth(savedWidth);
+        } catch {}
+        const handleWindowResize = () => { chatWidth = clampChatWidth(chatWidth); };
+        const closePlusMenu = (event: MouseEvent) => {
+            if ((event.target as Element | null)?.closest('.plus-menu-wrapper')) return;
+            showPlusMenu = false;
+        };
+        const closePlusMenuOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') showPlusMenu = false;
+        };
+        window.addEventListener('resize', handleWindowResize);
+        window.addEventListener('click', closePlusMenu);
+        window.addEventListener('keydown', closePlusMenuOnEscape);
         
         // 非同期処理を内部のIIFEで実行
         (async () => {
@@ -1338,6 +1393,9 @@ ${markdown}
 
         return () => {
             document.body.classList.remove('scroll-locked');
+            window.removeEventListener('resize', handleWindowResize);
+            window.removeEventListener('click', closePlusMenu);
+            window.removeEventListener('keydown', closePlusMenuOnEscape);
         };
     });
 
@@ -1735,9 +1793,9 @@ ${markdown}
 
 
 
-<div class="workspace-layout" data-theme={uiTheme}>
+<div class="workspace-layout" class:resizing={isResizing} data-theme={uiTheme}>
     <!-- Left Panel: Chat -->
-        <div class="chat-panel">
+        <div class="chat-panel" style="width: {chatWidth}px;">
             <div class="panel-header">
                 <div class="header-left">
                     <button class="back-home-btn" onclick={() => { if (window.history.length === 1 || window.opener) { window.close(); } else { goto('/'); } }}>back</button>
@@ -1896,41 +1954,49 @@ ${markdown}
                         ></textarea>
                         <div class="chat-actions-row">
                             <div class="chat-actions-left">
-                                <button
-                                    type="button"
-                                    class="inner-attach-btn"
-                                    onclick={() => fileInputEl?.click()}
-                                    disabled={!data.session?.user || isGenerating}
-                                    title="Attach files"
-                                >
-                                    ＋
-                                </button>
-                                <!-- Web Search Toggle (Standard plan or above in workspace) -->
-                                <button
-                                    type="button"
-                                    class="web-search-btn"
-                                    class:active={webSearchEnabled && isPaidPlan}
-                                    class:disabled-plan={!isPaidPlan}
-                                    disabled={!isPaidPlan || !data.session?.user || isGenerating}
-                                    onclick={() => { webSearchEnabled = !webSearchEnabled; }}
-                                    title={!isPaidPlan ? 'Available on Standard plan or above' : (webSearchEnabled ? 'Web Search: ON' : 'Web Search: OFF')}
-                                    aria-label="Toggle Web Search"
-                                >
-                                    🔍 Web
-                                </button>
-                                <!-- 🏙️ Image Generation Toggle (Standard plan or above in workspace) -->
-                                <button
-                                    type="button"
-                                    class="image-gen-btn"
-                                    class:active={imageGenEnabled && isPaidPlan}
-                                    class:disabled-plan={!isPaidPlan}
-                                    disabled={!isPaidPlan || !data.session?.user || isGenerating}
-                                    onclick={() => { imageGenEnabled = !imageGenEnabled; }}
-                                    title={!isPaidPlan ? 'Available on Standard plan or above' : (imageGenEnabled ? 'Image Generation: ON (NanoBanana Lite)' : 'Image Generation: OFF')}
-                                    aria-label="Toggle Image Generation"
-                                >
-                                    🏙️ Image
-                                </button>
+                                <div class="plus-menu-wrapper">
+                                    <button
+                                        type="button"
+                                        class="inner-attach-btn"
+                                        class:active={(webSearchEnabled || imageGenEnabled) && isPaidPlan}
+                                        onclick={() => { showPlusMenu = !showPlusMenu; }}
+                                        disabled={!data.session?.user || isGenerating}
+                                        title="Add files, web search, image generation"
+                                        aria-haspopup="menu"
+                                        aria-expanded={showPlusMenu}
+                                    >
+                                        ＋
+                                    </button>
+                                    {#if showPlusMenu}
+                                        <div class="plus-menu" role="menu">
+                                            <button
+                                                type="button"
+                                                role="menuitemcheckbox"
+                                                aria-checked={imageGenEnabled && isPaidPlan}
+                                                class:active={imageGenEnabled && isPaidPlan}
+                                                disabled={!isPaidPlan}
+                                                title={!isPaidPlan ? 'Available on Standard plan or above' : (imageGenEnabled ? 'Image Generation: ON (NanoBanana Lite)' : 'Image Generation: OFF')}
+                                                onclick={() => { imageGenEnabled = !imageGenEnabled; }}
+                                            >
+                                                <span>🏙️</span> Generate image
+                                            </button>
+                                            <button
+                                                type="button"
+                                                role="menuitemcheckbox"
+                                                aria-checked={webSearchEnabled && isPaidPlan}
+                                                class:active={webSearchEnabled && isPaidPlan}
+                                                disabled={!isPaidPlan}
+                                                title={!isPaidPlan ? 'Available on Standard plan or above' : (webSearchEnabled ? 'Web Search: ON' : 'Web Search: OFF')}
+                                                onclick={() => { webSearchEnabled = !webSearchEnabled; }}
+                                            >
+                                                <span>🔍</span> Internet search
+                                            </button>
+                                            <button type="button" role="menuitem" onclick={() => { showPlusMenu = false; fileInputEl?.click(); }}>
+                                                <span>🗄️</span> Add file
+                                            </button>
+                                        </div>
+                                    {/if}
+                                </div>
                             </div>
                             <button 
                                 type="submit" 
@@ -1944,6 +2010,20 @@ ${markdown}
                 </form>
             </div>
         </div>
+
+    <!-- Draggable separator -->
+    <div
+        class="panel-resizer"
+        class:dragging={isResizing}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize chat panel"
+        onpointerdown={startResize}
+        onpointermove={onResizeMove}
+        onpointerup={endResize}
+        onpointercancel={endResize}
+        ondblclick={() => setChatWidth(DEFAULT_CHAT_WIDTH)}
+    ></div>
 
     <!-- Right Panel: Editor / Preview -->
     <div class="preview-panel">
@@ -2310,7 +2390,7 @@ ${markdown}
     .chat-panel {
         display: flex;
         flex-direction: column;
-        width: 400px;
+        flex: 0 0 auto;
         min-width: 320px;
         height: 100%;
         background-color: #12131c;
@@ -2511,6 +2591,7 @@ ${markdown}
         display: flex;
         flex-direction: column;
         flex: 1;
+        min-width: 0;
         height: 100%;
         background-color: #0b0c10;
         box-sizing: border-box;
@@ -3325,99 +3406,89 @@ ${markdown}
         transform: none;
     }
 
-    /* Web Search Toggle Button (Workspace) */
-    .web-search-toggle-wrapper {
-        display: flex;
-        align-items: center;
+    /* + menu (Web search / Image generation / Add file) */
+    .plus-menu-wrapper {
+        position: relative;
     }
-    .web-search-btn {
+    .inner-attach-btn.active {
+        color: #8b5cf6;
+    }
+    .plus-menu {
+        position: absolute;
+        left: 0;
+        bottom: calc(100% + 8px);
+        z-index: 80;
+        width: 210px;
+        padding: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 10px;
+        background: #18191f;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    }
+    .plus-menu button {
         display: flex;
         align-items: center;
-        gap: 4px;
-        padding: 5px 10px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 500;
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.13);
-        color: rgba(255, 255, 255, 0.55);
+        gap: 9px;
+        width: 100%;
+        padding: 9px 10px;
+        border: 0;
+        border-radius: 7px;
+        color: rgba(255, 255, 255, 0.78);
+        background: transparent;
+        font-size: 13px;
+        text-align: left;
         cursor: pointer;
-        transition: background 0.18s, border-color 0.18s, color 0.18s;
-        white-space: nowrap;
     }
-    .web-search-btn:hover:not(.disabled-plan):not(:disabled) {
-        background: rgba(255, 255, 255, 0.13);
-        color: rgba(255, 255, 255, 0.85);
+    .plus-menu button:hover:not(:disabled),
+    .plus-menu button.active {
+        color: #111827;
+        background: #f5ebe0;
     }
-    .web-search-btn.active {
-        background: rgba(66, 133, 244, 0.22);
-        border-color: rgba(66, 133, 244, 0.55);
-        color: #8ab4f8;
-    }
-    .web-search-btn.active:hover:not(.disabled-plan) {
-        background: rgba(66, 133, 244, 0.32);
-    }
-    .web-search-btn.disabled-plan {
-        opacity: 0.35;
+    .plus-menu button:disabled {
+        opacity: 0.4;
         cursor: not-allowed;
+    }
+    .plus-menu button span {
+        width: 20px;
+        text-align: center;
+    }
+    .workspace-layout[data-theme="light"] .plus-menu {
+        border-color: rgba(17, 24, 39, 0.14);
+        background: #fffaf5;
+        box-shadow: 0 16px 40px rgba(17, 24, 39, 0.18);
+    }
+    .workspace-layout[data-theme="light"] .plus-menu button {
+        color: rgba(17, 24, 39, 0.75);
+    }
+    .workspace-layout[data-theme="light"] .plus-menu button:hover:not(:disabled),
+    .workspace-layout[data-theme="light"] .plus-menu button.active {
+        color: #111827;
+        background: #f5ebe0;
     }
 
-    /* 🏙️ Image Generation Button (Workspace) */
-    .image-gen-btn {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        padding: 5px 10px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 500;
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.13);
-        color: rgba(255, 255, 255, 0.55);
-        cursor: pointer;
-        transition: background 0.18s, border-color 0.18s, color 0.18s;
-        white-space: nowrap;
+    /* Draggable separator between chat and preview */
+    .panel-resizer {
+        flex: 0 0 6px;
+        width: 6px;
+        margin-left: -3px;
+        margin-right: -3px;
+        position: relative;
+        z-index: 20;
+        cursor: col-resize;
+        touch-action: none;
+        background: transparent;
+        transition: background 0.15s;
     }
-    .image-gen-btn:hover:not(.disabled-plan):not(:disabled) {
-        background: rgba(255, 255, 255, 0.13);
-        color: rgba(255, 255, 255, 0.85);
+    .panel-resizer:hover,
+    .panel-resizer.dragging {
+        background: rgba(139, 92, 246, 0.55);
     }
-    .image-gen-btn.active {
-        background: rgba(168, 85, 247, 0.22);
-        border-color: rgba(168, 85, 247, 0.55);
-        color: #c084fc;
+    .workspace-layout.resizing {
+        user-select: none;
+        cursor: col-resize;
     }
-    .image-gen-btn.disabled-plan {
-        opacity: 0.35;
-        cursor: not-allowed;
-    }
-    .workspace-layout[data-theme="light"] .web-search-btn {
-        background: rgba(0, 0, 0, 0.05);
-        border-color: rgba(0, 0, 0, 0.12);
-        color: rgba(0, 0, 0, 0.45);
-    }
-    .workspace-layout[data-theme="light"] .web-search-btn.active {
-        background: rgba(66, 133, 244, 0.12);
-        border-color: rgba(66, 133, 244, 0.4);
-        color: #1a73e8;
-    }
-    .workspace-layout[data-theme="light"] .image-gen-btn {
-        background: rgba(0, 0, 0, 0.05);
-        border-color: rgba(0, 0, 0, 0.12);
-        color: rgba(0, 0, 0, 0.55);
-    }
-    .workspace-layout[data-theme="light"] .image-gen-btn:hover:not(.disabled-plan):not(:disabled) {
-        background: rgba(0, 0, 0, 0.09);
-        color: rgba(0, 0, 0, 0.78);
-    }
-    .workspace-layout[data-theme="light"] .image-gen-btn.active {
-        background: rgba(168, 85, 247, 0.12);
-        border-color: rgba(126, 34, 206, 0.4);
-        color: #7e22ce;
-    }
-    .workspace-layout[data-theme="light"] .image-gen-btn.active:hover:not(.disabled-plan):not(:disabled) {
-        background: rgba(168, 85, 247, 0.18);
-        color: #6b21a8;
+    .workspace-layout.resizing .preview-panel {
+        pointer-events: none;
     }
 
     /* Attached files preview bar */
