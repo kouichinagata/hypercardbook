@@ -21,6 +21,23 @@
 			const accessToken = params.get('access_token');
 			const refreshToken = params.get('refresh_token');
 
+			// PapeRoboの「AI API設定」から同期されたAPIキーをブラウザに保存する
+			let hasSyncedKey = false;
+			for (const provider of ['openai', 'gemini', 'anthropic']) {
+				const key = params.get(`sync_${provider}_api_key`)?.trim();
+				if (key) {
+					try {
+						localStorage.setItem(`user_${provider}_api_key`, key);
+						hasSyncedKey = true;
+					} catch (e) {
+						console.error('Failed to store synced API key:', e);
+					}
+				}
+			}
+			if (hasSyncedKey && !(accessToken && refreshToken)) {
+				window.history.replaceState(null, '', window.location.pathname + window.location.search);
+			}
+
 			if (accessToken && refreshToken) {
 				supabase.auth.setSession({
 					access_token: accessToken,
