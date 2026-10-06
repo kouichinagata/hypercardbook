@@ -1183,10 +1183,12 @@
 
         .book-item-wrapper {
             width: 100%;
+            max-width: 120px;
         }
 
         .book-item {
             width: 100%;
+            max-width: 120px;
             height: auto;
             aspect-ratio: 11 / 16;
         }
@@ -1200,22 +1202,23 @@
         }
 
         .book-cover-img {
-            max-height: 70px;
+            max-height: 56px;
             margin-bottom: 6px;
         }
 
         .book-cover-title {
-            font-size: 0.95rem;
+            font-size: 0.85rem;
             line-height: 1.2;
             -webkit-line-clamp: 3;
         }
 
         .book-cover-author {
-            font-size: 0.7rem;
+            font-size: 0.65rem;
         }
 
         .book-action-bar {
             width: 100%;
+            max-width: 120px;
             gap: 3px;
         }
 
@@ -1242,6 +1245,7 @@
         }
         .measure-book {
             width: 100%;
+            max-width: 120px;
             height: auto;
             aspect-ratio: 11 / 16;
         }
