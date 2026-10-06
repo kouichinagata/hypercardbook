@@ -119,7 +119,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
 		const existingBook = chooseCanonicalBook(exactBooks || []);
 		const previousMarkdown = existingBook?.markdown_content || buildInitialBookMarkdown();
-		const { markdown, created } = upsertCallPage(previousMarkdown, validated.payload);
+		const { markdown, created, previousPage } = upsertCallPage(previousMarkdown, validated.payload);
 		const bookData = {
 			user_id: ownerUserId,
 			slug: bookSlug,
@@ -146,10 +146,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			return jsonError('database_error', saveError?.message || 'Book could not be saved.', 500);
 		}
 
-		// 本の持ち主本人が話した新しい通話だけを長期記憶に反映する(ベストエフォート)
+		// 本の持ち主本人の会話のうち、今回新しく追加された発言だけを長期記憶に反映する(ベストエフォート)
 		const isOwnerCall =
 			!validated.payload.user.isAnonymous && validated.payload.user.supabaseUserId === ownerUserId;
-		const memoryFactsAdded = created && isOwnerCall ? await rememberFromCall(supabase, ownerUserId, validated.payload) : 0;
+		const newEntries = newTranscriptEntries(previousPage, validated.payload.transcript);
+		const memoryFactsAdded =
+			isOwnerCall && newEntries.length
+				? await rememberFromCall(supabase, ownerUserId, { ...validated.payload, transcript: newEntries })
+				: 0;
 
 		return json({
 			ok: true,
@@ -358,8 +362,17 @@ function upsertCallPage(markdown: string, payload: NormalizedPayload) {
 
 	return {
 		markdown: [parts.frontmatter, ...pages].filter(Boolean).join('\n\n***\n\n'),
-		created: existingIndex < 0
+		created: existingIndex < 0,
+		previousPage: existingIndex >= 0 ? parts.pages[existingIndex] : ''
 	};
+}
+
+// A saved page is rewritten on every update, so only turns that were not in it yet are new.
+function newTranscriptEntries(previousPage: string, transcript: NormalizedPayload['transcript']) {
+	if (!previousPage) return transcript;
+	return transcript.filter(
+		(entry) => !previousPage.includes(`**${escapeMarkdown(entry.speakerName)}**: ${escapeMarkdown(entry.text)}`)
+	);
 }
 
 function splitBookMarkdown(markdown: string) {
