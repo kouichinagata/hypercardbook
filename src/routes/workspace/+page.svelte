@@ -159,10 +159,35 @@
     // + menu and resizable chat panel
     let showPlusMenu = $state(false);
     const DEFAULT_CHAT_WIDTH = 400;
-    const MIN_CHAT_WIDTH = 320;
+    const MIN_CHAT_WIDTH = 240;
     const MIN_PREVIEW_WIDTH = 360;
     let chatWidth = $state(DEFAULT_CHAT_WIDTH);
     let isResizing = $state(false);
+
+    // Smartphone layout: one pane at a time (Chat / Preview / Code)
+    let isMobile = $state(false);
+    let mobilePane = $state<'chat' | 'preview' | 'source'>('chat');
+    let showMobileMenu = $state(false);
+    let hasUnseenUpdate = $state(false);
+    let lastSeenMarkdown = '';
+
+    function selectMobilePane(pane: 'chat' | 'preview' | 'source') {
+        mobilePane = pane;
+        showMobileMenu = false;
+        if (pane !== 'chat') {
+            activeTab = pane;
+            hasUnseenUpdate = false;
+        }
+    }
+
+    // Mark Preview/Code with a dot when the document changes while Chat is shown
+    $effect(() => {
+        const current = markdown;
+        if (isMobile && mobilePane === 'chat' && lastSeenMarkdown && current !== lastSeenMarkdown) {
+            hasUnseenUpdate = true;
+        }
+        lastSeenMarkdown = current;
+    });
 
     function clampChatWidth(w: number) {
         const max = Math.max(
@@ -1266,12 +1291,21 @@ ${markdown}
             if (savedWidth) chatWidth = clampChatWidth(savedWidth);
         } catch {}
         const handleWindowResize = () => { chatWidth = clampChatWidth(chatWidth); };
+        const mobileQuery = window.matchMedia('(max-width: 768px)');
+        const handleMobileChange = () => {
+            isMobile = mobileQuery.matches;
+            showMobileMenu = false;
+            if (isMobile) mobilePane = 'chat';
+        };
+        handleMobileChange();
+        mobileQuery.addEventListener('change', handleMobileChange);
         const closePlusMenu = (event: MouseEvent) => {
-            if ((event.target as Element | null)?.closest('.plus-menu-wrapper')) return;
-            showPlusMenu = false;
+            const target = event.target as Element | null;
+            if (!target?.closest('.plus-menu-wrapper')) showPlusMenu = false;
+            if (!target?.closest('.mobile-menu-wrapper')) showMobileMenu = false;
         };
         const closePlusMenuOnEscape = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') showPlusMenu = false;
+            if (event.key === 'Escape') { showPlusMenu = false; showMobileMenu = false; }
         };
         window.addEventListener('resize', handleWindowResize);
         window.addEventListener('click', closePlusMenu);
@@ -1394,6 +1428,7 @@ ${markdown}
         return () => {
             document.body.classList.remove('scroll-locked');
             window.removeEventListener('resize', handleWindowResize);
+            mobileQuery.removeEventListener('change', handleMobileChange);
             window.removeEventListener('click', closePlusMenu);
             window.removeEventListener('keydown', closePlusMenuOnEscape);
         };
@@ -1793,9 +1828,58 @@ ${markdown}
 
 
 
-<div class="workspace-layout" class:resizing={isResizing} data-theme={uiTheme}>
+{#snippet actionItems(labels: boolean)}
+    {#if activeTab === 'source'}
+        <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; toggleMonaco(); }} disabled={!data.session?.user} title={useMonaco ? "Switch to Plain Text" : "Switch to Monaco Editor"}>
+            {useMonaco ? '🔠' : '🆎'}{#if labels}<span class="action-label">{useMonaco ? 'Plain text editor' : 'Monaco editor'}</span>{/if}
+        </button>
+        <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; openInsertMedia(); }} disabled={!data.session?.user} title="Insert Image">
+            🖼️{#if labels}<span class="action-label">Insert image</span>{/if}
+        </button>
+    {/if}
+    {#if (mode === 'card' && cardSlug) || (mode === 'book' && bookUuid)}
+        <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handlePublishBtnClick(); }} title={isPublic ? 'Unpublish' : 'Publish'}>
+            {isPublic ? '👤' : '👥'}{#if labels}<span class="action-label">{isPublic ? 'Unpublish' : 'Publish'}</span>{/if}
+        </button>
+        <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; openDdcModal(); }} title={currentDdcCode ? `Classification: ${getDdcFullLabel(currentDdcCode)}` : 'Set Classification (DDC)'}>
+            🏷️{#if labels}<span class="action-label">Classification</span>{/if}
+        </button>
+        <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handleDownloadHtml(); }} title="Download HTML">
+            💾{#if labels}<span class="action-label">Download HTML</span>{/if}
+        </button>
+        <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handleExportHtmlLink(); }} disabled={isExportingHtml} title="Publish HTML">
+            🌐{#if labels}<span class="action-label">Publish HTML</span>{/if}
+        </button>
+        <a class="card-action-btn tabs-action-btn" href={mode === 'card' ? `/hypercard/${cardSlug}?embed=true` : `/hyperbook/${bookUuid}`} target="_blank" title="New tab" style="text-decoration: none;">
+            🔗{#if labels}<span class="action-label">Open in new tab</span>{/if}
+        </a>
+    {/if}
+{/snippet}
+
+<div class="workspace-layout" class:resizing={isResizing} class:mobile={isMobile} data-theme={uiTheme}>
+    {#if isMobile}
+        <div class="mobile-topbar">
+            <div class="mobile-pane-toggle" role="tablist">
+                <button role="tab" aria-selected={mobilePane === 'chat'} class:active={mobilePane === 'chat'} onclick={() => selectMobilePane('chat')}>Chat</button>
+                <button role="tab" aria-selected={mobilePane === 'preview'} class:active={mobilePane === 'preview'} onclick={() => selectMobilePane('preview')}>
+                    Preview{#if hasUnseenUpdate && mobilePane === 'chat'}<i class="update-dot"></i>{/if}
+                </button>
+                <button role="tab" aria-selected={mobilePane === 'source'} class:active={mobilePane === 'source'} onclick={() => selectMobilePane('source')}>
+                    Code{#if hasUnseenUpdate && mobilePane === 'chat'}<i class="update-dot"></i>{/if}
+                </button>
+            </div>
+            <div class="mobile-menu-wrapper">
+                <button type="button" class="mobile-menu-btn" aria-haspopup="menu" aria-expanded={showMobileMenu} aria-label="Menu" onclick={() => { showMobileMenu = !showMobileMenu; }}>☰</button>
+                {#if showMobileMenu}
+                    <div class="mobile-menu" role="menu">
+                        {@render actionItems(true)}
+                    </div>
+                {/if}
+            </div>
+        </div>
+    {/if}
     <!-- Left Panel: Chat -->
-        <div class="chat-panel" style="width: {chatWidth}px;">
+        <div class="chat-panel" class:pane-hidden={isMobile && mobilePane !== 'chat'} style={isMobile ? '' : `width: ${chatWidth}px;`}>
             <div class="panel-header">
                 <div class="header-left">
                     <button class="back-home-btn" onclick={() => { if (window.history.length === 1 || window.opener) { window.close(); } else { goto('/'); } }}>back</button>
@@ -2014,6 +2098,7 @@ ${markdown}
     <!-- Draggable separator -->
     <div
         class="panel-resizer"
+        class:pane-hidden={isMobile}
         class:dragging={isResizing}
         role="separator"
         aria-orientation="vertical"
@@ -2026,8 +2111,8 @@ ${markdown}
     ></div>
 
     <!-- Right Panel: Editor / Preview -->
-    <div class="preview-panel">
-        <div class="panel-tabs">
+    <div class="preview-panel" class:pane-hidden={isMobile && mobilePane === 'chat'}>
+        <div class="panel-tabs" class:pane-hidden={isMobile}>
             <div class="tabs-left">
                 <button 
                     class="tab-btn" 
@@ -2045,64 +2130,7 @@ ${markdown}
                 </button>
             </div>
             <div class="tabs-right" style="display: flex; gap: 10px; align-items: center; padding-right: 12px;">
-                {#if activeTab === 'source'}
-                    <button 
-                        class="card-action-btn tabs-action-btn" 
-                        onclick={toggleMonaco} 
-                        disabled={!data.session?.user}
-                        title={useMonaco ? "Switch to Plain Text" : "Switch to Monaco Editor"}
-                    >
-                        {useMonaco ? '🔠' : '🆎'}
-                    </button>
-                    <button 
-                        class="card-action-btn tabs-action-btn" 
-                        onclick={openInsertMedia} 
-                        disabled={!data.session?.user}
-                        title="Insert Image"
-                    >
-                        🖼️
-                    </button>
-                {/if}
-                {#if (mode === 'card' && cardSlug) || (mode === 'book' && bookUuid)}
-                    <button
-                        class="card-action-btn tabs-action-btn"
-                        onclick={handlePublishBtnClick}
-                        title={isPublic ? 'Unpublish' : 'Publish'}
-                    >
-                        {isPublic ? '👤' : '👥'}
-                    </button>
-                    <button
-                        class="card-action-btn tabs-action-btn"
-                        onclick={openDdcModal}
-                        title={currentDdcCode ? `Classification: ${getDdcFullLabel(currentDdcCode)}` : 'Set Classification (DDC)'}
-                    >
-                        🏷️
-                    </button>
-                    <button 
-                        class="card-action-btn tabs-action-btn" 
-                        onclick={handleDownloadHtml} 
-                        title="Download HTML"
-                    >
-                        💾
-                    </button>
-                    <button 
-                        class="card-action-btn tabs-action-btn" 
-                        onclick={handleExportHtmlLink} 
-                        disabled={isExportingHtml}
-                        title="Publish HTML"
-                    >
-                        🌐
-                    </button>
-                    <a 
-                        class="card-action-btn tabs-action-btn" 
-                        href={mode === 'card' ? `/hypercard/${cardSlug}?embed=true` : `/hyperbook/${bookUuid}`} 
-                        target="_blank" 
-                        title="New tab"
-                        style="text-decoration: none;"
-                    >
-                        🔗
-                    </a>
-                {/if}
+                {@render actionItems(false)}
             </div>
         </div>
 
@@ -2391,7 +2419,7 @@ ${markdown}
         display: flex;
         flex-direction: column;
         flex: 0 0 auto;
-        min-width: 320px;
+        min-width: 240px;
         height: 100%;
         background-color: #12131c;
         border-right: 1px solid rgba(255, 255, 255, 0.08);
@@ -3464,6 +3492,140 @@ ${markdown}
     .workspace-layout[data-theme="light"] .plus-menu button.active {
         color: #111827;
         background: #f5ebe0;
+    }
+
+    /* Smartphone layout */
+    .pane-hidden {
+        display: none !important;
+    }
+    .workspace-layout.mobile {
+        flex-direction: column;
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+    }
+    .workspace-layout.mobile .chat-panel {
+        width: 100%;
+        min-width: 0;
+        flex: 1;
+        min-height: 0;
+        border-right: none;
+    }
+    .workspace-layout.mobile .preview-panel {
+        flex: 1;
+        min-height: 0;
+    }
+    .mobile-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 12px;
+        background-color: #12131c;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        flex: 0 0 auto;
+    }
+    .workspace-layout[data-theme="light"] .mobile-topbar {
+        background-color: #fffaf5;
+        border-bottom-color: rgba(17, 24, 39, 0.12);
+    }
+    .mobile-pane-toggle {
+        display: flex;
+        padding: 3px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .workspace-layout[data-theme="light"] .mobile-pane-toggle {
+        background: rgba(17, 24, 39, 0.08);
+    }
+    .mobile-pane-toggle button {
+        position: relative;
+        padding: 6px 14px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .workspace-layout[data-theme="light"] .mobile-pane-toggle button {
+        color: rgba(17, 24, 39, 0.6);
+    }
+    .mobile-pane-toggle button.active {
+        background: #8b5cf6;
+        color: #ffffff;
+    }
+    .update-dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        margin-left: 5px;
+        border-radius: 50%;
+        background: #f59e0b;
+        vertical-align: middle;
+    }
+    .mobile-menu-wrapper {
+        position: relative;
+    }
+    .mobile-menu-btn {
+        width: 36px;
+        height: 32px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        background: transparent;
+        color: inherit;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        color: #e5e7eb;
+    }
+    .workspace-layout[data-theme="light"] .mobile-menu-btn {
+        border-color: rgba(17, 24, 39, 0.2);
+        color: #3d2516;
+    }
+    .mobile-menu {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        z-index: 90;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 210px;
+        padding: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 10px;
+        background: #18191f;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    }
+    .workspace-layout[data-theme="light"] .mobile-menu {
+        border-color: rgba(17, 24, 39, 0.14);
+        background: #fffaf5;
+        box-shadow: 0 16px 40px rgba(17, 24, 39, 0.18);
+    }
+    .mobile-menu :global(.card-action-btn) {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        height: auto;
+        padding: 10px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        font-size: 15px;
+        text-align: left;
+        justify-content: flex-start;
+    }
+    .mobile-menu :global(.card-action-btn:hover:not(:disabled)) {
+        background: rgba(139, 92, 246, 0.18);
+    }
+    .workspace-layout[data-theme="light"] .mobile-menu :global(.card-action-btn) {
+        color: #3d2516;
+    }
+    .action-label {
+        font-size: 13px;
     }
 
     /* Draggable separator between chat and preview */
