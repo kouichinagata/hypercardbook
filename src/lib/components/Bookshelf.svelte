@@ -28,7 +28,6 @@
         moreDisabled = false,
         onMoreClick = null,
         isPublicShelf = false,
-        showPapeRoboBtn = false,
         showHyperRoboBtn = false,
         showHyperCardTvBtn = false,
         isHyperRoboSelection = false,
@@ -242,36 +241,6 @@
         }
     }
 
-    async function handlePapeRoboLaunch() {
-        const session = page.data.session;
-        let targetUrl = 'https://paperobo.hypercardbook.org/ai'; // Production URL
-
-        if (typeof window !== 'undefined') {
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                targetUrl = 'http://localhost:5180/ai'; // Local development URL
-            }
-        }
-
-        let hashParams = [];
-        if (session) {
-            hashParams.push(`access_token=${encodeURIComponent(session.access_token)}`);
-            hashParams.push(`refresh_token=${encodeURIComponent(session.refresh_token)}`);
-        }
-        if (typeof window !== 'undefined') {
-            for (const provider of ['openai', 'gemini', 'anthropic']) {
-                const key = localStorage.getItem(`user_${provider}_api_key`)?.trim();
-                if (key) hashParams.push(`sync_${provider}_api_key=${encodeURIComponent(key)}`);
-            }
-        }
-
-        if (hashParams.length > 0) {
-            window.open(`${targetUrl}#${hashParams.join('&')}`, '_blank');
-        } else {
-            window.open(targetUrl, '_blank');
-        }
-    }
-
-
     // Context Menu States
     let menuVisible = $state(false);
     let menuX = $state(0);
@@ -337,7 +306,7 @@
 
 
 <div class="shelf-container" id="shelfContainer">
-    {#if showPapeRoboBtn || showHyperRoboBtn || showStackBtn || showHyperCardTvBtn}
+    {#if showHyperRoboBtn || showStackBtn || showHyperCardTvBtn}
         <div class="top-shelf-actions">
             {#if showHyperCardTvBtn}
                 <button
@@ -346,16 +315,6 @@
                     onclick={() => window.open('https://www.tatetop.com/hypercardtv/hypertv', '_blank')}
                 >
                     📺 HyperCard-TV
-                </button>
-            {/if}
-
-            {#if showPapeRoboBtn}
-                <button 
-                    type="button" 
-                    class="top-shelf-paperobo-btn"
-                    onclick={handlePapeRoboLaunch}
-                >
-                    🧸 PapeRobo
                 </button>
             {/if}
 
@@ -1318,39 +1277,6 @@
     }
 
     :global([data-theme="light"]) .top-shelf-hypercardtv-btn:hover {
-        background: rgba(61, 37, 22, 0.12);
-    }
-
-    .top-shelf-paperobo-btn {
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid var(--text-color, #f5ebe0);
-        color: var(--text-color, #f5ebe0);
-        padding: 8px 16px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        transition: all 0.2s ease-in-out;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        backdrop-filter: blur(10px);
-        font-family: system-ui, sans-serif;
-    }
-
-    .top-shelf-paperobo-btn:hover {
-        background: rgba(255, 255, 255, 0.18);
-        transform: scale(1.05);
-    }
-
-    :global([data-theme="light"]) .top-shelf-paperobo-btn {
-        background: rgba(61, 37, 22, 0.06);
-        border-color: var(--text-color, #3d2516);
-        color: var(--text-color, #3d2516);
-    }
-
-    :global([data-theme="light"]) .top-shelf-paperobo-btn:hover {
         background: rgba(61, 37, 22, 0.12);
     }
 

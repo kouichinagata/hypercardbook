@@ -422,6 +422,60 @@
         }
     }
 
+    // PapeRoboへ移動（ログイン状態とAPIキーをURLハッシュで引き継ぐ）
+    let logoMenuOpen = $state(false);
+    let logoLongPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let logoLongPressed = false;
+
+    function buildPapeRoboUrl() {
+        let targetUrl = 'https://paperobo.hypercardbook.org/ai';
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            targetUrl = 'http://localhost:5180/ai';
+        }
+        const hashParams: string[] = [];
+        const session = data.session;
+        if (session) {
+            hashParams.push(`access_token=${encodeURIComponent(session.access_token)}`);
+            hashParams.push(`refresh_token=${encodeURIComponent(session.refresh_token)}`);
+        }
+        for (const provider of ['openai', 'gemini', 'anthropic']) {
+            const key = localStorage.getItem(`user_${provider}_api_key`)?.trim();
+            if (key) hashParams.push(`sync_${provider}_api_key=${encodeURIComponent(key)}`);
+        }
+        return hashParams.length > 0 ? `${targetUrl}#${hashParams.join('&')}` : targetUrl;
+    }
+
+    function startLogoPress() {
+        logoLongPressed = false;
+        if (logoLongPressTimer) clearTimeout(logoLongPressTimer);
+        logoLongPressTimer = setTimeout(() => {
+            logoLongPressed = true;
+            logoMenuOpen = true;
+        }, 500);
+    }
+
+    function endLogoPress() {
+        if (logoLongPressTimer) {
+            clearTimeout(logoLongPressTimer);
+            logoLongPressTimer = null;
+        }
+    }
+
+    function handleLogoClick(e: MouseEvent) {
+        if (logoLongPressed) {
+            logoLongPressed = false;
+            e.preventDefault();
+            return;
+        }
+        logoMenuOpen = false;
+        window.location.href = buildPapeRoboUrl();
+    }
+
+    function openPapeRoboInNewTab() {
+        logoMenuOpen = false;
+        window.open(buildPapeRoboUrl(), '_blank');
+    }
+
     function toggleTheme() {
         uiTheme = uiTheme === 'dark' ? 'light' : 'dark';
         localStorage.setItem('shelf-theme', uiTheme);
@@ -2057,11 +2111,29 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 <div class="landing-container" data-theme={uiTheme}>
     <!-- Brand Logo and slogan at top left -->
     <div class="header-logo-container">
-        <img src="/markdownai_logo.png" alt="MarkdownAI Logo" class="header-logo-img" />
-        <div class="header-logo-text-group">
-            <span class="header-company-name">MarkdownAI</span>
-            <span class="header-sub-slogan">Markdown is all you need!</span>
-        </div>
+        <button
+            type="button"
+            class="header-logo-btn"
+            title="PapeRoboを開く（長押しで新しいタブ）"
+            onclick={handleLogoClick}
+            onpointerdown={startLogoPress}
+            onpointerup={endLogoPress}
+            onpointerleave={endLogoPress}
+            onpointercancel={endLogoPress}
+            oncontextmenu={(e) => { e.preventDefault(); logoLongPressed = true; logoMenuOpen = true; }}
+        >
+            <img src="/markdownai_logo.png" alt="MarkdownAI Logo" class="header-logo-img" />
+            <div class="header-logo-text-group">
+                <span class="header-company-name">MarkdownAI</span>
+                <span class="header-sub-slogan">Markdown is all you need!</span>
+            </div>
+        </button>
+        {#if logoMenuOpen}
+            <button type="button" class="header-logo-backdrop" aria-label="閉じる" onclick={() => (logoMenuOpen = false)}></button>
+            <div class="header-logo-menu" role="menu">
+                <button type="button" role="menuitem" onclick={openPapeRoboInNewTab}>PapeRoboを新しいタブで開く</button>
+            </div>
+        {/if}
     </div>
 
     <!-- Theme switch and user/login at top right -->
@@ -2255,7 +2327,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
                     showStackBtn={true}
-                    showPapeRoboBtn={true}
                     showHyperRoboBtn={true}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
@@ -2288,7 +2359,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDeleteBook={handleDeleteBook}
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
-                    showPapeRoboBtn={true}
                     showHyperCardTvBtn={true}
                     isStackSelection={isStackSelectionMode}
                     selectedStackBookIds={selectedStackBookIds}
@@ -5617,6 +5687,54 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         align-items: center;
         gap: 10px;
         z-index: 1000;
+    }
+    .header-logo-btn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+    }
+    .header-logo-backdrop {
+        position: fixed;
+        inset: 0;
+        background: transparent;
+        border: 0;
+        cursor: default;
+        z-index: 1;
+    }
+    .header-logo-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        margin-top: 6px;
+        z-index: 2;
+        background: var(--card-bg, #1e293b);
+        border: 1px solid var(--card-border, rgba(255, 255, 255, 0.2));
+        border-radius: 8px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+    }
+    .header-logo-menu button {
+        display: block;
+        padding: 10px 14px;
+        border: 0;
+        background: none;
+        color: var(--text-color);
+        font-size: 13px;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .header-logo-menu button:hover {
+        background: rgba(128, 128, 128, 0.2);
     }
     .header-logo-img {
         height: 32px;
