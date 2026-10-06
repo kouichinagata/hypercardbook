@@ -2842,10 +2842,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     </button>
                     <button
                         class="tab-link"
-                        class:active={settingsActiveTab === 'plugin'}
-                        onclick={() => settingsActiveTab = 'plugin'}
+                        class:active={settingsActiveTab === 'apiKey'}
+                        onclick={() => settingsActiveTab = 'apiKey'}
                     >
-                        Plugin
+                        API Key
                     </button>
                     <button
                         class="tab-link"
@@ -2854,12 +2854,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     >
                         GitHub
                     </button>
-                    <button 
-                        class="tab-link" 
-                        class:active={settingsActiveTab === 'apiKey'} 
-                        onclick={() => settingsActiveTab = 'apiKey'}
+                    <button
+                        class="tab-link"
+                        class:active={settingsActiveTab === 'plugin'}
+                        onclick={() => settingsActiveTab = 'plugin'}
                     >
-                        API Key
+                        Plugin
                     </button>
                     <button 
                         class="tab-link" 
