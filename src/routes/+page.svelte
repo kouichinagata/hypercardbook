@@ -2840,19 +2840,19 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     >
                         hypercardbook.md
                     </button>
-                    <button 
-                        class="tab-link" 
-                        class:active={settingsActiveTab === 'github'} 
-                        onclick={() => settingsActiveTab = 'github'}
-                    >
-                        GitHub
-                    </button>
-                    <button 
-                        class="tab-link" 
-                        class:active={settingsActiveTab === 'plugin'} 
+                    <button
+                        class="tab-link"
+                        class:active={settingsActiveTab === 'plugin'}
                         onclick={() => settingsActiveTab = 'plugin'}
                     >
                         Plugin
+                    </button>
+                    <button
+                        class="tab-link"
+                        class:active={settingsActiveTab === 'github'}
+                        onclick={() => settingsActiveTab = 'github'}
+                    >
+                        GitHub
                     </button>
                     <button 
                         class="tab-link" 
@@ -3300,16 +3300,14 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         type="password" 
                                         id="setting-gemini-key" 
                                         bind:value={userGeminiApiKey} 
-                                        placeholder="Enter your Gemini API key" 
+                                        placeholder="Enter your Gemini API key"
                                         style="flex: 1;"
-                                        disabled={!isProPlan} 
                                     />
                                     <button 
                                         type="button" 
                                         class="plan-btn" 
                                         style="width: auto; padding: 0 16px; background: #a78bfa; border-color: #a78bfa; color: white;"
                                         onclick={saveGeminiKey}
-                                        disabled={!isProPlan} 
                                     >
                                         Save with PapeRobo
                                     </button>
@@ -3336,14 +3334,13 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         bind:value={userClaudeApiKey}
                                         placeholder="Enter your Claude API key"
                                         style="flex: 1;"
-                                        disabled={!isProPlan}
                                     />
                                     <button
                                         type="button"
                                         class="plan-btn"
                                         style="width: auto; padding: 0 16px; background: #a78bfa; border-color: #a78bfa; color: white;"
                                         onclick={saveClaudeKey}
-                                        disabled={!isProPlan || !userClaudeApiKey.trim()}
+                                        disabled={!userClaudeApiKey.trim()}
                                     >
                                         Save with PapeRobo
                                     </button>
@@ -3366,16 +3363,14 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         type="password" 
                                         id="setting-openai-key" 
                                         bind:value={userOpenAiApiKey} 
-                                        placeholder="Enter your OpenAI API key" 
+                                        placeholder="Enter your OpenAI API key"
                                         style="flex: 1;"
-                                        disabled={!isProPlan} 
                                     />
                                     <button 
                                         type="button" 
                                         class="plan-btn" 
                                         style="width: auto; padding: 0 16px; background: #a78bfa; border-color: #a78bfa; color: white;"
                                         onclick={saveOpenAiKey}
-                                        disabled={!isProPlan} 
                                     >
                                         Save with PapeRobo
                                     </button>
@@ -3450,7 +3445,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     <div class="card-price">$8</div>
                                     <ul class="card-features">
                                         <li>Everything in Free, plus:</li>
-                                        <li>AI internet search</li>
                                         <li>GitHub support</li>
                                         <li>Images up to 200MB</li>
                                         <li>PapeRobo limit: up to 12 minutes</li>
@@ -3510,7 +3504,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     <ul class="card-features">
                                         <li>Everything in Standard, plus:</li>
                                         <li>Plugin, Skills support</li>
-                                        <li>Custom AI API key support</li>
                                         <li>Images up to 1GB</li>
                                         <li>PapeRobo limit: up to 30 minutes</li>
                                     </ul>
