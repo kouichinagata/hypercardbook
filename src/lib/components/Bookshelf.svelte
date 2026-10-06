@@ -1553,8 +1553,44 @@
 
     @media (max-width: 600px) {
         .book-item.is-phone {
-            width: 56px !important;
-            height: 120px !important; /* モバイル表示時の本の高さに揃える */
+            width: 82px !important;
+            height: 175px !important; /* モバイル表示時の本の高さに揃える */
+        }
+        .phone-status-bar {
+            height: 20px;
+            padding: 3px 6px 0;
+            font-size: 7.5px;
+        }
+        .phone-notch {
+            width: 30px;
+            height: 7px;
+        }
+        .phone-call-status {
+            top: 26px;
+            left: 6px;
+            gap: 3px;
+        }
+        .phone-username {
+            font-size: 7.5px;
+            max-width: 66px;
+        }
+        .phone-call-duration {
+            font-size: 6px;
+        }
+        .phone-action-buttons {
+            bottom: 12px;
+            right: 6px;
+            gap: 4px;
+        }
+        .phone-icon-btn {
+            width: 21px;
+            height: 21px;
+        }
+        .phone-btn-green .btn-icon {
+            font-size: 9px;
+        }
+        .phone-btn-red .btn-icon {
+            font-size: 7.5px;
         }
     }
 
