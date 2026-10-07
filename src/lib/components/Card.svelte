@@ -428,7 +428,6 @@
 
         <div class="card-webview-frame" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} style={!['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? `background-color: ${cardThemeColor};` : ''} class:embed-mode={isEmbed}>
             <div class="card-webview-header">
-                <h1 class="card-webview-title">{cardTitle}</h1>
                 {#if cardCoverImage}
                     <div class="card-webview-cover-wrapper">
                         <img src={cardCoverImage} alt={cardTitle} class="clicked-img-cover" />

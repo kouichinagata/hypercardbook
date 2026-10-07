@@ -567,7 +567,8 @@
 
     // Watch open state based on index
     $effect(() => {
-        if (currentIndex === -1) {
+        // 縦長モードは表紙も含め連続スクロールのため常に「開いた」状態
+        if (currentIndex === -1 && viewMode !== 'vertical') {
             isOpened = false;
         } else {
             isOpened = true;
@@ -880,6 +881,14 @@
         }
 
         if (!activeElement) return;
+
+        if (activeElement.dataset.continuousSpecial === 'cover') {
+            if (currentIndex !== -1) {
+                currentIndex = -1;
+                currentSubPage = 0;
+            }
+            return;
+        }
 
         if (activeElement.dataset.continuousSpecial === 'bio') {
             if (hasBio && currentIndex !== total) {
@@ -1485,8 +1494,22 @@
                 {/if}
             </div>
 
-            {#if viewMode === 'vertical' && isOpened}
+            {#if viewMode === 'vertical'}
                 <div class="continuous-page-list">
+                    <section
+                        class="continuous-cover"
+                        data-continuous-special="cover"
+                        aria-label="Cover"
+                        style="background: {!['white', 'black', 'blue', 'pink', 'gold'].includes(themeColor) ? themeColor : ''};"
+                    >
+                        {#if coverImage}
+                            <img src={coverImage} alt={title} class="cover-image" />
+                        {/if}
+                        <div class="cover-title">{title || ''}</div>
+                        {#if author}
+                            <div class="cover-author">{author}</div>
+                        {/if}
+                    </section>
                     {#each pages.slice(0, continuousLoadedCount) as page, pageIndex}
                         <section
                             class="page-side continuous-page"
@@ -2138,8 +2161,21 @@
         cursor: default !important;
     }
     .book-workspace.vertical-mode .cover-overlay {
-        transform: none !important;
-        border-radius: 0 !important;
+        display: none !important;
+    }
+    .book-workspace.vertical-mode .continuous-cover {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-height: calc(100vh - 65px);
+        min-height: calc(100dvh - 65px);
+        padding: 20px;
+        box-sizing: border-box;
+        background-color: var(--book-cover-bg);
+        color: white;
+        text-align: center;
     }
     .book-workspace.vertical-mode .book-content {
         display: flex !important;

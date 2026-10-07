@@ -3407,6 +3407,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         <li>All free features of HyperCardBook and PapeRobo</li>
                                         <li>Images up to 20MB</li>
                                         <li>PapeRobo limit: up to 3 minutes</li>
+                                        <li>PapeRobo group chat: 2 AIs, up to 3 people</li>
                                     </ul>
                                     <div class="card-action">
                                         {#if currentPlan === 'free' || (!currentPlan && 'free')}
@@ -3432,6 +3433,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         <li>GitHub support</li>
                                         <li>Images up to 200MB</li>
                                         <li>PapeRobo limit: up to 12 minutes</li>
+                                        <li>PapeRobo group chat: 4 AIs, up to 5 people</li>
                                     </ul>
                                     <div class="card-action">
                                         {#if currentPlan === 'standard'}
@@ -3490,6 +3492,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         <li>Plugin, Skills support</li>
                                         <li>Images up to 1GB</li>
                                         <li>PapeRobo limit: up to 30 minutes</li>
+                                        <li>PapeRobo group chat: 9 AIs, up to 10 people</li>
                                     </ul>
                                     <div class="card-action">
                                         {#if currentPlan === 'pro'}
@@ -3549,6 +3552,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                         <li>Custom server support</li>
                                         <li>User permission management</li>
                                         <li>PapeRobo limit: up to 60 minutes</li>
+                                        <li>PapeRobo group chat: unlimited people</li>
                                     </ul>
                                     <div class="card-action">
                                         {#if currentPlan === 'enterprise'}
