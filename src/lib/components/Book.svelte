@@ -2113,7 +2113,7 @@
         min-height: 0 !important;
         padding: 0 !important;
         margin: 0 !important;
-        width: 100vw !important;
+        width: 100% !important;
         display: flex !important;
         align-items: stretch !important;
         justify-content: center !important;
@@ -2124,7 +2124,7 @@
         scrollbar-gutter: stable;
     }
     .book-workspace.vertical-mode .book-body {
-        width: 100vw !important;
+        width: 100% !important;
         height: 100% !important;
         max-width: 100% !important;
         box-shadow: none !important;
@@ -2135,7 +2135,7 @@
         aspect-ratio: auto !important;
     }
     .book-workspace.vertical-mode .book-body.opened {
-        width: 100vw !important;
+        width: 100% !important;
         height: 100% !important;
         max-width: 100% !important;
         aspect-ratio: auto !important;
@@ -2258,7 +2258,7 @@
         animation: spin 0.8s linear infinite;
     }
     .book-workspace.vertical-mode .control-panel {
-        width: 100vw !important;
+        width: 100% !important;
         max-width: 100% !important;
         height: 65px !important;
         margin: 0 !important;
