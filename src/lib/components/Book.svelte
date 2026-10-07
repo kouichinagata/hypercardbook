@@ -1484,7 +1484,7 @@
             {/if}
 
             <!-- 表紙エリア -->
-            <div class="cover-overlay" id="cover" style="background: {!['white', 'black', 'blue', 'pink', 'gold'].includes(themeColor) ? themeColor : ''}; transform: {isOpened ? 'rotateY(-110deg)' : 'none'}; opacity: {isOpened ? 0 : 1}; pointer-events: {isOpened ? 'none' : 'auto'};">
+            <div class="cover-overlay" id="cover" data-continuous-special="cover" style="background: {!['white', 'black', 'blue', 'pink', 'gold'].includes(themeColor) ? themeColor : ''}; transform: {isOpened ? 'rotateY(-110deg)' : 'none'}; opacity: {isOpened ? 0 : 1}; pointer-events: {isOpened ? 'none' : 'auto'};">
                 {#if coverImage}
                     <img src={coverImage} alt={title} class="cover-image" id="coverImg" />
                 {/if}
@@ -1496,20 +1496,6 @@
 
             {#if viewMode === 'vertical'}
                 <div class="continuous-page-list">
-                    <section
-                        class="continuous-cover"
-                        data-continuous-special="cover"
-                        aria-label="Cover"
-                        style="background: {!['white', 'black', 'blue', 'pink', 'gold'].includes(themeColor) ? themeColor : ''};"
-                    >
-                        {#if coverImage}
-                            <img src={coverImage} alt={title} class="cover-image" />
-                        {/if}
-                        <div class="cover-title">{title || ''}</div>
-                        {#if author}
-                            <div class="cover-author">{author}</div>
-                        {/if}
-                    </section>
                     {#each pages.slice(0, continuousLoadedCount) as page, pageIndex}
                         <section
                             class="page-side continuous-page"
@@ -2161,21 +2147,14 @@
         cursor: default !important;
     }
     .book-workspace.vertical-mode .cover-overlay {
-        display: none !important;
-    }
-    .book-workspace.vertical-mode .continuous-cover {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        min-height: calc(100vh - 65px);
-        min-height: calc(100dvh - 65px);
-        padding: 20px;
-        box-sizing: border-box;
-        background-color: var(--book-cover-bg);
-        color: white;
-        text-align: center;
+        position: relative !important;
+        height: auto !important;
+        min-height: calc(100vh - 65px) !important;
+        min-height: calc(100dvh - 65px) !important;
+        transform: none !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        border-radius: 0 !important;
     }
     .book-workspace.vertical-mode .book-content {
         display: flex !important;
