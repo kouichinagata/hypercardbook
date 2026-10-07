@@ -428,6 +428,7 @@
 
         <div class="card-webview-frame" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} style={!['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? `background-color: ${cardThemeColor};` : ''} class:embed-mode={isEmbed}>
             <div class="card-webview-header">
+                <p class="card-webview-title">{cardTitle}</p>
                 {#if cardCoverImage}
                     <div class="card-webview-cover-wrapper">
                         <img src={cardCoverImage} alt={cardTitle} class="clicked-img-cover" />
@@ -593,10 +594,10 @@
     }
 
     .card-webview-title {
-        font-size: 28px;
-        font-weight: 800;
+        font-size: 16px;
+        font-weight: 500;
         margin: 0;
-        line-height: 1.3;
+        opacity: 0.85;
     }
 
     .card-webview-cover-wrapper {
