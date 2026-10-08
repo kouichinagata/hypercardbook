@@ -1838,11 +1838,11 @@ ${markdown}
         </button>
     {/if}
     {#if (mode === 'card' && cardSlug) || (mode === 'book' && bookUuid)}
-        <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handlePublishBtnClick(); }} title={isPublic ? 'Unpublish' : 'Publish'}>
-            {isPublic ? '👤' : '👥'}{#if labels}<span class="action-label">{isPublic ? 'Unpublish' : 'Publish'}</span>{/if}
-        </button>
         <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; openDdcModal(); }} title={currentDdcCode ? `Classification: ${getDdcFullLabel(currentDdcCode)}` : 'Set Classification (DDC)'}>
             🏷️{#if labels}<span class="action-label">Classification</span>{/if}
+        </button>
+        <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handlePublishBtnClick(); }} title={isPublic ? 'Unpublish' : 'Publish'}>
+            {isPublic ? '👤' : '👥'}{#if labels}<span class="action-label">{isPublic ? 'Unpublish' : 'Publish'}</span>{/if}
         </button>
         <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handleDownloadHtml(); }} title="Download HTML">
             💾{#if labels}<span class="action-label">Download HTML</span>{/if}
