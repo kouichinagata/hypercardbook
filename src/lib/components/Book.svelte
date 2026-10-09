@@ -399,6 +399,110 @@
     let isFullscreen = $state(false);
 
     let bookEl: HTMLDivElement | null = $state(null);
+
+    // ページめくりエフェクト（見開きモードの本文ページ間のみ。表紙の開閉は既存の演出）
+    const PAGE_TURN_MS = 700;
+    let turnPrevIndex = -1;
+    let suppressPageTurn = false;
+    let turnToken = 0;
+    let turnOverlays: HTMLElement[] = [];
+    let turnAnimations: Animation[] = [];
+
+    function clearPageTurn() {
+        turnToken++;
+        turnAnimations.forEach((a) => a.cancel());
+        turnAnimations = [];
+        turnOverlays.forEach((el) => el.remove());
+        turnOverlays = [];
+    }
+
+    function getSpreadPages(): HTMLElement[] {
+        if (!bookEl) return [];
+        return Array.from(bookEl.querySelectorAll<HTMLElement>(':scope > .book-content > .page-side'));
+    }
+
+    function clonePageSide(el: HTMLElement): HTMLElement {
+        const clone = el.cloneNode(true) as HTMLElement;
+        clone.removeAttribute('id');
+        clone.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+        // 動画等は複製すると再読み込みされるため外す
+        clone.querySelectorAll('iframe, video, audio').forEach((n) => n.remove());
+        clone.style.display = 'flex';
+        return clone;
+    }
+
+    function makeTurnEl(className: string, child?: HTMLElement): HTMLElement {
+        const el = document.createElement('div');
+        el.className = className;
+        if (child) el.appendChild(child);
+        return el;
+    }
+
+    function playPageTurn(turn: { dir: 'next' | 'prev'; oldLeft: HTMLElement; oldRight: HTMLElement; token: number }) {
+        if (!bookEl || turn.token !== turnToken) return;
+        const [left, right] = getSpreadPages();
+        if (!left || !right) return;
+
+        const isNext = turn.dir === 'next';
+        const newLeft = clonePageSide(left);
+        const newRight = clonePageSide(right);
+
+        // 下地: めくられている間も、めくられない側は元のページを見せ続ける
+        const under = makeTurnEl(`page-turn-under ${isNext ? 'left' : 'right'}`, isNext ? turn.oldLeft : turn.oldRight);
+        const leaf = makeTurnEl(`page-turn-leaf ${turn.dir}`);
+        const front = makeTurnEl('page-turn-face front', isNext ? turn.oldRight : turn.oldLeft);
+        const back = makeTurnEl('page-turn-face back', isNext ? newLeft : newRight);
+        // 紙のしなりを擬似的に出す陰影（めくり始めは表が、終わりは裏が影になる）
+        const frontShade = makeTurnEl('page-turn-shade');
+        const backShade = makeTurnEl('page-turn-shade');
+        front.appendChild(frontShade);
+        back.appendChild(backShade);
+        leaf.append(front, back);
+
+        bookEl.append(under, leaf);
+        turnOverlays = [under, leaf];
+
+        const sign = isNext ? -1 : 1;
+        const timing = { duration: PAGE_TURN_MS, easing: 'cubic-bezier(0.645, 0.045, 0.355, 1)', fill: 'forwards' as FillMode };
+        const anim = leaf.animate(
+            [
+                { transform: 'rotateY(0deg) skewY(0deg)' },
+                { transform: `rotateY(${sign * 90}deg) skewY(${sign * 10}deg)`, offset: 0.5 },
+                { transform: `rotateY(${sign * 180}deg) skewY(0deg)` }
+            ],
+            timing
+        );
+        const shadeFront = frontShade.animate([{ opacity: 0 }, { opacity: 1 }], timing);
+        const shadeBack = backShade.animate([{ opacity: 1 }, { opacity: 0 }], timing);
+        turnAnimations = [anim, shadeFront, shadeBack];
+        anim.onfinish = () => {
+            if (turn.token === turnToken) clearPageTurn();
+        };
+    }
+
+    // DOM更新前に旧ページを複製し、更新後にめくりを再生する
+    $effect.pre(() => {
+        const idx = currentIndex;
+        const mode = viewMode;
+        untrack(() => {
+            const prev = turnPrevIndex;
+            turnPrevIndex = idx;
+            clearPageTurn();
+            const suppressed = suppressPageTurn;
+            suppressPageTurn = false;
+            if (!browser || suppressed || mode !== 'spread' || prev < 0 || idx < 0 || prev === idx) return;
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const [left, right] = getSpreadPages();
+            if (!left || !right) return;
+            const turn = {
+                dir: (idx > prev ? 'next' : 'prev') as 'next' | 'prev',
+                oldLeft: clonePageSide(left),
+                oldRight: clonePageSide(right),
+                token: turnToken
+            };
+            tick().then(() => playPageTurn(turn));
+        });
+    });
     let bookViewportEl: HTMLDivElement | null = $state(null);
     let pageSliderEl: HTMLInputElement | null = $state(null);
     const CONTINUOUS_BATCH_SIZE = 30;
@@ -1092,8 +1196,10 @@
         tick().then(() => {
             if (currentIndex >= 0) {
                 if (isChecked && currentIndex < oldTotal) {
+                    suppressPageTurn = true;
                     currentIndex = currentIndex + 1;
                 } else if (!isChecked && currentIndex > 0) {
+                    suppressPageTurn = true;
                     currentIndex = currentIndex - 1;
                 } else if (!isChecked && currentIndex === 0) {
                     currentIndex = -1;
@@ -1790,6 +1896,34 @@
     .cover-image { width: 85%; max-height: 455px; object-fit: contain; margin-bottom: 20px; }
     .cover-title { font-size: 2.1rem; margin: 5px 0; font-weight: bold; }
     .cover-author { font-size: 1.4rem; opacity: 0.8; }
+
+    /* ページめくりエフェクト（動的生成のため :global） */
+    :global(.page-turn-under),
+    :global(.page-turn-leaf) {
+        position: absolute; top: 0; width: 50%; height: 100%;
+        pointer-events: none;
+    }
+    :global(.page-turn-under) { z-index: 40; display: flex; background: var(--page-color); }
+    :global(.page-turn-under.left) { left: 0; }
+    :global(.page-turn-under.right) { left: 50%; }
+    :global(.page-turn-leaf) {
+        z-index: 50; transform-style: preserve-3d;
+        box-shadow: 0 0 25px rgba(0,0,0,0.25);
+    }
+    :global(.page-turn-leaf.next) { left: 50%; transform-origin: left center; }
+    :global(.page-turn-leaf.prev) { left: 0; transform-origin: right center; }
+    :global(.page-turn-face) {
+        position: absolute; inset: 0; display: flex; overflow: hidden;
+        backface-visibility: hidden; background: var(--page-color);
+    }
+    :global(.page-turn-face.back) { transform: rotateY(180deg); }
+    :global(.page-turn-shade) {
+        position: absolute; inset: 0; pointer-events: none; opacity: 0;
+        background: linear-gradient(to right, rgba(0,0,0,0) 35%, rgba(0,0,0,0.22) 85%, rgba(255,255,255,0.18) 100%);
+    }
+    :global(.page-turn-leaf.prev .page-turn-shade) {
+        background: linear-gradient(to left, rgba(0,0,0,0) 35%, rgba(0,0,0,0.22) 85%, rgba(255,255,255,0.18) 100%);
+    }
 
     .book-content {
         display: flex; width: 100%; height: 100%;

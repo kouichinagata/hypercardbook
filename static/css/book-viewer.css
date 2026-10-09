@@ -110,6 +110,33 @@ body[data-theme="dark"] {
 .cover-title { font-size: 2.1rem; margin: 5px 0; font-weight: bold; text-align: center;}
 .cover-author { font-size: 1.4rem; opacity: 0.8; }
 
+/* ページめくりエフェクト */
+.page-turn-under, .page-turn-leaf {
+    position: absolute; top: 0; width: 50%; height: 100%;
+    pointer-events: none;
+}
+.page-turn-under { z-index: 40; display: flex; background: var(--page-color); }
+.page-turn-under.left { left: 0; }
+.page-turn-under.right { left: 50%; }
+.page-turn-leaf {
+    z-index: 50; transform-style: preserve-3d;
+    box-shadow: 0 0 25px rgba(0,0,0,0.25);
+}
+.page-turn-leaf.next { left: 50%; transform-origin: left center; }
+.page-turn-leaf.prev { left: 0; transform-origin: right center; }
+.page-turn-face {
+    position: absolute; inset: 0; display: flex; overflow: hidden;
+    backface-visibility: hidden; background: var(--page-color);
+}
+.page-turn-face.back { transform: rotateY(180deg); }
+.page-turn-shade {
+    position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: linear-gradient(to right, rgba(0,0,0,0) 35%, rgba(0,0,0,0.22) 85%, rgba(255,255,255,0.18) 100%);
+}
+.page-turn-leaf.prev .page-turn-shade {
+    background: linear-gradient(to left, rgba(0,0,0,0) 35%, rgba(0,0,0,0.22) 85%, rgba(255,255,255,0.18) 100%);
+}
+
 .book-content {
     display: flex; width: 100%; height: 100%;
     transition: opacity 0.5s 0.4s;

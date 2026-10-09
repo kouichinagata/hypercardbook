@@ -1,6 +1,8 @@
 /* book-viewer.js - Pure JS library for standalone HyperBook rendering and page turn controls */
 
 (function () {
+    const PAGE_TURN_MS = 700;
+
     class HyperBookViewer {
         constructor() {
             this.markdown = '';
@@ -576,8 +578,10 @@
             
             if (this.currentIndex >= 0) {
                 if (isChecked && this.currentIndex < oldTotal) {
+                    this._suppressPageTurn = true;
                     this.currentIndex = this.currentIndex + 1;
                 } else if (!isChecked && this.currentIndex > 0) {
+                    this._suppressPageTurn = true;
                     this.currentIndex = this.currentIndex - 1;
                 } else if (!isChecked && this.currentIndex === 0) {
                     this.currentIndex = -1;
@@ -588,6 +592,7 @@
 
         updateUI() {
             const isOpened = this.currentIndex !== -1;
+            const pageTurn = this.preparePageTurn();
             
             // Update mode class to container body
             if (this.viewMode === 'vertical') {
@@ -622,6 +627,9 @@
             if (isOpened) {
                 this.renderPagesContent();
             }
+            if (pageTurn) this.playPageTurn(pageTurn);
+            this._prevIndex = this.currentIndex;
+            this._prevViewMode = this.viewMode;
 
             // Update Slider settings
             const total = this.getTotalPages();
@@ -640,6 +648,82 @@
 
             // Render Diagrams
             this.renderMermaid();
+        }
+
+        // --- ページめくりエフェクト（見開きモードの本文ページ間のみ） ---
+        clearPageTurn() {
+            (this._turnAnimations || []).forEach(a => a.cancel());
+            this._turnAnimations = [];
+            (this._turnOverlays || []).forEach(el => el.remove());
+            this._turnOverlays = [];
+        }
+
+        clonePageSide(el) {
+            const clone = el.cloneNode(true);
+            clone.removeAttribute('id');
+            clone.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
+            clone.querySelectorAll('iframe, video, audio').forEach(n => n.remove());
+            clone.style.display = 'flex';
+            return clone;
+        }
+
+        makeTurnEl(className, child) {
+            const el = document.createElement('div');
+            el.className = className;
+            if (child) el.appendChild(child);
+            return el;
+        }
+
+        preparePageTurn() {
+            const prev = this._prevIndex === undefined ? -1 : this._prevIndex;
+            const suppressed = this._suppressPageTurn;
+            this._suppressPageTurn = false;
+            this.clearPageTurn();
+            if (suppressed || this.viewMode !== 'spread' || this._prevViewMode !== 'spread') return null;
+            if (prev < 0 || this.currentIndex < 0 || prev === this.currentIndex) return null;
+            if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
+            return {
+                dir: this.currentIndex > prev ? 'next' : 'prev',
+                oldLeft: this.clonePageSide(this.dom.pageLeft),
+                oldRight: this.clonePageSide(this.dom.pageRight)
+            };
+        }
+
+        playPageTurn(turn) {
+            const isNext = turn.dir === 'next';
+            const newLeft = this.clonePageSide(this.dom.pageLeft);
+            const newRight = this.clonePageSide(this.dom.pageRight);
+
+            const under = this.makeTurnEl('page-turn-under ' + (isNext ? 'left' : 'right'), isNext ? turn.oldLeft : turn.oldRight);
+            const leaf = this.makeTurnEl('page-turn-leaf ' + turn.dir);
+            const front = this.makeTurnEl('page-turn-face front', isNext ? turn.oldRight : turn.oldLeft);
+            const back = this.makeTurnEl('page-turn-face back', isNext ? newLeft : newRight);
+            // 紙のしなりを擬似的に出す陰影（めくり始めは表が、終わりは裏が影になる）
+            const frontShade = this.makeTurnEl('page-turn-shade');
+            const backShade = this.makeTurnEl('page-turn-shade');
+            front.appendChild(frontShade);
+            back.appendChild(backShade);
+            leaf.append(front, back);
+
+            this.dom.bookBody.append(under, leaf);
+            this._turnOverlays = [under, leaf];
+
+            const sign = isNext ? -1 : 1;
+            const timing = { duration: PAGE_TURN_MS, easing: 'cubic-bezier(0.645, 0.045, 0.355, 1)', fill: 'forwards' };
+            const anim = leaf.animate(
+                [
+                    { transform: 'rotateY(0deg) skewY(0deg)' },
+                    { transform: `rotateY(${sign * 90}deg) skewY(${sign * 10}deg)`, offset: 0.5 },
+                    { transform: `rotateY(${sign * 180}deg) skewY(0deg)` }
+                ],
+                timing
+            );
+            const shadeFront = frontShade.animate([{ opacity: 0 }, { opacity: 1 }], timing);
+            const shadeBack = backShade.animate([{ opacity: 1 }, { opacity: 0 }], timing);
+            this._turnAnimations = [anim, shadeFront, shadeBack];
+            anim.onfinish = () => {
+                if (this._turnOverlays[1] === leaf) this.clearPageTurn();
+            };
         }
 
         renderPagesContent() {
