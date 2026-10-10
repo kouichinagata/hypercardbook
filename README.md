@@ -52,14 +52,6 @@ Write your content once and easily maintain, version, and publish it.
 
 ---
 
-## 🌍 Automatic Translation
-
-Publish your books in **80+ languages**.
-
-Translations are automatically generated and cached for fast reading.
-
----
-
 ## ⚡ HyperHooks
 
 Customize your books with JavaScript event hooks.

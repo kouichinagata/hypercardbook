@@ -509,68 +509,7 @@
     let continuousLoadedCount = $state(CONTINUOUS_BATCH_SIZE);
     let continuousScrollFrame: number | null = null;
 
-    // Watch markdown changes, handle translation if needed, and parse displayMarkdown
-    let displayMarkdown = $state('');
-    let isLoadingTranslation = $state(false);
-
-    $effect(() => {
-        if (markdown) {
-            if (language === 'ja') {
-                displayMarkdown = markdown;
-                isLoadingTranslation = false;
-            } else {
-                loadTranslation();
-            }
-        }
-    });
-
-    async function loadTranslation() {
-        if (!id || !language || language === 'ja') return;
-        
-        const isUserBook = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-        if (!isUserBook) {
-            const cacheKey = `sample-book-${id}-${language}`;
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) {
-                displayMarkdown = cached;
-                isLoadingTranslation = false;
-                return;
-            }
-        }
-
-        isLoadingTranslation = true;
-        try {
-            const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
-            const res = await fetch('/api/translate', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
-                },
-                body: JSON.stringify({
-                    bookId: id,
-                    targetLanguage: language
-                })
-            });
-            if (res.ok) {
-                const data = await res.json();
-                displayMarkdown = data.markdown;
-                
-                if (!isUserBook) {
-                    const cacheKey = `sample-book-${id}-${language}`;
-                    localStorage.setItem(cacheKey, data.markdown);
-                }
-            } else {
-                console.error('Translation failed, fallback to original.');
-                displayMarkdown = markdown;
-            }
-        } catch (err) {
-            console.error('Error fetching translation:', err);
-            displayMarkdown = markdown;
-        } finally {
-            isLoadingTranslation = false;
-        }
-    }
+    let displayMarkdown = $derived(markdown || '');
 
     $effect(() => {
         if (displayMarkdown) {
@@ -1554,12 +1493,6 @@
         bind:this={bookViewportEl}
         onscroll={handleContinuousScroll}
     >
-        {#if isLoadingTranslation}
-            <div class="translation-loader" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; color: #fff; border-radius: 8px; backdrop-filter: blur(4px);">
-                <div class="spinner" style="border: 4px solid rgba(255, 255, 255, 0.1); border-left-color: #8b5cf6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 12px;"></div>
-                <p style="font-family: inherit; font-size: 14px; letter-spacing: 0.05em; font-weight: 500; margin: 0;">Translating...</p>
-            </div>
-        {/if}
         <div 
             class="book-body" 
             class:opened={isOpened} 

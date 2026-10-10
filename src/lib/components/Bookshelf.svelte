@@ -33,16 +33,13 @@
         isHyperRoboSelection = false,
         selectedHyperRoboBookIds = [],
         onToggleHyperRoboSelectionMode = null,
-        onHyperRoboClick = null,
-        translationLanguage = '',
-        onBookVisible = null
+        onHyperRoboClick = null
     } = $props();
 
     let displayBooks = $derived([
         ...books,
         ...(showMoreBtn ? [{ id: 'more-btn-virtual', isMoreBtn: true, title: 'more…' }] : [])
     ]);
-    const visibleBooks = new Map<string, any>();
 
     let measureElements = $state<HTMLDivElement[]>([]);
     let shelfRows = $state<any[][]>([]);
@@ -102,56 +99,6 @@
             });
         }
     });
-
-    $effect(() => {
-        const language = translationLanguage;
-        if (!language || !onBookVisible) return;
-        visibleBooks.forEach((book) => onBookVisible(book, language));
-    });
-
-    function observeBookVisibility(node: HTMLElement, initialBook: any) {
-        let book = initialBook;
-        let isVisible = false;
-
-        const removeVisibleBook = (bookId: string) => {
-            visibleBooks.delete(bookId);
-        };
-
-        const addVisibleBook = (visibleBook: any) => {
-            visibleBooks.set(visibleBook.id, visibleBook);
-            if (translationLanguage && onBookVisible) {
-                onBookVisible(visibleBook, translationLanguage);
-            }
-        };
-
-        const observer = new IntersectionObserver(
-            ([entry]) => {
-                isVisible = entry.isIntersecting;
-                if (isVisible && !book.isMoreBtn) {
-                    addVisibleBook(book);
-                } else {
-                    removeVisibleBook(book.id);
-                }
-            },
-            { threshold: 0.01 }
-        );
-        observer.observe(node);
-
-        return {
-            update(nextBook: any) {
-                const previousId = book.id;
-                book = nextBook;
-                if (previousId !== book.id) removeVisibleBook(previousId);
-                if (isVisible && !book.isMoreBtn) {
-                    addVisibleBook(book);
-                }
-            },
-            destroy() {
-                observer.disconnect();
-                removeVisibleBook(book.id);
-            }
-        };
-    }
 
     function normalizePath(url: string): string {
         if (!url) return '';
@@ -333,7 +280,7 @@
         <div class="shelf-row">
             <div class="shelf-books-area">
                 {#each rowBooks as book (book.id)}
-                    <div class="book-item-wrapper" use:observeBookVisibility={book}>
+                    <div class="book-item-wrapper">
                         {#if book.isMoreBtn}
                             <div 
                                 class="book-item is-more-btn" 

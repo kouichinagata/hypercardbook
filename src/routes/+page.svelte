@@ -210,9 +210,6 @@
     }
     
     let currentLanguage = $state('en');
-    let translatedCovers = $state<Record<string, { title: string; author: string }>>({});
-    let translationLanguageReady = $state(false);
-    const coverTranslationsInFlight = new Set<string>();
 
     const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
@@ -253,9 +250,6 @@
                 showOnboardingModal = true;
             }
         }
-
-        // Visible covers are translated lazily by each Bookshelf.
-        translationLanguageReady = true;
 
         // Refresh the bookshelf after returning from an editor tab so saved,
         // renamed, recolored, published, or deleted books are shown immediately.
@@ -336,88 +330,10 @@
             showOnboardingModal = false;
             currentLanguage = onboardingLanguage;
             localStorage.setItem('reader-lang', onboardingLanguage);
-            translatedCovers = {};
             await invalidateAll();
         } catch (err: any) {
             console.error('Failed to save onboarding settings:', err);
             alert(`Failed to save settings: ${err.message || err}`);
-        }
-    }
-
-    async function translateVisibleBookCover(book: any, targetLang: string) {
-        if (!book?.id || book.isMoreBtn || !targetLang) return;
-        if (targetLang === 'ja' || translatedCovers[book.id]) return;
-
-        const requestKey = `${book.id}:${targetLang}`;
-        if (coverTranslationsInFlight.has(requestKey)) return;
-        coverTranslationsInFlight.add(requestKey);
-
-        const applyTranslation = (translation: { title: string; author: string }) => {
-            if (currentLanguage !== targetLang) return;
-            translatedCovers[book.id] = translation;
-        };
-
-        try {
-            const isUserBook = isUuid(book.id);
-
-            if (isUserBook) {
-                try {
-                    const { data: cached } = await supabase
-                        .from('book_translations')
-                        .select('title, author')
-                        .eq('book_id', book.id)
-                        .eq('language', targetLang)
-                        .maybeSingle();
-
-                    if (cached) {
-                        applyTranslation({
-                            title: cached.title,
-                            author: cached.author
-                        });
-                        return;
-                    }
-                } catch (err) {
-                    console.error('Failed to fetch cover cache from DB:', err);
-                }
-            } else {
-                const cacheKey = `sample-cover-${book.id}-${targetLang}`;
-                const cached = localStorage.getItem(cacheKey);
-                if (cached) {
-                    applyTranslation(JSON.parse(cached));
-                    return;
-                }
-            }
-
-            const userGeminiApiKey = localStorage.getItem('user_gemini_api_key') || '';
-            const res = await fetch('/api/translate-metadata', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
-                },
-                body: JSON.stringify({
-                    title: book.title,
-                    author: book.author || '',
-                    targetLanguage: targetLang
-                })
-            });
-            if (res.ok) {
-                const translated = await res.json();
-                const translation = {
-                    title: translated.title,
-                    author: translated.author
-                };
-                applyTranslation(translation);
-
-                if (!isUserBook) {
-                    const cacheKey = `sample-cover-${book.id}-${targetLang}`;
-                    localStorage.setItem(cacheKey, JSON.stringify(translation));
-                }
-            }
-        } catch (err) {
-            console.error('Failed to translate cover metadata:', err);
-        } finally {
-            coverTranslationsInFlight.delete(requestKey);
         }
     }
 
@@ -641,21 +557,6 @@
     let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample));
     let quarksChoiceList = $derived(data.books.filter((b: any) => b.isQuarkChoice));
 
-    function localizeBook(b: any) {
-        if (!b) return b;
-        const trans = translatedCovers[b.id];
-        return {
-            ...b,
-            title: trans?.title || b.title,
-            author: trans?.author || b.author
-        };
-    }
-
-    let myBooksListLocalized = $derived(myBooksList.map(localizeBook));
-    let sampleBooksListLocalized = $derived(sampleBooksList.map(localizeBook));
-    let quarksChoiceListLocalized = $derived(quarksChoiceList.map(localizeBook));
-    let publicBooksListLocalized = $derived(publicBooksList.map(localizeBook));
-
     /* ===== Public Books 絞り込み ===== */
     let pbTypeFilter = $state('all');
     let pbDdcMajor = $state('');
@@ -674,7 +575,7 @@
         { id: 'card', label: 'Card' }
     ];
 
-    let filteredPublicBooksList = $derived(publicBooksListLocalized);
+    let filteredPublicBooksList = $derived(publicBooksList);
 
     async function handleLoadPublicBooks() {
         showPublicSection = true;
@@ -1199,8 +1100,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         });
         return matchedBooks;
     });
-
-    let displayedBooksLocalized = $derived(displayedBooks.map(localizeBook));
 
     let selectedStackBookIds = $derived(selectedStackBooks.map(b => b.id));
 
@@ -1738,7 +1637,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             if (updateError) throw updateError;
             
             currentLanguage = profileLanguage;
-            translatedCovers = {};
             localStorage.setItem('reader-lang', profileLanguage);
             
             showSettingsModal = false;
@@ -2307,9 +2205,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 </div>
             {:else}
                 <Bookshelf
-                    books={displayedBooksLocalized}
-                    translationLanguage={translationLanguageReady ? currentLanguage : ''}
-                    onBookVisible={translateVisibleBookCover}
+                    books={displayedBooks}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -2339,9 +2235,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     <div class="golden-plate no-pointer">Quark's Choice</div>
                 </div>
                 <Bookshelf
-                    books={quarksChoiceListLocalized}
-                    translationLanguage={translationLanguageReady ? currentLanguage : ''}
-                    onBookVisible={translateVisibleBookCover}
+                    books={quarksChoiceList}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     isPublicShelf={true}
@@ -2371,9 +2265,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     <div class="golden-plate no-pointer">My Books</div>
                 </div>
                 <Bookshelf
-                    books={myBooksListLocalized}
-                    translationLanguage={translationLanguageReady ? currentLanguage : ''}
-                    onBookVisible={translateVisibleBookCover}
+                    books={myBooksList}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -2403,9 +2295,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     <div class="golden-plate no-pointer">Sample Books</div>
                 </div>
                 <Bookshelf
-                    books={sampleBooksListLocalized}
-                    translationLanguage={translationLanguageReady ? currentLanguage : ''}
-                    onBookVisible={translateVisibleBookCover}
+                    books={sampleBooksList}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -2449,8 +2339,6 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 {:else}
                     <Bookshelf
                         books={filteredPublicBooksList}
-                        translationLanguage={translationLanguageReady ? currentLanguage : ''}
-                        onBookVisible={translateVisibleBookCover}
                         currentUserId={data.currentUserId ?? 'global'}
                         showActions={true}
                         isPublicShelf={true}
