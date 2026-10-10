@@ -147,7 +147,7 @@ CRITICAL RULES:
    - For event hooks (\`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
 
 10. NANO BANANA 2 LITE GENERATED IMAGES:
-   - If the prompt contains a "### Generated Images (Nano Banana 2 Lite)" section, use every provided image URL exactly as written. Never replace, shorten, or fabricate these URLs.
+   - If the prompt contains a "### Generated Images" section (the heading may end with the image model name in parentheses), use every provided image URL exactly as written. Never replace, shorten, or fabricate these URLs.
    - For one generated image, place it at the bottom of the most relevant content page unless the user requests another position.
    - For two or more generated images:
      - Add \`layout: fill\` to the YAML frontmatter.
@@ -219,7 +219,7 @@ CRITICAL RULES:
     - For event hooks (\`on_open_stack\`, \`on_open_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
 
   9. NANO BANANA 2 LITE GENERATED IMAGES:
-    - If the prompt contains a "### Generated Images (Nano Banana 2 Lite)" section, use the first provided image URL exactly as written.
+    - If the prompt contains a "### Generated Images" section (the heading may end with the image model name in parentheses), use the first provided image URL exactly as written.
     - Place that image at the bottom of the card unless the user requests another position.
 
 `;

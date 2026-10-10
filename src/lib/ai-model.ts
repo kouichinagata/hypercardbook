@@ -16,7 +16,8 @@ export const IMAGE_MODELS = [
 	{ id: 'gemini-nano-banana-2.1', label: 'Nano Banana 2.1' },
 	{ id: 'gemini-3-pro-image', label: 'Nano Banana Pro' }
 ] as const;
-export const DEFAULT_IMAGE_MODEL = IMAGE_MODELS[0].id;
+// 標準は Nano Banana 2.1（画像の出力料金は Lite と同じ。入力料金は高い）
+export const DEFAULT_IMAGE_MODEL = IMAGE_MODELS[1].id;
 
 export function isImageModelId(value: unknown): value is string {
 	return IMAGE_MODELS.some((m) => m.id === value);
