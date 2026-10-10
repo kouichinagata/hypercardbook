@@ -1,2 +1,2 @@
-// 文章生成に使う Gemini モデル（画像生成は generate-image で別に指定）
-export const GEMINI_TEXT_MODEL = 'gemini-3.8-flash';
+// 文章生成に使うモデル（画像生成は generate-image で別に指定）
+export { DEFAULT_CLAUDE_MODEL, GEMINI_TEXT_MODEL } from '$lib/ai-model';

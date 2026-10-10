@@ -161,7 +161,8 @@ Configure the following variables.
 
 | Variable                      | Description                            |
 | ----------------------------- | -------------------------------------- |
-| `GEMINI_API_KEY`              | Google Gemini API Key                  |
+| `ANTHROPIC_API_KEY`           | Anthropic Claude API Key (text AI)     |
+| `GEMINI_API_KEY`              | Google Gemini API Key (search, images) |
 | `PUBLIC_SUPABASE_URL`         | Supabase Project URL                   |
 | `PUBLIC_SUPABASE_ANON_KEY`    | Supabase Public Key                    |
 | `SUPABASE_SERVICE_ROLE_KEY`   | Backend Service Role Key               |

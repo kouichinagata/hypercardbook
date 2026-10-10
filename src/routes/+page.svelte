@@ -4,6 +4,8 @@
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
     import Bookshelf from '$lib/components/Bookshelf.svelte';
+    import AiModelPicker from '$lib/components/AiModelPicker.svelte';
+    import { AI_KEYS_CHANGED_EVENT, aiRequestHeaders } from '$lib/ai-model';
     import PublicSearchMenu from '$lib/components/PublicSearchMenu.svelte';
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
@@ -1476,12 +1478,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         skillFormError = '';
         skillFormNotice = '';
         try {
-            const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
             const res = await fetch('/api/generate-skill', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
+                    ...aiRequestHeaders()
                 },
                 body: JSON.stringify({
                     name: skillFormName,
@@ -1571,6 +1572,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     function saveGeminiKey() {
         if (typeof window !== 'undefined') {
             localStorage.setItem('user_gemini_api_key', userGeminiApiKey);
+            window.dispatchEvent(new Event(AI_KEYS_CHANGED_EVENT));
             geminiSaveSuccess = true;
             setTimeout(() => { geminiSaveSuccess = false; }, 3000);
         }
@@ -1588,6 +1590,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         if (typeof window !== 'undefined' && userClaudeApiKey.trim()) {
             userClaudeApiKey = userClaudeApiKey.trim();
             localStorage.setItem('user_anthropic_api_key', userClaudeApiKey);
+            window.dispatchEvent(new Event(AI_KEYS_CHANGED_EVENT));
             claudeSaveSuccess = true;
             setTimeout(() => { claudeSaveSuccess = false; }, 3000);
         }
@@ -2155,6 +2158,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 </div>
                             {/if}
                         </div>
+                        <AiModelPicker disabled={!data.currentUserId || isSubmitting} />
                         <!-- 2. Mode Toggle (Card / Book) -->
                         <div class="mode-toggle-container">
                             <label class="mode-toggle-label">
@@ -3188,7 +3192,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
                             <!-- Claude API Key Section -->
                             <div class="form-group" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px; margin-bottom: 20px;">
-                                <label for="setting-claude-key">Anthropic Claude API Key (for PapeRobo)</label>
+                                <label for="setting-claude-key">Anthropic Claude API Key (HyperCardBook AI / PapeRobo)</label>
                                 <div style="display: flex; gap: 8px; margin-top: 8px;">
                                     <input
                                         type="password"

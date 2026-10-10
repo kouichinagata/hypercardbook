@@ -1,10 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { GoogleGenAI } from '@google/genai';
-import { env } from '$env/dynamic/private';
-import { getActiveGeminiApiKey } from '$lib/server/plan';
+import { generateAiText, resolveTextAi } from '$lib/server/ai-text';
 import { effectivePlanFromUser, isProPlan } from '$lib/plan';
-import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 
 const systemInstruction = `You are an AI assistant executing a HyperHook for a HyperCardBook.
 The user is reading a page (Card) in a book (Stack).
@@ -40,34 +37,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Pro plan or above is required.' }, { status: 403 });
         }
 
-        const apiKey = getActiveGeminiApiKey(session, request.headers.get('x-user-gemini-api-key'));
-        if (!apiKey) {
-            return json({ error: 'GEMINI_API_KEY is not set.' }, { status: 500 });
-        }
-
-        const ai = new GoogleGenAI({ apiKey });
+        const textAi = resolveTextAi(request);
 
         let query = `Event: ${eventName}\n`;
         query += `Current Card Index: ${currentCard}\n`;
         query += `Current Card Text:\n"""\n${cardText}\n"""\n\n`;
         query += `Instruction to execute: "${instruction}"`;
 
-        const response = await ai.models.generateContent({
-            model: GEMINI_TEXT_MODEL,
-            contents: [
-                {
-                    role: 'user',
-                    parts: [{ text: query }]
-                }
-            ],
-            config: {
-                systemInstruction: systemInstruction,
-                responseMimeType: 'application/json',
-                temperature: 0.2
-            }
-        });
-
-        const textResponse = response.text || '{}';
+        const textResponse = (await generateAiText(textAi, { system: systemInstruction, user: query, json: true })) || '{}';
         const parsed = JSON.parse(textResponse);
 
         return json(parsed);

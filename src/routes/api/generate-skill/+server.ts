@@ -1,11 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { GoogleGenAI } from '@google/genai';
-import { env } from '$env/dynamic/private';
-import { getActiveGeminiApiKey } from '$lib/server/plan';
+import { generateAiText, resolveTextAi } from '$lib/server/ai-text';
 import { effectivePlanFromUser, isProPlan } from '$lib/plan';
 import { SKILL_DESCRIPTION_MAX, normalizeSkillName } from '$lib/skill-md';
-import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 
 const systemInstruction = `You are a meta-prompt engineer who writes Agent Skills for an AI agent (HyperCardBook Creator), which creates card-style books and cards in Markdown.
 A Skill is a SKILL.md file. The agent first sees only each skill's name and description, and loads the full instructions only when a request matches the description.
@@ -36,16 +33,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Pro plan or above is required.' }, { status: 403 });
         }
 
-        const apiKey = getActiveGeminiApiKey(session, request.headers.get('x-user-gemini-api-key'));
-        if (!apiKey) {
-            return json({ error: 'GEMINI_API_KEY is not set.' }, { status: 500 });
-        }
+        const textAi = resolveTextAi(request);
 
         if (!instruction || !instruction.trim()) {
             return json({ error: 'Instruction prompt is required.' }, { status: 400 });
         }
-
-        const ai = new GoogleGenAI({ apiKey });
 
         let query = '';
         if (skill && skill.trim()) {
@@ -58,22 +50,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             query += `User instruction to create a new Skill from scratch: "${instruction}"`;
         }
 
-        const response = await ai.models.generateContent({
-            model: GEMINI_TEXT_MODEL,
-            contents: [
-                {
-                    role: 'user',
-                    parts: [{ text: query }]
-                }
-            ],
-            config: {
-                systemInstruction: systemInstruction,
-                responseMimeType: 'application/json',
-                temperature: 0.2
-            }
-        });
-
-        const textResponse = response.text || '';
+        const textResponse = await generateAiText(textAi, { system: systemInstruction, user: query, json: true });
         const parsed = JSON.parse(textResponse);
 
         return json({

@@ -3,7 +3,7 @@ import { effectivePlanFromUser, isPaidPlan, isProPlan } from '$lib/plan';
 import type { RequestHandler } from './$types';
 import { GoogleGenAI } from '@google/genai';
 import { env } from '$env/dynamic/private';
-import { getActiveGeminiApiKey } from '$lib/server/plan';
+import { AiTextError, resolveTextAi, streamClaudeTurn, toClaudeMessages, toJsonSchema, type ClaudeMessage } from '$lib/server/ai-text';
 import {
     BIOGRAPHY_SECTIONS,
     appendFactsToBiographyBook,
@@ -326,12 +326,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             return json({ error: 'Unauthorized. Please login first.' }, { status: 401 });
         }
 
-        const apiKey = getActiveGeminiApiKey(session, request.headers.get('x-user-gemini-api-key'));
-        if (!apiKey) {
-            return json({ error: 'GEMINI_API_KEY is not set.' }, { status: 500 });
-        }
-
-        const ai = new GoogleGenAI({ apiKey });
+        const textAi = resolveTextAi(request);
+        // Gemini は Web 検索と、Claude 障害時のフォールバックに使う。
+        const gemini = textAi.geminiKey ? new GoogleGenAI({ apiKey: textAi.geminiKey }) : null;
+        let activeProvider = textAi.provider;
 
         let query = '';
         if (currentCardIndex !== -1) {
@@ -491,6 +489,8 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                 
                 try {
                     let localContents = [...contents];
+                    const claudeMessages: ClaudeMessage[] = toClaudeMessages(contents);
+                    let toolsRan = false;
                     let responseText = '';
                     let updatedMarkdown = currentMarkdown;
                     let lastPageEdit: any = null;
@@ -660,6 +660,10 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         const isWebSearchPhase = useWebSearch && turn === 0;
                         let tools: any[] | undefined;
                         if (isWebSearchPhase) {
+                            if (!gemini) {
+                                controller.enqueue(encoder.encode('⚠️ Web search needs a Gemini API key, so it was skipped.\n\n'));
+                                continue;
+                            }
                             tools = [{ googleSearch: {} }];
                             // Notify the client that a web search is in progress
                             controller.enqueue(encoder.encode('🔍 Searching the web...\n\n'));
@@ -667,42 +671,83 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                             tools = [{ functionDeclarations: toolDeclarations }];
                         }
 
-                        const responseStream = await ai.models.generateContentStream({
-                            model: GEMINI_TEXT_MODEL,
-                            contents: localContents,
-                            config: {
-                                systemInstruction: activeSystemInstruction,
-                                temperature: 0.7,
-                                maxOutputTokens: 65536,
-                                tools: tools
-                            }
-                        });
-
                         let functionCalls: any[] = [];
                         let firstCandidate: any = null;
+                        let claudeContent: any[] = [];
+                        const emitText = (text: string) => {
+                            responseText += text;
+                            controller.enqueue(encoder.encode(text));
+                        };
 
-                        for await (const chunk of responseStream) {
-                            const candidate = chunk.candidates?.[0];
-                            if (candidate) {
-                                firstCandidate = candidate;
-                                const calls = candidate.content?.parts?.filter((p: any) => p.functionCall);
-                                if (calls && calls.length > 0) {
-                                    functionCalls.push(...calls);
+                        const runGeminiTurn = async () => {
+                            if (!gemini) throw new Error('GEMINI_API_KEY is not set.');
+                            const responseStream = await gemini.models.generateContentStream({
+                                model: GEMINI_TEXT_MODEL,
+                                contents: localContents,
+                                config: {
+                                    systemInstruction: activeSystemInstruction,
+                                    temperature: 0.7,
+                                    maxOutputTokens: 65536,
+                                    tools: tools
                                 }
-                            }
+                            });
 
-                            const text = chunk.text;
-                            if (text) {
-                                responseText += text;
-                                controller.enqueue(encoder.encode(text));
+                            for await (const chunk of responseStream) {
+                                const candidate = chunk.candidates?.[0];
+                                if (candidate) {
+                                    firstCandidate = candidate;
+                                    const calls = candidate.content?.parts?.filter((p: any) => p.functionCall);
+                                    if (calls && calls.length > 0) {
+                                        functionCalls.push(...calls);
+                                    }
+                                }
+
+                                const text = chunk.text;
+                                if (text) emitText(text);
                             }
+                        };
+
+                        const textLengthBeforeTurn = responseText.length;
+                        if (activeProvider === 'anthropic' && !isWebSearchPhase) {
+                            try {
+                                const claudeTurn = await streamClaudeTurn({
+                                    apiKey: textAi.apiKey,
+                                    model: textAi.model,
+                                    system: activeSystemInstruction,
+                                    messages: claudeMessages,
+                                    tools: toolDeclarations.map((d: any) => ({
+                                        name: d.name,
+                                        description: d.description,
+                                        input_schema: toJsonSchema(d.parameters) ?? { type: 'object', properties: {} }
+                                    })),
+                                    onText: emitText
+                                });
+                                claudeContent = claudeTurn.content;
+                                functionCalls = claudeTurn.calls.map(c => ({ functionCall: { id: c.id, name: c.name, args: c.args } }));
+                            } catch (err) {
+                                // Claude が障害・過負荷のとき、出力もツール実行も始まっていなければ Gemini で再試行する。
+                                const canFallback = err instanceof AiTextError && err.retryable && gemini
+                                    && !toolsRan && responseText.length === textLengthBeforeTurn;
+                                if (!canFallback) throw err;
+                                console.error('Claude unavailable, falling back to Gemini:', (err as Error).message);
+                                activeProvider = 'gemini';
+                                controller.enqueue(encoder.encode('⚠️ Claude is unavailable right now, so Gemini 3.8 Flash is answering.\n\n'));
+                                await runGeminiTurn();
+                            }
+                        } else {
+                            await runGeminiTurn();
                         }
 
                         if (functionCalls.length > 0) {
-                            localContents.push({
-                                role: 'model',
-                                parts: firstCandidate.content.parts
-                            });
+                            toolsRan = true;
+                            if (activeProvider === 'anthropic') {
+                                claudeMessages.push({ role: 'assistant', content: claudeContent });
+                            } else {
+                                localContents.push({
+                                    role: 'model',
+                                    parts: firstCandidate.content.parts
+                                });
+                            }
 
                             const functionResponses = [];
                             for (const call of functionCalls) {
@@ -899,16 +944,28 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
 
                                 functionResponses.push({
                                     functionResponse: {
+                                        id: fc.id,
                                         name: fc.name,
                                         response: { result: resultData }
                                     }
                                 });
                             }
 
-                            localContents.push({
-                                role: 'user',
-                                parts: functionResponses
-                            });
+                            if (activeProvider === 'anthropic') {
+                                claudeMessages.push({
+                                    role: 'user',
+                                    content: functionResponses.map((r: any) => ({
+                                        type: 'tool_result',
+                                        tool_use_id: r.functionResponse.id,
+                                        content: JSON.stringify(r.functionResponse.response.result ?? null)
+                                    }))
+                                });
+                            } else {
+                                localContents.push({
+                                    role: 'user',
+                                    parts: functionResponses
+                                });
+                            }
 
                         } else if (isWebSearchPhase) {
                             // Web search turn returned text (no function calls) — push the model
@@ -918,6 +975,12 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                     role: 'model',
                                     parts: firstCandidate.content.parts
                                 });
+                            }
+                            // Claude には検索結果を最後のユーザー発言に添えて渡す。
+                            const lastClaude = claudeMessages.at(-1);
+                            const searchText = responseText.slice(textLengthBeforeTurn).trim();
+                            if (searchText && lastClaude?.role === 'user' && typeof lastClaude.content === 'string') {
+                                lastClaude.content += `\n\n<web_search_results>\n${searchText}\n</web_search_results>`;
                             }
                             // Continue to next turn (do NOT break)
                         } else {
@@ -959,7 +1022,13 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                     controller.close();
                 } catch (err: any) {
                     console.error('Stream processing error:', err);
-                    controller.error(err);
+                    if (err instanceof AiTextError) {
+                        // 原因（キー無効・モデル不明など）を画面に届けるため、エラーではなくメッセージとして返す。
+                        controller.enqueue(encoder.encode(`\n⚠️ ${err.message}\n`));
+                        controller.close();
+                    } else {
+                        controller.error(err);
+                    }
                 }
             }
         });
@@ -974,7 +1043,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
         });
 
     } catch (err: any) {
-        console.error('Gemini API Error:', err);
+        console.error('AI API Error:', err);
         return json({ error: err.message || 'Failed to generate content.' }, { status: 500 });
     }
 };

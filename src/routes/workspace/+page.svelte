@@ -4,6 +4,8 @@
     import { goto, invalidateAll } from '$app/navigation';
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
+    import AiModelPicker from '$lib/components/AiModelPicker.svelte';
+    import { aiRequestHeaders } from '$lib/ai-model';
     import { marked } from 'marked';
     import { effectivePlanFromUser } from '$lib/plan';
     import { DDC_CLASSES, getDdcFullLabel } from '$lib/ddc';
@@ -1168,12 +1170,11 @@ ${markdown}
         const lastIndex = chatHistory.length - 1;
 
         try {
-            const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
             const response = await fetch('/api/generate', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
+                    ...aiRequestHeaders()
                 },
                 body: JSON.stringify({
                     prompt: finalPrompt,
@@ -2063,6 +2064,7 @@ ${markdown}
                                         </div>
                                     {/if}
                                 </div>
+                                <AiModelPicker disabled={!data.session?.user || isGenerating} />
                             </div>
                             <button 
                                 type="submit" 
