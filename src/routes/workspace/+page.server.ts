@@ -2,7 +2,6 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import fs from 'fs';
 import path from 'path';
-import { extractAiLivePrompt, isAiLiveBookMarkdown } from '$lib/server/ai-live-book';
 
 export const load: PageServerLoad = async ({ url, locals, fetch }) => {
     const bookId = url.searchParams.get('id');
@@ -12,8 +11,6 @@ export const load: PageServerLoad = async ({ url, locals, fetch }) => {
         return {
             markdown: '',
             bookId: null,
-            isAiLiveBook: false,
-            aiLivePrompt: '',
             initialChatHistory: [],
             currentUserId: locals.session?.user?.id || 'global'
         };
@@ -29,8 +26,6 @@ export const load: PageServerLoad = async ({ url, locals, fetch }) => {
             return {
                 markdown: markdownContent,
                 bookId: bookId,
-                isAiLiveBook: isAiLiveBookMarkdown(markdownContent),
-                aiLivePrompt: extractAiLivePrompt(markdownContent),
                 initialChatHistory: [],
                 currentUserId: locals.session?.user?.id || 'global'
             };
@@ -71,8 +66,6 @@ export const load: PageServerLoad = async ({ url, locals, fetch }) => {
     return {
         markdown: book.markdown_content,
         bookId: book.id,
-        isAiLiveBook: isAiLiveBookMarkdown(book.markdown_content || ''),
-        aiLivePrompt: extractAiLivePrompt(book.markdown_content || ''),
         initialChatHistory: messages || [],
         currentUserId: locals.session?.user?.id || 'global'
     };

@@ -40,7 +40,6 @@
     // Web Search toggle
     let webSearchEnabled = $state(false);
     let imageGenEnabled = $state(false);
-    let aiLiveBookEnabled = $state(false);
     let showCreateMenu = $state(false);
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
@@ -538,7 +537,6 @@
             }
             sessionStorage.setItem('workspace_web_search', String(webSearchEnabled));
             sessionStorage.setItem('workspace_image_gen', String(imageGenEnabled));
-            sessionStorage.setItem('workspace_ai_live_book', String(aiLiveBookEnabled));
             sessionStorage.setItem('workspace_feature_source', 'home');
         } catch (err) {
             console.error('Failed to store prompt in sessionStorage:', err);
@@ -670,7 +668,6 @@
         { id: 'all', label: 'All' },
         { id: 'book', label: 'Books' },
         { id: 'graphic', label: 'Graphic Books' },
-        // { id: 'ai_live', label: 'AI Live Books' }, // AI Live Book: hidden until the spec is finalized
         { id: 'hyperrobo', label: 'HyperRobo' },
         { id: 'paperobo', label: 'PapeRobo' },
         { id: 'hypertv', label: 'Scenario Books' },
@@ -2237,7 +2234,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                             <button
                                 type="button"
                                 class="attach-trigger-btn"
-                                class:active={webSearchEnabled || imageGenEnabled || aiLiveBookEnabled}
+                                class:active={webSearchEnabled || imageGenEnabled}
                                 onclick={() => { showCreateMenu = !showCreateMenu; }}
                                 disabled={!data.currentUserId || isSubmitting}
                                 title="Creation options"
@@ -2257,18 +2254,13 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     <button type="button" role="menuitem" onclick={() => { showCreateMenu = false; fileInputEl?.click(); }}>
                                         <span>🗄️</span> Add file
                                     </button>
-                                    <!-- AI Live Book: hidden until the spec is finalized
-                                    <button type="button" role="menuitemcheckbox" aria-checked={aiLiveBookEnabled} class:active={aiLiveBookEnabled} onclick={() => { aiLiveBookEnabled = !aiLiveBookEnabled; if (aiLiveBookEnabled) selectedMode = 'book'; }}>
-                                        <span>📚</span> AI Live Book
-                                    </button>
-                                    -->
                                 </div>
                             {/if}
                         </div>
                         <!-- 2. Mode Toggle (Card / Book) -->
                         <div class="mode-toggle-container">
                             <label class="mode-toggle-label">
-                                <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting || aiLiveBookEnabled} />
+                                <input type="radio" name="mode" value="card" bind:group={selectedMode} disabled={!data.currentUserId || isSubmitting} />
                                 <span>Card</span>
                             </label>
                             <label class="mode-toggle-label">

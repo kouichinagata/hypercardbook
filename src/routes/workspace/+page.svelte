@@ -223,8 +223,6 @@
     // Web Search toggle
     let webSearchEnabled = $state(false);
     let imageGenEnabled = $state(false);
-    let aiLiveBookEnabled = $state(Boolean(data.isAiLiveBook));
-    let aiLiveSourcePrompt = $state(data.aiLivePrompt || '');
     let featureSource = $state<'home' | 'workspace'>('workspace');
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
@@ -1030,9 +1028,7 @@ ${markdown}
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         markdown,
-                        id: bookUuid,
-                        aiLiveBook: aiLiveBookEnabled,
-                        aiLiveSourcePrompt
+                        id: bookUuid
                     })
                 });
                 
@@ -1044,10 +1040,6 @@ ${markdown}
                     if (resData.id && (!bookUuid || !isUuid)) {
                         bookUuid = resData.id;
                         goto(`/workspace?id=${resData.id}`, { replaceState: true, noScroll: true, keepFocus: true });
-                    }
-                    if (resData.markdown && resData.markdown !== markdown) {
-                        markdown = resData.markdown;
-                        lastProcessedMarkdown = resData.markdown;
                     }
                 } else {
                     const errData = await response.json();
@@ -1192,8 +1184,7 @@ ${markdown}
                     currentCardIndex: currentCardIndex,
                     activePluginIds: $state.snapshot(activePluginIds),
                     webSearchEnabled: canUseWebSearch,
-                    webSearchSource: requestSource,
-                    aiLiveBook: aiLiveBookEnabled
+                    webSearchSource: requestSource
                 })
             });
 
@@ -1323,8 +1314,6 @@ ${markdown}
             bookUuid = data.bookId || '';
             chatHistory = data.initialChatHistory || [];
             lastProcessedMarkdown = data.markdown || '';
-            aiLiveBookEnabled = Boolean(data.isAiLiveBook);
-            aiLiveSourcePrompt = data.aiLivePrompt || '';
 
             let initPrompt = page.url.searchParams.get('prompt');
             let blankRequested = false;
@@ -1351,12 +1340,6 @@ ${markdown}
                     }
                     sessionStorage.removeItem('workspace_image_gen');
 
-                    const storedAiLiveBook = sessionStorage.getItem('workspace_ai_live_book');
-                    if (storedAiLiveBook === 'true') {
-                        aiLiveBookEnabled = true;
-                    }
-                    sessionStorage.removeItem('workspace_ai_live_book');
-
                     blankRequested = sessionStorage.getItem('workspace_blank') === '1';
                     sessionStorage.removeItem('workspace_blank');
                 } catch (err) {
@@ -1365,7 +1348,6 @@ ${markdown}
             }
 
             if (initPrompt) {
-                if (aiLiveBookEnabled && !aiLiveSourcePrompt) aiLiveSourcePrompt = initPrompt;
                 await sendPrompt(initPrompt);
             } else if (!data.bookId) {
                 if (blankRequested) {

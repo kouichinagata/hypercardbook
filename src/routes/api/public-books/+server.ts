@@ -101,7 +101,6 @@ function formatPublicBook(book: any) {
         sourceApp,
         isCard: playMode === 'card',
         isStack: playMode === 'stack',
-        isAiLiveBook: /(?:^|\n)ai_live_book:\s*true\s*(?:\n|$)/i.test(markdownContent),
         isGraphicBook: /(?:^|\n)\s*(?:layout|mode|page_mode):\s*(fill|full)\s*(?:\n|$)/i.test(markdownContent),
         ddcCode: book.ddc_code || ''
     };
@@ -113,7 +112,6 @@ function matchesPublicBookType(book: ReturnType<typeof formatPublicBook>, type: 
             book.playMode !== 'stack' && book.sourceApp !== 'hypertv';
     }
     if (type === 'graphic') return book.isGraphicBook;
-    if (type === 'ai_live') return book.isAiLiveBook;
     if (type === 'paperobo') return book.playMode === 'paperobo';
     if (type === 'hyperrobo') return book.playMode === 'hyperrobo';
     if (type === 'hypertv') return book.sourceApp === 'hypertv';
