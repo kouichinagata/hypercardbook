@@ -1,11 +1,12 @@
 <script lang="ts">
-    import { onMount, tick } from 'svelte';
+    import { onDestroy, onMount, tick } from 'svelte';
     import { page } from '$app/state';
     import { goto, invalidateAll } from '$app/navigation';
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
     import AiModelPicker from '$lib/components/AiModelPicker.svelte';
-    import { aiRequestHeaders } from '$lib/ai-model';
+    import { AI_KEYS_CHANGED_EVENT, aiRequestHeaders, hasUserGeminiKey, imageModelLabel, selectedImageModel } from '$lib/ai-model';
+    import { assembleMangaBook, extractMangaJob, requestImage, runMangaJob, runPool, type MangaJob } from '$lib/manga-job';
     import { marked } from 'marked';
     import { effectivePlanFromUser } from '$lib/plan';
     import { DDC_CLASSES, getDdcFullLabel } from '$lib/ddc';
@@ -229,6 +230,21 @@
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
     );
+    // 自分の Gemini キーを登録したユーザーは、画像生成をプランに関係なく使える（費用は自己負担のため）
+    let hasGeminiKey = $state(false);
+    let imageAllowed = $derived(isPaidPlan || hasGeminiKey);
+    let mangaAbort: AbortController | null = null;
+    onDestroy(() => mangaAbort?.abort());
+    onMount(() => {
+        const refresh = () => { hasGeminiKey = hasUserGeminiKey(); };
+        refresh();
+        window.addEventListener(AI_KEYS_CHANGED_EVENT, refresh);
+        window.addEventListener('storage', refresh);
+        return () => {
+            window.removeEventListener(AI_KEYS_CHANGED_EVENT, refresh);
+            window.removeEventListener('storage', refresh);
+        };
+    });
     let isProPlan = $derived(
         ['pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
     );
@@ -248,6 +264,11 @@
     });
 
     function requestedImageCount(promptText: string): number {
+        // 自分の Gemini キーがあるユーザーは枚数の上限なし（画像は 1 枚ずつ並列で生成する）
+        if (hasGeminiKey) {
+            const many = promptText.match(/(\d{1,3})\s*(?:枚|images?)/i);
+            return many ? Math.max(1, Number(many[1])) : 1;
+        }
         if (!isProPlan) return 1;
 		const match = promptText.match(/([1-4])\s*(?:枚|images?)/i);
         return match ? Number(match[1]) : 1;
@@ -1102,7 +1123,7 @@ ${markdown}
 
         const historyForApi = $state.snapshot(chatHistory);
         const requestSource = featureSource;
-        const canUseImageGeneration = imageGenEnabled && (isPaidPlan || requestSource === 'home');
+        const canUseImageGeneration = imageGenEnabled && (imageAllowed || requestSource === 'home');
         const canUseWebSearch = webSearchEnabled && (isPaidPlan || requestSource === 'home');
         const imageCount = requestedImageCount(promptText);
         const referenceImages = imageReferenceUrls(visiblePrompt, images);
@@ -1122,38 +1143,57 @@ ${markdown}
         // Check if imageGenEnabled is active for image generation / modification
         if (canUseImageGeneration) {
             const loadingIndex = chatHistory.length;
-            chatHistory = [...chatHistory, { role: 'model', text: '🏙️ Generating images with Nano Banana 2 Lite...' }];
+            const modelLabel = imageModelLabel(selectedImageModel());
+            const setImageStatus = (text: string) => {
+                chatHistory = chatHistory.map((message, index) => index === loadingIndex ? { role: 'model', text } : message);
+            };
+            chatHistory = [...chatHistory, { role: 'model', text: `🏙️ Generating images with ${modelLabel}...` }];
             scrollToBottom();
             try {
-                const userGeminiApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
-                const imgRes = await fetch('/api/generate-image', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(userGeminiApiKey ? { 'x-user-gemini-api-key': userGeminiApiKey } : {})
-                    },
-                    body: JSON.stringify({
-                        prompt: promptText,
-                        count: imageCount,
-                        source: requestSource,
-                        aspectRatio: imageCount > 1 ? '2:3' : '1:1',
-                        referenceImages
-                    })
-                });
-                const imgData = await imgRes.json();
-                if (!imgRes.ok) {
-                    throw new Error(imgData.error || `Image generation failed (${imgRes.status})`);
-                }
-                if (imgData.success && imgData.images && imgData.images.length > 0) {
-                    const generatedImgsMarkdown = imgData.images.map((img: any) => `![${img.name}](${img.url})`).join('\n');
-                    finalPrompt += `\n\n### Generated Images (Nano Banana 2 Lite)\nUse these exact image URLs in the generated content:\n${generatedImgsMarkdown}\n`;
-                    chatHistory = chatHistory.map((message, index) => index === loadingIndex
-                        ? {
-                            role: 'model',
-                            text: `🏙️ **Nano Banana 2 Lite** — Generated ${imgData.images.length} image${imgData.images.length === 1 ? '' : 's'}:\n\n${generatedImgsMarkdown}`
+                let generatedImages: { name: string; url: string }[] = [];
+                if (hasGeminiKey) {
+                    // 自分のキー: 1 枚ずつ並列（4 件）で呼ぶので、枚数に上限がない。生成できた分だけ使う。
+                    const slots: (string | null)[] = Array(imageCount).fill(null);
+                    let finished = 0;
+                    let lastError = '';
+                    await runPool(slots, 4, async (_slot, i) => {
+                        const variantPrompt = imageCount > 1
+                            ? `${promptText.trim()}\n\nCreate variation ${i + 1} of ${imageCount} with a distinct composition while preserving the requested subject and style.`
+                            : promptText.trim();
+                        try {
+                            slots[i] = await requestImage(variantPrompt, imageCount > 1 ? '2:3' : '1:1', referenceImages);
+                        } catch (err: any) {
+                            lastError = err?.message || lastError;
                         }
-                        : message
-                    );
+                        finished++;
+                        if (imageCount > 1) setImageStatus(`🏙️ Generating images with ${modelLabel}... ${finished}/${imageCount}`);
+                    });
+                    generatedImages = slots.flatMap((url, i) => url ? [{ name: `image_${i + 1}`, url }] : []);
+                    if (generatedImages.length === 0) throw new Error(lastError || 'Image generation failed.');
+                } else {
+                    const imgRes = await fetch('/api/generate-image', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            prompt: promptText,
+                            count: imageCount,
+                            source: requestSource,
+                            aspectRatio: imageCount > 1 ? '2:3' : '1:1',
+                            referenceImages
+                        })
+                    });
+                    const imgData = await imgRes.json();
+                    if (!imgRes.ok) {
+                        throw new Error(imgData.error || `Image generation failed (${imgRes.status})`);
+                    }
+                    if (imgData.success && imgData.images && imgData.images.length > 0) {
+                        generatedImages = imgData.images;
+                    }
+                }
+                if (generatedImages.length > 0) {
+                    const generatedImgsMarkdown = generatedImages.map((img) => `![${img.name}](${img.url})`).join('\n');
+                    finalPrompt += `\n\n### Generated Images (${modelLabel})\nUse these exact image URLs in the generated content:\n${generatedImgsMarkdown}\n`;
+                    setImageStatus(`🏙️ **${modelLabel}** — Generated ${generatedImages.length} image${generatedImages.length === 1 ? '' : 's'}:\n\n${generatedImgsMarkdown}`);
                 }
             } catch (imgErr) {
                 console.error('[Workspace Image Gen Error]:', imgErr);
@@ -1242,6 +1282,13 @@ ${markdown}
                 }
             }
 
+            // まんが: AI が台本を渡したら、ここからブラウザで絵を描く（完了まで入力は止まる）
+            const mangaJob = extractMangaJob(accumulatedText);
+            if (mangaJob) {
+                chatHistory[lastIndex].text = accumulatedText.replace(/\[MANGA_JOB\][\s\S]*?\[\/MANGA_JOB\]/g, '').trim();
+                await runMangaJobInChat(mangaJob);
+            }
+
         } catch (err: any) {
             console.error('Generation failed:', err);
             errorMsg = err.message || 'API Key error. Check GEMINI_API_KEY.';
@@ -1254,10 +1301,40 @@ ${markdown}
                 featureSource = 'workspace';
                 if (!isPaidPlan) {
                     webSearchEnabled = false;
-                    imageGenEnabled = false;
+                    if (!hasGeminiKey) imageGenEnabled = false;
                 }
             }
             isGenerating = false;
+            scrollToBottom();
+        }
+    }
+
+    async function runMangaJobInChat(job: MangaJob) {
+        const total = job.pages.length;
+        const index = chatHistory.length;
+        const setStatus = (text: string) => {
+            chatHistory = chatHistory.map((message, i) => i === index ? { role: 'model', text } : message);
+        };
+        const abort = new AbortController();
+        mangaAbort = abort;
+        const warnBeforeLeaving = (event: BeforeUnloadEvent) => event.preventDefault();
+        window.addEventListener('beforeunload', warnBeforeLeaving);
+        chatHistory = [...chatHistory, { role: 'model', text: `🎨 Drawing ${total} manga page${total === 1 ? '' : 's'}… Please keep this tab open until it finishes.` }];
+        scrollToBottom();
+        try {
+            const result = await runMangaJob(job, (p) => {
+                setStatus(p.phase === 'sheet'
+                    ? '🎨 Drawing the character sheet…'
+                    : `🎨 Drawing pages… ${p.done}/${p.total}${p.failed ? ` (${p.failed} failed)` : ''}. Please keep this tab open.`);
+            }, abort.signal);
+            markdown = assembleMangaBook(job, result, markdown);
+            const ok = total - result.failed.length;
+            setStatus(`🎨 Done: ${ok}/${total} pages drawn.${result.failed.length ? `\n\n⚠️ Pages that could not be drawn: ${result.failed.join(', ')}. Ask me to redraw them.` : ''}`);
+        } catch (err: any) {
+            setStatus(`⚠️ Manga drawing stopped: ${err?.message || 'unknown error'}`);
+        } finally {
+            window.removeEventListener('beforeunload', warnBeforeLeaving);
+            mangaAbort = null;
             scrollToBottom();
         }
     }
@@ -1943,6 +2020,8 @@ ${markdown}
                                 {:else}
                                     {@html parseMarkdownForChat(
                                         message.text
+                                            .replace(/\[MANGA_JOB\][\s\S]*?\[\/MANGA_JOB\]/g, '')
+                                            .replace(/\[MANGA_JOB\][\s\S]*/g, '')
                                             .replace(/\[UPDATED_MARKDOWN\][\s\S]*/gi, '')
                                             .replace(
                                                 isGenerating && idx === chatHistory.length - 1
@@ -2025,7 +2104,7 @@ ${markdown}
                                     <button
                                         type="button"
                                         class="inner-attach-btn"
-                                        class:active={(webSearchEnabled || imageGenEnabled) && isPaidPlan}
+                                        class:active={(webSearchEnabled && isPaidPlan) || (imageGenEnabled && imageAllowed)}
                                         onclick={() => { showPlusMenu = !showPlusMenu; }}
                                         disabled={!data.session?.user || isGenerating}
                                         title="Add files, web search, image generation"
@@ -2039,10 +2118,10 @@ ${markdown}
                                             <button
                                                 type="button"
                                                 role="menuitemcheckbox"
-                                                aria-checked={imageGenEnabled && isPaidPlan}
-                                                class:active={imageGenEnabled && isPaidPlan}
-                                                disabled={!isPaidPlan}
-                                                title={!isPaidPlan ? 'Available on Standard plan or above' : (imageGenEnabled ? 'Image Generation: ON (NanoBanana Lite)' : 'Image Generation: OFF')}
+                                                aria-checked={imageGenEnabled && imageAllowed}
+                                                class:active={imageGenEnabled && imageAllowed}
+                                                disabled={!imageAllowed}
+                                                title={!imageAllowed ? 'Available on Standard plan or above, or with your own Gemini API key' : (imageGenEnabled ? `Image Generation: ON (${imageModelLabel(selectedImageModel())})` : 'Image Generation: OFF')}
                                                 onclick={() => { imageGenEnabled = !imageGenEnabled; }}
                                             >
                                                 <span>🏙️</span> Generate image
@@ -2064,7 +2143,7 @@ ${markdown}
                                         </div>
                                     {/if}
                                 </div>
-                                <AiModelPicker disabled={!data.session?.user || isGenerating} />
+                                <AiModelPicker disabled={!data.session?.user || isGenerating} imageMode={imageGenEnabled && imageAllowed} />
                             </div>
                             <button 
                                 type="submit" 

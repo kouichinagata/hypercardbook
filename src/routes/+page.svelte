@@ -2158,7 +2158,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 </div>
                             {/if}
                         </div>
-                        <AiModelPicker disabled={!data.currentUserId || isSubmitting} />
+                        <AiModelPicker disabled={!data.currentUserId || isSubmitting} imageMode={imageGenEnabled} />
                         <!-- 2. Mode Toggle (Card / Book) -->
                         <div class="mode-toggle-container">
                             <label class="mode-toggle-label">

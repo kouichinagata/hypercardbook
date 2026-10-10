@@ -15,6 +15,7 @@ import { getAllSkillFiles, getSkillFile, listSkills, saveSkill, type StoredSkill
 import { runSkillScript } from '$lib/server/skill-sandbox';
 import { SKILL_DESCRIPTION_MAX, isValidSkillFilePath, normalizeSkillName, validateSkill } from '$lib/skill-md';
 import { GEMINI_TEXT_MODEL } from '$lib/server/models';
+import { MANGA_JOB_CLOSE, MANGA_JOB_OPEN, MANGA_PAGES_PER_CALL, MANGA_SKILL_NAME, normalizeMangaChunk } from '$lib/manga-job';
 
 function applyPageEdit(currentMarkdown: string, pageIndex: number, action: 'update' | 'delete' | 'insert', newContent: string): string {
     const fmMatch = currentMarkdown.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n)([\s\S]*)$/);
@@ -499,7 +500,9 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         controller.enqueue(encoder.encode(`📚 Using skill: **${skill.name}**\n\n`));
                     }
 
-                    for (let turn = 0; turn < 10; turn++) {
+                    // まんがは台本を複数回に分けて受け取るため、ターン数の上限を広げる
+                    const maxTurns = skillsByName.has(MANGA_SKILL_NAME) ? 40 : 10;
+                    for (let turn = 0; turn < maxTurns; turn++) {
                         const toolDeclarations = [];
 
                         toolDeclarations.push({
@@ -574,6 +577,48 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                     }
                                 }
                             );
+                        }
+
+                        if (proPlanActive && skillsByName.has(MANGA_SKILL_NAME)) {
+                            toolDeclarations.push({
+                                name: 'queue_manga_pages',
+                                description: `Queue manga pages to be drawn. The user's browser draws them AFTER your reply ends (one image per page, with one shared character reference sheet), then fills the book. Send at most ${MANGA_PAGES_PER_CALL} pages per call and call it repeatedly until every page is queued; send style and characters only in the first call; send book_markdown in the last call.`,
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        style: { type: 'STRING', description: 'English art-style line used for every page. First call only.' },
+                                        characters: {
+                                            type: 'ARRAY',
+                                            description: 'Fixed appearance of each recurring character. First call only. The text is pasted verbatim into every page prompt that lists the character id.',
+                                            items: {
+                                                type: 'OBJECT',
+                                                properties: {
+                                                    id: { type: 'STRING', description: 'Short id, e.g. "ken".' },
+                                                    appearance: { type: 'STRING', description: 'English paragraph: age, gender, hair style and color, eyes, build, outfit, accessories.' }
+                                                },
+                                                required: ['id', 'appearance']
+                                            }
+                                        },
+                                        pages: {
+                                            type: 'ARRAY',
+                                            items: {
+                                                type: 'OBJECT',
+                                                properties: {
+                                                    page: { type: 'INTEGER', description: 'Page number, starting at 1.' },
+                                                    setting: { type: 'STRING', description: 'English: place, time of day, mood.' },
+                                                    characters: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Ids of the characters appearing on this page.' },
+                                                    layout: { type: 'STRING', description: 'English description of the page panel layout (positions and sizes of the panels).' },
+                                                    panels: { type: 'ARRAY', items: { type: 'STRING' }, description: 'One string per panel in reading order: shot type, action, expression, and the exact speech: Speech bubble: 「…」 (or "No dialogue.").' }
+                                                },
+                                                required: ['page', 'layout', 'panels']
+                                            }
+                                        },
+                                        aspect_ratio: { type: 'STRING', description: 'Page aspect ratio. Default "3:4".' },
+                                        book_markdown: { type: 'STRING', description: 'LAST call only: the complete book Markdown (YAML frontmatter with layout: fill, cover, one image-only page per manga page, plus any text pages). Write each manga image as ![Page N]({{PAGE_N}}) with the literal token {{PAGE_N}} instead of a URL.' }
+                                    },
+                                    required: ['pages']
+                                }
+                            });
                         }
 
                         if (mode === 'book') {
@@ -821,6 +866,21 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                         } catch (err: any) {
                                             resultData = { success: false, error: err.message || 'Failed to save skill.' };
                                         }
+                                    }
+                                } else if (fc.name === 'queue_manga_pages') {
+                                    const chunk = !proPlanActive || !skillsByName.has(MANGA_SKILL_NAME)
+                                        ? { error: 'The manga-book skill must be enabled (Pro plan or above).' }
+                                        : normalizeMangaChunk(fc.args);
+                                    if ('error' in chunk) {
+                                        resultData = { success: false, error: chunk.error };
+                                    } else {
+                                        // クライアントがこの印を読み取り、ストリーム終了後に絵を描く（チャットには表示されない）
+                                        controller.enqueue(encoder.encode(`\n${MANGA_JOB_OPEN}${JSON.stringify(chunk.job)}${MANGA_JOB_CLOSE}\n`));
+                                        resultData = {
+                                            success: true,
+                                            queued_pages: chunk.job.pages.map(p => p.page),
+                                            message: 'Queued. The pages are drawn in the user\'s browser after your reply ends. Do NOT output the book Markdown yourself and do not call image tools; once every page and the book_markdown are queued, reply with one short message telling the user the drawing has started and will take a while.'
+                                        };
                                     }
                                 } else if (fc.name === 'update_biography') {
                                     const section = String(fc.args?.section || '').trim();

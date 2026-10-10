@@ -5,11 +5,16 @@
         AI_MODEL_STORAGE_KEY,
         DEFAULT_CLAUDE_LABEL,
         DEFAULT_CLAUDE_MODEL,
+        DEFAULT_IMAGE_MODEL,
         GEMINI_TEXT_LABEL,
-        GEMINI_TEXT_MODEL
+        GEMINI_TEXT_MODEL,
+        IMAGE_MODELS,
+        IMAGE_MODEL_STORAGE_KEY,
+        isImageModelId
     } from '$lib/ai-model';
 
-    let { disabled = false }: { disabled?: boolean } = $props();
+    // imageMode: 画像生成（Generate image）が ON のとき true。自分の Gemini キーがあれば、文章モデルの代わりに画像モデルを選ぶ。
+    let { disabled = false, imageMode = false }: { disabled?: boolean; imageMode?: boolean } = $props();
 
     type Option = { id: string; label: string };
 
@@ -17,6 +22,8 @@
     let hasClaudeKey = $state(false);
     let hasGeminiKey = $state(false);
     let selected = $state(DEFAULT_CLAUDE_MODEL);
+    let selectedImage = $state<string>(DEFAULT_IMAGE_MODEL);
+    const showImageModels = $derived(imageMode && hasGeminiKey);
 
     // Claudeキー未登録なら既定のHaikuのみ。登録後はAPIから取得した全モデル。Geminiキーがあれば3.8 Flashを追加。
     const options = $derived.by(() => {
@@ -41,6 +48,14 @@
         }
     }
 
+    function persistImage() {
+        try {
+            localStorage.setItem(IMAGE_MODEL_STORAGE_KEY, selectedImage);
+        } catch {
+            // 保存できなくても動作には影響しない
+        }
+    }
+
     async function refresh() {
         const claudeKey = read('user_anthropic_api_key');
         hasClaudeKey = Boolean(claudeKey);
@@ -57,6 +72,8 @@
                 // 取得に失敗したら既定のモデルのみ表示する
             }
         }
+        const savedImage = read(IMAGE_MODEL_STORAGE_KEY);
+        selectedImage = isImageModelId(savedImage) ? savedImage : DEFAULT_IMAGE_MODEL;
         const saved = read(AI_MODEL_STORAGE_KEY);
         const ids = options.map((o) => o.id);
         selected = ids.includes(saved)
@@ -76,7 +93,20 @@
     });
 </script>
 
-{#if options.length > 1}
+{#if showImageModels}
+    <select
+        class="ai-model-select"
+        bind:value={selectedImage}
+        onchange={persistImage}
+        {disabled}
+        title="Image model"
+        aria-label="Image model"
+    >
+        {#each IMAGE_MODELS as option (option.id)}
+            <option value={option.id}>{option.label}</option>
+        {/each}
+    </select>
+{:else if options.length > 1}
     <select
         class="ai-model-select"
         bind:value={selected}
