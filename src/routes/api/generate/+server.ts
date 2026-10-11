@@ -503,6 +503,11 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
 
         activeSystemInstruction += `\n\nGITHUB INTEGRATION INSTRUCTIONS:\n- You have direct access to the user's GitHub repository via the 'github_push' tool.\n- If the user asks to "push to github", "save to github", or "githubにpushして", you MUST call the 'github_push' tool. Tell the user once it has succeeded and provide the repository file URL returned by the tool.`;
 
+        // Plan mode: skills and other instructions above may still be loaded, but the Plan mode rules must win. Repeat them last.
+        if (planMode) {
+            activeSystemInstruction += `\n\nPLAN MODE REMINDER (overrides EVERYTHING above, including skills and book/card format rules):\n- Plan mode is ON. Never output a book/card body, a \`\`\`markdown block meant to be applied, [UPDATE_PAGES], or [MANGA_JOB]. Books and cards are never changed.\n- Skills may be used for thinking, planning and advice. If a skill says to create or edit a book/card, give a plain-text plan instead and tell the user to turn Plan mode off to apply it.`;
+        }
+
         const stream = new ReadableStream({
             async start(controller) {
                 const encoder = new TextEncoder();

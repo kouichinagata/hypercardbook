@@ -2148,7 +2148,9 @@ ${markdown}
                                             .replace(/\[MANGA_JOB\][\s\S]*/g, '')
                                             .replace(/\[UPDATED_MARKDOWN\][\s\S]*/gi, '')
                                             .replace(
-                                                isGenerating && idx === chatHistory.length - 1
+                                                planMode
+                                                    ? /(?!)/g
+                                                    : isGenerating && idx === chatHistory.length - 1
                                                     ? /```(?:markdown)?[\s\S]*/gi
                                                     : /```(?:markdown)?[\s\S]*?```/gi,
                                                 mode === 'card' ? '[Card generated/updated]' : '[Book generated/updated]'
