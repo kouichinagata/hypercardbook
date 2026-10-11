@@ -52,6 +52,8 @@
     interface ChatMessage {
         role: 'user' | 'model';
         text: string;
+        // 開いている本に入れられなかった Card。ボタンで新規Cardとして保存する
+        newCard?: { markdown: string; status: 'idle' | 'saving' | 'saved' | 'error'; id?: string; error?: string };
     }
     let chatHistory: ChatMessage[] = $state([]);
 
@@ -550,6 +552,69 @@
             } catch (err) {
                 console.error('Failed to delete file from storage on removal:', err);
             }
+        }
+    }
+
+    // チャット履歴と入力欄だけを空にする（開いている本・保存済みデータ・ストレージの画像は変えない）
+    async function newChat() {
+        showPlusMenu = false;
+        if (isGenerating) return;
+        if (!confirm('Start a new chat? The chat history will be deleted and cannot be restored. Your book is not changed.')) return;
+        // 履歴は chat_messages に保存されていて、開き直すと復元されるため、DB の行も消す
+        if (bookUuid) {
+            const { error } = await supabase.from('chat_messages').delete().eq('book_id', bookUuid);
+            if (error) {
+                errorMsg = `Failed to clear chat: ${error.message}`;
+                return;
+            }
+        }
+        chatHistory = [];
+        currentInput = '';
+        attachedFiles = [];
+        errorMsg = '';
+    }
+
+    // frontmatter の id（slug）が自分の既存の本と重ならないようにする。重なれば -2, -3 … を付ける
+    async function uniqueCardSlug(md: string): Promise<string> {
+        const m = md.match(/^(---[ \t]*\n(?:(?!---)[^\n]*\n)*?)id:[ \t]*([^\n]*)\n/);
+        const base = (m?.[2] || '').trim().replace(/[^a-zA-Z0-9_\-]/g, '') || 'card';
+        const userId = data.session?.user?.id;
+        let slug = base;
+        try {
+            const { data: rows, error } = await supabase.from('books').select('slug').eq('user_id', userId).ilike('slug', `${base}%`);
+            if (error) throw error;
+            const taken = new Set((rows || []).map((r: any) => r.slug));
+            for (let n = 2; taken.has(slug); n++) slug = `${base}-${n}`;
+        } catch {
+            slug = `${base}-${Date.now().toString(36)}`;
+        }
+        return slug;
+    }
+
+    // AI が返した Card を、既存の本・Card を上書きしない新規Cardとして保存する（id は送らず、非公開）
+    async function saveNewCard(idx: number) {
+        const card = chatHistory[idx]?.newCard;
+        if (!card || card.status === 'saving' || card.status === 'saved') return;
+        chatHistory[idx].newCard = { ...card, status: 'saving', error: undefined };
+        try {
+            const slug = await uniqueCardSlug(card.markdown);
+            let md = card.markdown;
+            if (/^(---[ \t]*\n(?:(?!---)[^\n]*\n)*?)id:[ \t]*[^\n]*\n/.test(md)) {
+                md = md.replace(/^(---[ \t]*\n(?:(?!---)[^\n]*\n)*?)id:[ \t]*[^\n]*\n/, `$1id: ${slug}\n`);
+            } else {
+                md = md.replace(/^---\s*\n/, `---\nid: ${slug}\n`);
+            }
+            md = md.replace(/^(---[ \t]*\n(?:(?!---)[^\n]*\n)*?)(is_public|published_at):[^\n]*\n/g, '$1');
+            const res = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ markdown: md, is_public: false })
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok || !body.id) throw new Error(body.error || `HTTP ${res.status}`);
+            chatHistory[idx].newCard = { markdown: card.markdown, status: 'saved', id: body.id };
+        } catch (err: any) {
+            chatHistory[idx].newCard = { markdown: card.markdown, status: 'error', error: err?.message || 'Save failed' };
         }
     }
 
@@ -1121,7 +1186,7 @@ ${markdown}
 
         let finalPrompt = visiblePrompt;
 
-        const historyForApi = $state.snapshot(chatHistory);
+        const historyForApi = $state.snapshot(chatHistory).map(({ role, text }) => ({ role, text }));
         const requestSource = featureSource;
         const canUseImageGeneration = imageGenEnabled && (imageAllowed || requestSource === 'home');
         const canUseWebSearch = webSearchEnabled && (isPaidPlan || requestSource === 'home');
@@ -1246,6 +1311,7 @@ ${markdown}
             const protectBook = mode === 'book' && !!bookUuid && !markdown.includes('play_mode: card');
             const replacesBookWithCard = (md: string) => protectBook && md.includes('play_mode: card');
             let blockedCardReplace = false;
+            let blockedCardMarkdown = '';
             
             let isFirstChunk = true;
             while (true) {
@@ -1268,6 +1334,7 @@ ${markdown}
                     const parsedMarkdown = mdBlockMatch[1].trim();
                     if (replacesBookWithCard(parsedMarkdown)) {
                         blockedCardReplace = true;
+                        blockedCardMarkdown = parsedMarkdown;
                     } else {
                         markdown = parsedMarkdown;
                         const parsedIsCard = parsedMarkdown.includes('play_mode: card');
@@ -1287,6 +1354,7 @@ ${markdown}
                     const finalMarkdown = finalMdMatch[1].trim();
                     if (replacesBookWithCard(finalMarkdown)) {
                         blockedCardReplace = true;
+                        blockedCardMarkdown = finalMarkdown;
                     } else {
                         markdown = finalMarkdown;
                     }
@@ -1295,13 +1363,15 @@ ${markdown}
                     const fallbackMarkdown = accumulatedText.substring(startIndex).trim();
                     if (replacesBookWithCard(fallbackMarkdown)) {
                         blockedCardReplace = true;
+                        blockedCardMarkdown = fallbackMarkdown;
                     } else {
                         markdown = fallbackMarkdown;
                     }
                 }
             }
             if (blockedCardReplace) {
-                chatHistory[lastIndex].text = accumulatedText + '\n\n⚠️ This book was not changed. A Card was returned, so create it from a new Card workspace (/workspace?mode=card) instead.';
+                // 警告文はチャット履歴（=AIへの入力）に混ぜない。画面のボタンで案内する
+                chatHistory[lastIndex].newCard = { markdown: blockedCardMarkdown, status: 'idle' };
             }
 
             // まんが: AI が台本を渡したら、ここからブラウザで絵を描く（完了まで入力は止まる）
@@ -1818,7 +1888,8 @@ ${markdown}
             }
 
             if (files) {
-                uploadedImages = files.map(file => {
+                // フォルダ（published など）は id が null。画像ではないので一覧に出さない
+                uploadedImages = files.filter(file => file.id).map(file => {
                     const { data: urlData } = supabase.storage
                         .from('HyperCardBookBucket')
                         .getPublicUrl(`${userId}/${file.name}`);
@@ -1842,9 +1913,11 @@ ${markdown}
         }
     });
 
+    const isAudioFile = (name: string) => /\.(wav|mp3|m4a|ogg|aac)$/i.test(name);
+
     async function handleDeleteUploadedImage(e: MouseEvent, name: string) {
         e.stopPropagation();
-        if (!confirm('Are you sure you want to delete this image?')) return;
+        if (!confirm(`Are you sure you want to delete this ${isAudioFile(name) ? 'audio file' : 'image'}?`)) return;
 
         const sessionUser = data.session?.user;
         const userId = sessionUser?.id || 'guest';
@@ -2061,6 +2134,22 @@ ${markdown}
                                             <span></span><span></span><span></span>
                                         </div>
                                     {/if}
+
+                                    {#if message.newCard}
+                                        <div class="new-card-box">
+                                            <div>⚠️ This book was not changed. A Card was returned.</div>
+                                            {#if message.newCard.status === 'saved'}
+                                                <div>✅ Saved as a new Card (private). <a href={`/hypercard/${message.newCard.id}`} target="_blank">Open</a></div>
+                                            {:else}
+                                                <button type="button" class="new-card-btn" disabled={message.newCard.status === 'saving'} onclick={() => saveNewCard(idx)}>
+                                                    {message.newCard.status === 'saving' ? 'Saving…' : '💾 Save as new Card'}
+                                                </button>
+                                                {#if message.newCard.status === 'error'}
+                                                    <div class="new-card-error">Save failed: {message.newCard.error}</div>
+                                                {/if}
+                                            {/if}
+                                        </div>
+                                    {/if}
                                 {/if}
                             {/if}
                         </div>
@@ -2161,6 +2250,10 @@ ${markdown}
                                             </button>
                                             <button type="button" role="menuitem" onclick={() => { showPlusMenu = false; fileInputEl?.click(); }}>
                                                 <span>🗄️</span> Add file
+                                            </button>
+                                            <div class="plus-menu-sep" role="separator"></div>
+                                            <button type="button" role="menuitem" onclick={newChat}>
+                                                <span>🗑️</span> New chat
                                             </button>
                                         </div>
                                     {/if}
@@ -2283,6 +2376,29 @@ ${markdown}
                             <div class="uploaded-thumbnails-container">
                                 <div class="uploaded-thumbnails-grid">
                                     {#each uploadedImages as img}
+                                        {#if isAudioFile(img.name)}
+                                            <div class="thumbnail-wrapper audio-tile" title={img.name}>
+                                                <div class="audio-tile-label">🔊 Audio</div>
+                                                <div class="audio-tile-name">{img.name}</div>
+                                                <audio controls preload="none" src={img.url} class="audio-tile-player"></audio>
+                                                <div class="thumbnail-actions">
+                                                    <button
+                                                        class="thumbnail-action-btn delete-btn"
+                                                        onclick={(e) => handleDeleteUploadedImage(e, img.name)}
+                                                        title="Delete"
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                    <button
+                                                        class="thumbnail-action-btn download-btn"
+                                                        onclick={(e) => handleDownloadUploadedImage(e, img.url, img.name)}
+                                                        title="Download"
+                                                    >
+                                                        💾
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        {:else}
                                         <div 
                                             class="thumbnail-wrapper" 
                                             onclick={() => selectMedia(img.url, img.name.split('_').slice(1).join('_').split('.')[0] || 'image')}
@@ -2320,6 +2436,7 @@ ${markdown}
                                                 </button>
                                             </div>
                                         </div>
+                                        {/if}
                                     {/each}
                                 </div>
                             </div>
@@ -3560,6 +3677,65 @@ ${markdown}
     .plus-menu button:disabled {
         opacity: 0.4;
         cursor: not-allowed;
+    }
+    .audio-tile {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 4px;
+        padding: 8px 6px;
+        cursor: default;
+        overflow: hidden;
+    }
+    .audio-tile:hover {
+        transform: none;
+    }
+    .audio-tile-label {
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .audio-tile-name {
+        font-size: 10px;
+        opacity: 0.6;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .audio-tile-player {
+        width: 100%;
+        height: 32px;
+    }
+    .new-card-box {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(139, 92, 246, 0.5);
+        border-radius: 8px;
+        font-size: 13px;
+    }
+    .new-card-btn {
+        margin-top: 8px;
+        padding: 6px 12px;
+        border: 0;
+        border-radius: 6px;
+        color: #fff;
+        background: #8b5cf6;
+        cursor: pointer;
+    }
+    .new-card-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .new-card-error {
+        margin-top: 6px;
+        color: #ef4444;
+    }
+    .plus-menu-sep {
+        height: 1px;
+        margin: 6px 4px;
+        background: rgba(255, 255, 255, 0.16);
+    }
+    .workspace-layout[data-theme="light"] .plus-menu-sep {
+        background: rgba(17, 24, 39, 0.14);
     }
     .plus-menu button span {
         width: 20px;
