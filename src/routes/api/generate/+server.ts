@@ -387,7 +387,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const isHomeHandoff = webSearchSource === 'home';
         const useWebSearch = webSearchEnabled && (paidPlanActive || isHomeHandoff);
 
-        let activeSystemInstruction = mode === 'card' ? cardSystemInstruction : systemInstruction;
+        let activeSystemInstruction = planMode ? planSystemInstruction : (mode === 'card' ? cardSystemInstruction : systemInstruction);
 
         activeSystemInstruction += `\n\nAUTHOR INFO:\n- The author of this book/card is strictly "${authorName}". You MUST populate the "author: ${authorName}" field in the YAML frontmatter.`;
 
@@ -435,7 +435,7 @@ The user has not enabled a usable author profile. Do NOT include author_bio or a
             .maybeSingle();
         const biographyContext = buildBiographyContext(biographyRow?.markdown_content || '');
 
-        const memoryInstruction = `\n\nLONG-TERM MEMORY (PRIVATE NOTES ABOUT THIS USER):
+        activeSystemInstruction += `\n\nLONG-TERM MEMORY (PRIVATE NOTES ABOUT THIS USER):
 These notes were collected from earlier HyperCardBook chats and PapeRobo calls with this user. Your main job with them is to USE them, so the user feels understood and gets results they are happy with.
 
 How to use the notes:
@@ -454,7 +454,6 @@ MEMORY NOTES:
 """
 ${biographyContext || '(empty - nothing known yet)'}
 """`;
-        activeSystemInstruction += memoryInstruction;
 
         const proPlanActive = isProPlan(userPlan);
         const allowedActivePluginIds = proPlanActive ? activePluginIds : ['hypercard-hook'];
@@ -488,7 +487,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
         }
 
         // Explicit invocation: "/skill-name" in the latest prompt preloads that skill.
-        const invokedSkills = planMode ? [] : [...new Set([...String(prompt).matchAll(/(?<![A-Za-z0-9_.\/:-])\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![A-Za-z0-9_\/-])/g).map(m => m[1])])]
+        const invokedSkills = [...new Set([...String(prompt).matchAll(/(?<![A-Za-z0-9_.\/:-])\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![A-Za-z0-9_\/-])/g).map(m => m[1])])]
             .map(name => skillsByName.get(name))
             .filter((s): s is StoredSkill => Boolean(s));
         if (invokedSkills.length > 0) {
@@ -503,11 +502,6 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
         }
 
         activeSystemInstruction += `\n\nGITHUB INTEGRATION INSTRUCTIONS:\n- You have direct access to the user's GitHub repository via the 'github_push' tool.\n- If the user asks to "push to github", "save to github", or "githubにpushして", you MUST call the 'github_push' tool. Tell the user once it has succeeded and provide the repository file URL returned by the tool.`;
-
-        // Plan mode: drop everything that formats or changes books/cards; keep only the plan-mode prompt and the memory notes.
-        if (planMode) {
-            activeSystemInstruction = planSystemInstruction + memoryInstruction;
-        }
 
         const stream = new ReadableStream({
             async start(controller) {

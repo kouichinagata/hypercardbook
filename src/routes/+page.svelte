@@ -230,7 +230,6 @@
         try {
             if (localStorage.getItem(PLAN_MODE_KEY) === '1') {
                 planMode = true;
-                imageGenEnabled = false;
             }
         } catch {}
         planModeLoaded = true;
@@ -2101,7 +2100,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 <textarea
                     bind:this={textareaEl}
                     bind:value={prompt}
-                    placeholder={planMode ? 'Plan mode: chat or plan here. Turn it off to create or edit.' : 'Please enter the prompt to create the book.'}
+                    placeholder="Please enter the prompt to create the book."
                     rows="4"
                     disabled={!data.currentUserId || isSubmitting}
                     onkeydown={(e) => {
@@ -2167,7 +2166,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                             </button>
                             {#if showCreateMenu}
                                 <div class="create-menu" role="menu">
-                                    <button type="button" role="menuitemcheckbox" aria-checked={imageGenEnabled} class:active={imageGenEnabled} disabled={planMode} title={planMode ? 'Not available in Plan mode' : undefined} onclick={() => { imageGenEnabled = !imageGenEnabled; }}>
+                                    <button type="button" role="menuitemcheckbox" aria-checked={imageGenEnabled} class:active={imageGenEnabled} onclick={() => { imageGenEnabled = !imageGenEnabled; }}>
                                         <span>🏙️</span> Generate image
                                     </button>
                                     <button type="button" role="menuitemcheckbox" aria-checked={webSearchEnabled} class:active={webSearchEnabled} onclick={() => { webSearchEnabled = !webSearchEnabled; }}>
@@ -2176,7 +2175,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     <button type="button" role="menuitem" onclick={() => { showCreateMenu = false; fileInputEl?.click(); }}>
                                         <span>🗄️</span> Add file
                                     </button>
-                                    <button type="button" role="menuitemcheckbox" aria-checked={planMode} class:active={planMode} title={planMode ? 'Plan mode: ON. Books and cards are not changed.' : 'Plan mode: OFF'} onclick={() => { planMode = !planMode; if (planMode) imageGenEnabled = false; }}>
+                                    <button type="button" role="menuitemcheckbox" aria-checked={planMode} class:active={planMode} title={planMode ? 'Plan mode: ON. Books and cards are not changed.' : 'Plan mode: OFF'} onclick={() => { planMode = !planMode; }}>
                                         <span>📝</span> Plan mode
                                     </button>
                                 </div>

@@ -1200,7 +1200,7 @@ ${markdown}
         const historyForApi = $state.snapshot(chatHistory).map(({ role, text }) => ({ role, text }));
         const requestSource = featureSource;
         const planNow = planMode;
-        const canUseImageGeneration = !planNow && imageGenEnabled && (imageAllowed || requestSource === 'home');
+        const canUseImageGeneration = imageGenEnabled && (imageAllowed || requestSource === 'home');
         const canUseWebSearch = webSearchEnabled && (isPaidPlan || requestSource === 'home');
         const imageCount = requestedImageCount(promptText);
         const referenceImages = imageReferenceUrls(visiblePrompt, images);
@@ -1215,7 +1215,7 @@ ${markdown}
         scrollToBottom();
 
         // Backup current book state before AI modifications
-        if (!planNow) markdownHistory = [...markdownHistory, markdown];
+        markdownHistory = [...markdownHistory, markdown];
 
         // Check if imageGenEnabled is active for image generation / modification
         if (canUseImageGeneration) {
@@ -1465,7 +1465,6 @@ ${markdown}
         try {
             if (localStorage.getItem(PLAN_MODE_KEY) === '1') {
                 planMode = true;
-                imageGenEnabled = false;
             }
         } catch {}
         planModeLoaded = true;
@@ -1538,7 +1537,6 @@ ${markdown}
 
                     if (sessionStorage.getItem('workspace_plan_mode') === '1') {
                         planMode = true;
-                        imageGenEnabled = false;
                     }
                     sessionStorage.removeItem('workspace_plan_mode');
                 } catch (err) {
@@ -1549,9 +1547,7 @@ ${markdown}
             if (initPrompt) {
                 await sendPrompt(initPrompt);
             } else if (!data.bookId) {
-                if (planMode) {
-                    // Plan mode では、空の本・Card を作らない（自動保存も起きない）
-                } else if (blankRequested) {
+                if (blankRequested) {
                     // slug が既存の本と重なると自動保存が失敗するので、毎回違う id にする
                     const suffix = Date.now().toString(36);
                     markdown = mode === 'card'
@@ -2152,9 +2148,7 @@ ${markdown}
                                             .replace(/\[MANGA_JOB\][\s\S]*/g, '')
                                             .replace(/\[UPDATED_MARKDOWN\][\s\S]*/gi, '')
                                             .replace(
-                                                planMode
-                                                    ? /(?!)/g
-                                                    : isGenerating && idx === chatHistory.length - 1
+                                                isGenerating && idx === chatHistory.length - 1
                                                     ? /```(?:markdown)?[\s\S]*/gi
                                                     : /```(?:markdown)?[\s\S]*?```/gi,
                                                 mode === 'card' ? '[Card generated/updated]' : '[Book generated/updated]'
@@ -2239,7 +2233,7 @@ ${markdown}
                     <div class="unified-chat-input-box">
                         <textarea
                             bind:value={currentInput}
-                            placeholder={planMode ? 'Plan mode: chat or plan here. Turn it off to create or edit.' : 'Please enter a prompt to correct the book.'}
+                            placeholder="Please enter a prompt to correct the book."
                             disabled={!data.session?.user || isGenerating}
                             onkeydown={handleKeyDown}
                             rows="2"
@@ -2266,8 +2260,8 @@ ${markdown}
                                                 role="menuitemcheckbox"
                                                 aria-checked={imageGenEnabled && imageAllowed}
                                                 class:active={imageGenEnabled && imageAllowed}
-                                                disabled={!imageAllowed || planMode}
-                                                title={planMode ? 'Not available in Plan mode' : !imageAllowed ? 'Available on Standard plan or above, or with your own Gemini API key' : (imageGenEnabled ? `Image Generation: ON (${imageModelLabel(selectedImageModel())})` : 'Image Generation: OFF')}
+                                                disabled={!imageAllowed}
+                                                title={!imageAllowed ? 'Available on Standard plan or above, or with your own Gemini API key' : (imageGenEnabled ? `Image Generation: ON (${imageModelLabel(selectedImageModel())})` : 'Image Generation: OFF')}
                                                 onclick={() => { imageGenEnabled = !imageGenEnabled; }}
                                             >
                                                 <span>🏙️</span> Generate image
@@ -2292,7 +2286,7 @@ ${markdown}
                                                 aria-checked={planMode}
                                                 class:active={planMode}
                                                 title={planMode ? 'Plan mode: ON. Books and cards are not changed.' : 'Plan mode: OFF'}
-                                                onclick={() => { planMode = !planMode; if (planMode) imageGenEnabled = false; }}
+                                                onclick={() => { planMode = !planMode; }}
                                             >
                                                 <span>📝</span> Plan mode
                                             </button>
