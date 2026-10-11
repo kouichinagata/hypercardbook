@@ -16,6 +16,9 @@ import { runSkillScript } from '$lib/server/skill-sandbox';
 import { SKILL_DESCRIPTION_MAX, isValidSkillFilePath, normalizeSkillName, validateSkill } from '$lib/skill-md';
 import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 import { MANGA_JOB_CLOSE, MANGA_JOB_OPEN, MANGA_PAGES_PER_CALL, MANGA_SKILL_NAME, normalizeMangaChunk } from '$lib/manga-job';
+import { PANEL_DETECT_MAX_PAGES, SPRITE_SKILL_NAME, detectPages } from '$lib/server/panel-detect';
+import { loadReferenceInputs, measureStoredBytes, storageLimitForPlan } from '$lib/server/image-gen';
+import { SPEECH_MAX_LINES, generateSpeeches } from '$lib/server/tts';
 
 function applyPageEdit(currentMarkdown: string, pageIndex: number, action: 'update' | 'delete' | 'insert', newContent: string): string {
     const fmMatch = currentMarkdown.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n)([\s\S]*)$/);
@@ -621,6 +624,46 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                             });
                         }
 
+                        if (skillsByName.has(SPRITE_SKILL_NAME)) {
+                            toolDeclarations.push({
+                                name: 'detect_manga_panels',
+                                description: `Look at manga page images and return the panels on each page: position, dialogue text, and a suggested display time. You cannot see images yourself, so use this to get panel coordinates. Only the user's own stored images can be read. At most ${PANEL_DETECT_MAX_PAGES} pages per call; call it again for the rest.`,
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        page_urls: { type: 'ARRAY', items: { type: 'STRING' }, description: `Image URLs of the manga pages, in page order (max ${PANEL_DETECT_MAX_PAGES}).` },
+                                        reading_order: { type: 'STRING', description: '"ltr" (left to right, default) or "rtl" (right to left, traditional Japanese manga).' }
+                                    },
+                                    required: ['page_urls']
+                                }
+                            });
+                        }
+
+                        if (skillsByName.has(SPRITE_SKILL_NAME)) {
+                            toolDeclarations.push({
+                                name: 'generate_speech',
+                                description: `Turn dialogue lines into speech audio files (Gemini TTS) and return each file's URL and length in seconds. Use it for panels that have dialogue. Audio is stored in the user's storage, so reuse the returned URLs. At most ${SPEECH_MAX_LINES} lines per call; call it again for the rest.`,
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        lines: {
+                                            type: 'ARRAY',
+                                            description: `Lines to read aloud, in order (max ${SPEECH_MAX_LINES}).`,
+                                            items: {
+                                                type: 'OBJECT',
+                                                properties: {
+                                                    text: { type: 'STRING', description: 'The dialogue to read. Max 300 characters.' },
+                                                    voice: { type: 'STRING', description: 'Optional Gemini prebuilt voice name, e.g. Kore (default), Puck, Zephyr.' }
+                                                },
+                                                required: ['text']
+                                            }
+                                        }
+                                    },
+                                    required: ['lines']
+                                }
+                            });
+                        }
+
                         if (mode === 'book') {
                             toolDeclarations.push({
                                 name: 'edit_page',
@@ -881,6 +924,40 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                             queued_pages: chunk.job.pages.map(p => p.page),
                                             message: 'Queued. The pages are drawn in the user\'s browser after your reply ends. Do NOT output the book Markdown yourself and do not call image tools; once every page and the book_markdown are queued, reply with one short message telling the user the drawing has started and will take a while.'
                                         };
+                                    }
+                                } else if (fc.name === 'detect_manga_panels') {
+                                    const urls = Array.isArray(fc.args?.page_urls) ? fc.args.page_urls.map((u: unknown) => String(u ?? '').trim()).filter(Boolean) : [];
+                                    if (!skillsByName.has(SPRITE_SKILL_NAME)) {
+                                        resultData = { success: false, error: 'The manga-sprite skill must be enabled.' };
+                                    } else if (!gemini) {
+                                        resultData = { success: false, error: 'A Gemini API key is required to read images.' };
+                                    } else if (urls.length === 0 || urls.length > PANEL_DETECT_MAX_PAGES) {
+                                        resultData = { success: false, error: `page_urls must contain 1 to ${PANEL_DETECT_MAX_PAGES} URLs.` };
+                                    } else {
+                                        controller.enqueue(encoder.encode(`\n🔎 Detecting panels on ${urls.length} page${urls.length === 1 ? '' : 's'}…\n\n`));
+                                        const userId = session.user.id;
+                                        const pages = await detectPages(gemini, GEMINI_TEXT_MODEL, urls, async (url) => {
+                                            const images = await loadReferenceInputs(supabase, userId, [url]);
+                                            return images && images.length === 1 ? { data: images[0].data, mime_type: images[0].mime_type } : null;
+                                        }, fc.args?.reading_order === 'rtl' ? 'rtl' : 'ltr');
+                                        resultData = { success: true, pages };
+                                    }
+                                } else if (fc.name === 'generate_speech') {
+                                    const lines = Array.isArray(fc.args?.lines)
+                                        ? fc.args.lines.map((l: any) => ({ text: String(l?.text ?? ''), voice: typeof l?.voice === 'string' ? l.voice.trim() : undefined }))
+                                        : [];
+                                    if (!skillsByName.has(SPRITE_SKILL_NAME)) {
+                                        resultData = { success: false, error: 'The manga-sprite skill must be enabled.' };
+                                    } else if (!gemini) {
+                                        resultData = { success: false, error: 'A Gemini API key is required to generate speech.' };
+                                    } else if (lines.length === 0 || lines.length > SPEECH_MAX_LINES) {
+                                        resultData = { success: false, error: `lines must contain 1 to ${SPEECH_MAX_LINES} items.` };
+                                    } else {
+                                        controller.enqueue(encoder.encode(`\n🔊 Generating speech for ${lines.length} line${lines.length === 1 ? '' : 's'}…\n\n`));
+                                        const userId = session.user.id;
+                                        const quota = { used: await measureStoredBytes(supabase, userId), limit: storageLimitForPlan(userPlan) };
+                                        const speeches = await generateSpeeches({ supabase, ai: gemini, userId, lines, quota });
+                                        resultData = { success: true, speeches };
                                     }
                                 } else if (fc.name === 'update_biography') {
                                     const section = String(fc.args?.section || '').trim();

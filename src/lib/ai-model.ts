@@ -5,6 +5,9 @@ export const DEFAULT_CLAUDE_LABEL = 'Claude Haiku 5.5';
 export const GEMINI_TEXT_MODEL = 'gemini-3.8-flash';
 export const GEMINI_TEXT_LABEL = 'Gemini 3.8 Flash';
 
+// 音声合成（TTS）。manga-sprite Skill のセリフ読み上げに使う。https://ai.google.dev/gemini-api/docs/speech-generation
+export const GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts';
+
 export const AI_MODEL_STORAGE_KEY = 'user_ai_model';
 // 画像モードで選ぶ画像生成モデル（自分の Gemini キーがあるときだけ有効。localStorage）
 export const IMAGE_MODEL_STORAGE_KEY = 'user_image_model';

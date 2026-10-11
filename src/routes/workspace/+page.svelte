@@ -1241,6 +1241,11 @@ ${markdown}
 
             const decoder = new TextDecoder();
             let accumulatedText = '';
+
+            // 保存済みの本を開いているときは、AI が返した Card で本を置き換えない（Card は Card モードの新規画面で作る）
+            const protectBook = mode === 'book' && !!bookUuid && !markdown.includes('play_mode: card');
+            const replacesBookWithCard = (md: string) => protectBook && md.includes('play_mode: card');
+            let blockedCardReplace = false;
             
             let isFirstChunk = true;
             while (true) {
@@ -1261,9 +1266,13 @@ ${markdown}
                 const mdBlockMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
                 if (mdBlockMatch && mdBlockMatch[1].trim()) {
                     const parsedMarkdown = mdBlockMatch[1].trim();
-                    markdown = parsedMarkdown;
-                    const parsedIsCard = parsedMarkdown.includes('play_mode: card');
-                    mode = parsedIsCard ? 'card' : 'book';
+                    if (replacesBookWithCard(parsedMarkdown)) {
+                        blockedCardReplace = true;
+                    } else {
+                        markdown = parsedMarkdown;
+                        const parsedIsCard = parsedMarkdown.includes('play_mode: card');
+                        mode = parsedIsCard ? 'card' : 'book';
+                    }
                 }
                 
                 scrollToBottom();
@@ -1275,11 +1284,24 @@ ${markdown}
             } else {
                 const finalMdMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
                 if (finalMdMatch) {
-                    markdown = finalMdMatch[1].trim();
+                    const finalMarkdown = finalMdMatch[1].trim();
+                    if (replacesBookWithCard(finalMarkdown)) {
+                        blockedCardReplace = true;
+                    } else {
+                        markdown = finalMarkdown;
+                    }
                 } else if (accumulatedText.includes('---')) {
                     const startIndex = accumulatedText.indexOf('---');
-                    markdown = accumulatedText.substring(startIndex).trim();
+                    const fallbackMarkdown = accumulatedText.substring(startIndex).trim();
+                    if (replacesBookWithCard(fallbackMarkdown)) {
+                        blockedCardReplace = true;
+                    } else {
+                        markdown = fallbackMarkdown;
+                    }
                 }
+            }
+            if (blockedCardReplace) {
+                chatHistory[lastIndex].text = accumulatedText + '\n\n⚠️ This book was not changed. A Card was returned, so create it from a new Card workspace (/workspace?mode=card) instead.';
             }
 
             // まんが: AI が台本を渡したら、ここからブラウザで絵を描く（完了まで入力は止まる）
