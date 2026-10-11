@@ -163,6 +163,17 @@
 
     // + menu and resizable chat panel
     let showPlusMenu = $state(false);
+    // Plan mode: 汎用AIとして相談するだけ。本・Card は作成も更新もしない（解除はユーザーが自分で行う）
+    let planMode = $state(false);
+
+    // Plan mode は再読み込み・別タブでも維持する（ユーザーが自分で解除するまで ON のまま）
+    const PLAN_MODE_KEY = 'hcb_plan_mode';
+    let planModeLoaded = false;
+    $effect(() => {
+        const on = planMode;
+        if (!planModeLoaded) return;
+        try { localStorage.setItem(PLAN_MODE_KEY, on ? '1' : '0'); } catch {}
+    });
     const DEFAULT_CHAT_WIDTH = 400;
     const MIN_CHAT_WIDTH = 240;
     const MIN_PREVIEW_WIDTH = 360;
@@ -1188,7 +1199,8 @@ ${markdown}
 
         const historyForApi = $state.snapshot(chatHistory).map(({ role, text }) => ({ role, text }));
         const requestSource = featureSource;
-        const canUseImageGeneration = imageGenEnabled && (imageAllowed || requestSource === 'home');
+        const planNow = planMode;
+        const canUseImageGeneration = !planNow && imageGenEnabled && (imageAllowed || requestSource === 'home');
         const canUseWebSearch = webSearchEnabled && (isPaidPlan || requestSource === 'home');
         const imageCount = requestedImageCount(promptText);
         const referenceImages = imageReferenceUrls(visiblePrompt, images);
@@ -1203,7 +1215,7 @@ ${markdown}
         scrollToBottom();
 
         // Backup current book state before AI modifications
-        markdownHistory = [...markdownHistory, markdown];
+        if (!planNow) markdownHistory = [...markdownHistory, markdown];
 
         // Check if imageGenEnabled is active for image generation / modification
         if (canUseImageGeneration) {
@@ -1290,7 +1302,8 @@ ${markdown}
                     currentCardIndex: currentCardIndex,
                     activePluginIds: $state.snapshot(activePluginIds),
                     webSearchEnabled: canUseWebSearch,
-                    webSearchSource: requestSource
+                    webSearchSource: requestSource,
+                    planMode: planNow
                 })
             });
 
@@ -1330,7 +1343,7 @@ ${markdown}
                 
                 // Real-time markdown parsing
                 const mdBlockMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
-                if (mdBlockMatch && mdBlockMatch[1].trim()) {
+                if (!planNow && mdBlockMatch && mdBlockMatch[1].trim()) {
                     const parsedMarkdown = mdBlockMatch[1].trim();
                     if (replacesBookWithCard(parsedMarkdown)) {
                         blockedCardReplace = true;
@@ -1345,8 +1358,10 @@ ${markdown}
                 scrollToBottom();
             }
 
-            // Final fallback parsing
-            if (accumulatedText.includes('[UPDATE_PAGES]')) {
+            // Final fallback parsing（Plan mode では、AI の返答を本・Card に一切反映しない）
+            if (planNow) {
+                // do nothing
+            } else if (accumulatedText.includes('[UPDATE_PAGES]')) {
                 markdown = applyPartialUpdate(markdown, accumulatedText);
             } else {
                 const finalMdMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
@@ -1375,7 +1390,7 @@ ${markdown}
             }
 
             // まんが: AI が台本を渡したら、ここからブラウザで絵を描く（完了まで入力は止まる）
-            const mangaJob = extractMangaJob(accumulatedText);
+            const mangaJob = planNow ? null : extractMangaJob(accumulatedText);
             if (mangaJob) {
                 chatHistory[lastIndex].text = accumulatedText.replace(/\[MANGA_JOB\][\s\S]*?\[\/MANGA_JOB\]/g, '').trim();
                 await runMangaJobInChat(mangaJob);
@@ -1448,6 +1463,14 @@ ${markdown}
         document.body.classList.add('scroll-locked');
 
         try {
+            if (localStorage.getItem(PLAN_MODE_KEY) === '1') {
+                planMode = true;
+                imageGenEnabled = false;
+            }
+        } catch {}
+        planModeLoaded = true;
+
+        try {
             const savedWidth = Number(localStorage.getItem('workspace_chat_width'));
             if (savedWidth) chatWidth = clampChatWidth(savedWidth);
         } catch {}
@@ -1512,6 +1535,12 @@ ${markdown}
 
                     blankRequested = sessionStorage.getItem('workspace_blank') === '1';
                     sessionStorage.removeItem('workspace_blank');
+
+                    if (sessionStorage.getItem('workspace_plan_mode') === '1') {
+                        planMode = true;
+                        imageGenEnabled = false;
+                    }
+                    sessionStorage.removeItem('workspace_plan_mode');
                 } catch (err) {
                     console.error('Failed to read prompt from sessionStorage:', err);
                 }
@@ -1520,10 +1549,14 @@ ${markdown}
             if (initPrompt) {
                 await sendPrompt(initPrompt);
             } else if (!data.bookId) {
-                if (blankRequested) {
+                if (planMode) {
+                    // Plan mode では、空の本・Card を作らない（自動保存も起きない）
+                } else if (blankRequested) {
+                    // slug が既存の本と重なると自動保存が失敗するので、毎回違う id にする
+                    const suffix = Date.now().toString(36);
                     markdown = mode === 'card'
-                        ? '---\nid: newcard\ntitle: NewCard\nplay_mode: card\n---\n'
-                        : '---\nid: newbook\ntitle: NewBook\nplay_mode: book\n---\n';
+                        ? `---\nid: newcard-${suffix}\ntitle: NewCard\nplay_mode: card\n---\n`
+                        : `---\nid: newbook-${suffix}\ntitle: NewBook\nplay_mode: book\n---\n`;
                 } else {
                     errorMsg = 'Please enter a prompt first.';
                 }
@@ -2119,7 +2152,9 @@ ${markdown}
                                             .replace(/\[MANGA_JOB\][\s\S]*/g, '')
                                             .replace(/\[UPDATED_MARKDOWN\][\s\S]*/gi, '')
                                             .replace(
-                                                isGenerating && idx === chatHistory.length - 1
+                                                planMode
+                                                    ? /(?!)/g
+                                                    : isGenerating && idx === chatHistory.length - 1
                                                     ? /```(?:markdown)?[\s\S]*/gi
                                                     : /```(?:markdown)?[\s\S]*?```/gi,
                                                 mode === 'card' ? '[Card generated/updated]' : '[Book generated/updated]'
@@ -2204,7 +2239,7 @@ ${markdown}
                     <div class="unified-chat-input-box">
                         <textarea
                             bind:value={currentInput}
-                            placeholder="Please enter a prompt to correct the book."
+                            placeholder={planMode ? 'Plan mode: chat or plan here. Turn it off to create or edit.' : 'Please enter a prompt to correct the book.'}
                             disabled={!data.session?.user || isGenerating}
                             onkeydown={handleKeyDown}
                             rows="2"
@@ -2215,7 +2250,7 @@ ${markdown}
                                     <button
                                         type="button"
                                         class="inner-attach-btn"
-                                        class:active={(webSearchEnabled && isPaidPlan) || (imageGenEnabled && imageAllowed)}
+                                        class:active={(webSearchEnabled && isPaidPlan) || (imageGenEnabled && imageAllowed) || planMode}
                                         onclick={() => { showPlusMenu = !showPlusMenu; }}
                                         disabled={!data.session?.user || isGenerating}
                                         title="Add files, web search, image generation"
@@ -2231,8 +2266,8 @@ ${markdown}
                                                 role="menuitemcheckbox"
                                                 aria-checked={imageGenEnabled && imageAllowed}
                                                 class:active={imageGenEnabled && imageAllowed}
-                                                disabled={!imageAllowed}
-                                                title={!imageAllowed ? 'Available on Standard plan or above, or with your own Gemini API key' : (imageGenEnabled ? `Image Generation: ON (${imageModelLabel(selectedImageModel())})` : 'Image Generation: OFF')}
+                                                disabled={!imageAllowed || planMode}
+                                                title={planMode ? 'Not available in Plan mode' : !imageAllowed ? 'Available on Standard plan or above, or with your own Gemini API key' : (imageGenEnabled ? `Image Generation: ON (${imageModelLabel(selectedImageModel())})` : 'Image Generation: OFF')}
                                                 onclick={() => { imageGenEnabled = !imageGenEnabled; }}
                                             >
                                                 <span>🏙️</span> Generate image
@@ -2250,6 +2285,16 @@ ${markdown}
                                             </button>
                                             <button type="button" role="menuitem" onclick={() => { showPlusMenu = false; fileInputEl?.click(); }}>
                                                 <span>🗄️</span> Add file
+                                            </button>
+                                            <button
+                                                type="button"
+                                                role="menuitemcheckbox"
+                                                aria-checked={planMode}
+                                                class:active={planMode}
+                                                title={planMode ? 'Plan mode: ON. Books and cards are not changed.' : 'Plan mode: OFF'}
+                                                onclick={() => { planMode = !planMode; if (planMode) imageGenEnabled = false; }}
+                                            >
+                                                <span>📝</span> Plan mode
                                             </button>
                                             <div class="plus-menu-sep" role="separator"></div>
                                             <button type="button" role="menuitem" onclick={newChat}>

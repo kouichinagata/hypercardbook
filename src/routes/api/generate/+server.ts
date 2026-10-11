@@ -160,6 +160,21 @@ CRITICAL RULES:
      - Distribute the image pages naturally through the Book.
 `;
 
+// Plan mode: a general-purpose assistant that never creates or edits books/cards.
+const PLAN_MODE_TOOLS = new Set(['update_biography']);
+const planSystemInstruction = `
+You are the AI assistant of HyperCardBook, running in "Plan mode". In Plan mode you behave as a general-purpose assistant.
+
+PLAN MODE RULES (these override every other instruction):
+1. You may talk about anything: casual chat, work consultations, brainstorming, research, and of course planning books or cards.
+2. You MUST NEVER create, edit, rewrite, or delete a book or card in Plan mode. Do not output a \`\`\`markdown code block, [UPDATE_PAGES] tags, [MANGA_JOB] tags, a full book/card body, or YAML frontmatter meant to be applied. You have no tools that edit books or cards.
+3. If the user asks you to create or edit a book/card now, explain that Plan mode never changes books or cards, and ask them to turn Plan mode off themselves (＋ menu → Plan mode) and then send the request.
+4. When asked to plan, write the plan in plain text: purpose, target readers, structure (page by page or card by card), key points, style, and image ideas. Short sample wording is fine, but never as a ready-to-apply book/card. Ask clarifying questions when it helps, and refine the plan with the user.
+5. When the user approves the plan, remind them to turn Plan mode off and ask for the creation (for example "この Plan で作成して"). The plan stays in this conversation and will be used then.
+6. The user's current book/card Markdown, if provided, is a READ-ONLY reference for discussion. Never reproduce it as an edit.
+7. Reply in the user's language. Be concise and conversational.
+`;
+
 const cardSystemInstruction = `
 You are HyperCard Creator, an AI assistant specialized in creating beautiful single-card Markdown documents.
 Your goal is to output a single, complete Markdown card document based on the user's prompt or modifications.
@@ -321,7 +336,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             currentCardIndex = -1,
             activePluginIds = [],
             webSearchEnabled = false,
-            webSearchSource = 'workspace'
+            webSearchSource = 'workspace',
+            planMode = false
         } = await request.json();
         const session = locals.session;
         const supabase = locals.supabase;
@@ -419,7 +435,7 @@ The user has not enabled a usable author profile. Do NOT include author_bio or a
             .maybeSingle();
         const biographyContext = buildBiographyContext(biographyRow?.markdown_content || '');
 
-        activeSystemInstruction += `\n\nLONG-TERM MEMORY (PRIVATE NOTES ABOUT THIS USER):
+        const memoryInstruction = `\n\nLONG-TERM MEMORY (PRIVATE NOTES ABOUT THIS USER):
 These notes were collected from earlier HyperCardBook chats and PapeRobo calls with this user. Your main job with them is to USE them, so the user feels understood and gets results they are happy with.
 
 How to use the notes:
@@ -438,6 +454,7 @@ MEMORY NOTES:
 """
 ${biographyContext || '(empty - nothing known yet)'}
 """`;
+        activeSystemInstruction += memoryInstruction;
 
         const proPlanActive = isProPlan(userPlan);
         const allowedActivePluginIds = proPlanActive ? activePluginIds : ['hypercard-hook'];
@@ -471,7 +488,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
         }
 
         // Explicit invocation: "/skill-name" in the latest prompt preloads that skill.
-        const invokedSkills = [...new Set([...String(prompt).matchAll(/(?<![A-Za-z0-9_.\/:-])\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![A-Za-z0-9_\/-])/g).map(m => m[1])])]
+        const invokedSkills = planMode ? [] : [...new Set([...String(prompt).matchAll(/(?<![A-Za-z0-9_.\/:-])\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![A-Za-z0-9_\/-])/g).map(m => m[1])])]
             .map(name => skillsByName.get(name))
             .filter((s): s is StoredSkill => Boolean(s));
         if (invokedSkills.length > 0) {
@@ -486,6 +503,11 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
         }
 
         activeSystemInstruction += `\n\nGITHUB INTEGRATION INSTRUCTIONS:\n- You have direct access to the user's GitHub repository via the 'github_push' tool.\n- If the user asks to "push to github", "save to github", or "githubにpushして", you MUST call the 'github_push' tool. Tell the user once it has succeeded and provide the repository file URL returned by the tool.`;
+
+        // Plan mode: drop everything that formats or changes books/cards; keep only the plan-mode prompt and the memory notes.
+        if (planMode) {
+            activeSystemInstruction = planSystemInstruction + memoryInstruction;
+        }
 
         const stream = new ReadableStream({
             async start(controller) {
@@ -745,6 +767,11 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         // - Turn 0 with useWebSearch=true  → googleSearch only (gather web info into context)
                         // - Turn 1+ with useWebSearch=true → functionDeclarations (edit_page etc. using gathered info)
                         // - useWebSearch=false (all turns)  → functionDeclarations as usual
+                        if (planMode) {
+                            for (let i = toolDeclarations.length - 1; i >= 0; i--) {
+                                if (!PLAN_MODE_TOOLS.has(toolDeclarations[i].name)) toolDeclarations.splice(i, 1);
+                            }
+                        }
                         const isWebSearchPhase = useWebSearch && turn === 0;
                         let tools: any[] | undefined;
                         if (isWebSearchPhase) {
@@ -844,7 +871,9 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
 
                                 let resultData = null;
 
-                                if (fc.name === 'edit_page') {
+                                if (planMode && !PLAN_MODE_TOOLS.has(fc.name)) {
+                                    resultData = { success: false, error: 'Plan mode is on. Books and cards are never changed in Plan mode.' };
+                                } else if (fc.name === 'edit_page') {
                                     const pageIdx = Number(fc.args?.page_index);
                                     const act = String(fc.args?.action) as 'update' | 'delete' | 'insert';
                                     const newCont = String(fc.args?.new_content);

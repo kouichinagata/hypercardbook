@@ -42,6 +42,17 @@
     // Web Search toggle
     let webSearchEnabled = $state(false);
     let imageGenEnabled = $state(false);
+    // Plan mode: 汎用AIとして相談するだけ。本・Card は作成も更新もしない
+    let planMode = $state(false);
+
+    // Plan mode は再読み込み・別タブでも維持する（ユーザーが自分で解除するまで ON のまま）
+    const PLAN_MODE_KEY = 'hcb_plan_mode';
+    let planModeLoaded = false;
+    $effect(() => {
+        const on = planMode;
+        if (!planModeLoaded) return;
+        try { localStorage.setItem(PLAN_MODE_KEY, on ? '1' : '0'); } catch {}
+    });
     let showCreateMenu = $state(false);
     let isPaidPlan = $derived(
         ['standard', 'pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user))
@@ -216,6 +227,13 @@
     const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
     onMount(() => {
+        try {
+            if (localStorage.getItem(PLAN_MODE_KEY) === '1') {
+                planMode = true;
+                imageGenEnabled = false;
+            }
+        } catch {}
+        planModeLoaded = true;
         if (publicBooksList.length === 0 && data.publicBooks?.length) {
             publicBooksList = [...data.publicBooks];
         }
@@ -450,9 +468,12 @@
         try {
             if (blank) {
                 sessionStorage.setItem('workspace_blank', '1');
+                // 「New」から開いたときは、自動で Plan mode にする
+                sessionStorage.setItem('workspace_plan_mode', '1');
             } else {
                 sessionStorage.setItem('workspace_init_prompt', finalPrompt);
             }
+            if (planMode) sessionStorage.setItem('workspace_plan_mode', '1');
             sessionStorage.setItem('workspace_web_search', String(webSearchEnabled));
             sessionStorage.setItem('workspace_image_gen', String(imageGenEnabled));
             sessionStorage.setItem('workspace_feature_source', 'home');
@@ -2080,7 +2101,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 <textarea
                     bind:this={textareaEl}
                     bind:value={prompt}
-                    placeholder="Please enter the prompt to create the book."
+                    placeholder={planMode ? 'Plan mode: chat or plan here. Turn it off to create or edit.' : 'Please enter the prompt to create the book.'}
                     rows="4"
                     disabled={!data.currentUserId || isSubmitting}
                     onkeydown={(e) => {
@@ -2135,7 +2156,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                             <button
                                 type="button"
                                 class="attach-trigger-btn"
-                                class:active={webSearchEnabled || imageGenEnabled}
+                                class:active={webSearchEnabled || imageGenEnabled || planMode}
                                 onclick={() => { showCreateMenu = !showCreateMenu; }}
                                 disabled={!data.currentUserId || isSubmitting}
                                 title="Creation options"
@@ -2146,7 +2167,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                             </button>
                             {#if showCreateMenu}
                                 <div class="create-menu" role="menu">
-                                    <button type="button" role="menuitemcheckbox" aria-checked={imageGenEnabled} class:active={imageGenEnabled} onclick={() => { imageGenEnabled = !imageGenEnabled; }}>
+                                    <button type="button" role="menuitemcheckbox" aria-checked={imageGenEnabled} class:active={imageGenEnabled} disabled={planMode} title={planMode ? 'Not available in Plan mode' : undefined} onclick={() => { imageGenEnabled = !imageGenEnabled; }}>
                                         <span>🏙️</span> Generate image
                                     </button>
                                     <button type="button" role="menuitemcheckbox" aria-checked={webSearchEnabled} class:active={webSearchEnabled} onclick={() => { webSearchEnabled = !webSearchEnabled; }}>
@@ -2154,6 +2175,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     </button>
                                     <button type="button" role="menuitem" onclick={() => { showCreateMenu = false; fileInputEl?.click(); }}>
                                         <span>🗄️</span> Add file
+                                    </button>
+                                    <button type="button" role="menuitemcheckbox" aria-checked={planMode} class:active={planMode} title={planMode ? 'Plan mode: ON. Books and cards are not changed.' : 'Plan mode: OFF'} onclick={() => { planMode = !planMode; if (planMode) imageGenEnabled = false; }}>
+                                        <span>📝</span> Plan mode
                                     </button>
                                 </div>
                             {/if}
@@ -2184,7 +2208,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             <!-- Plan Mode Display with 📱 PapeRobo button on the right end -->
             <div class="prompt-plan-mode" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; margin-bottom: 0;">
                 <span>
-                    Plan mode: {currentPlan === 'enterprise' ? 'Enterprise' : currentPlan === 'pro' ? 'Pro' : currentPlan === 'standard' ? 'Standard' : 'Free'}
+                    Plan: {currentPlan === 'enterprise' ? 'Enterprise' : currentPlan === 'pro' ? 'Pro' : currentPlan === 'standard' ? 'Standard' : 'Free'}
                 </span>
                 <button
                     type="button"
