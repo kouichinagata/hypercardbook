@@ -581,6 +581,19 @@
     let publicBooksAbortController: AbortController | undefined;
     let publicSearchTimerId: number | undefined;
 
+    // Collapsible shelves (golden plates). Default: only Sample Books is closed.
+    let collapsedShelves = $state<Record<string, boolean>>({ sample: true });
+    function isShelfCollapsed(key: string) {
+        // Everything must stay selectable while composing a Stack / HyperRobo
+        if (isStackSelectionMode || isHyperRoboSelectionMode) return false;
+        return !!collapsedShelves[key];
+    }
+    function toggleShelf(key: string) {
+        collapsedShelves[key] = !collapsedShelves[key];
+    }
+
+    const PUBLIC_CHUNK_SIZE = 100;
+
     let myBooksList = $derived(data.books.filter((b: any) => !b.isSample && !b.isQuarkChoice));
     // Items already inside a stack live in that stack's hierarchy, not on the top shelf
     let topBooksList = $derived(
@@ -610,6 +623,13 @@
     ];
 
     let filteredPublicBooksList = $derived(publicBooksList);
+    let publicChunks = $derived.by(() => {
+        const chunks: any[][] = [];
+        for (let i = 0; i < filteredPublicBooksList.length; i += PUBLIC_CHUNK_SIZE) {
+            chunks.push(filteredPublicBooksList.slice(i, i + PUBLIC_CHUNK_SIZE));
+        }
+        return chunks;
+    });
 
     async function handleLoadPublicBooks() {
         showPublicSection = true;
@@ -2065,6 +2085,18 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     }
 </script>
 
+{#snippet shelfPlate(key: string, label: string)}
+    <button
+        type="button"
+        class="golden-plate shelf-toggle"
+        aria-expanded={!isShelfCollapsed(key)}
+        onclick={() => toggleShelf(key)}
+    >
+        <span>{label}</span>
+        <span class="plate-mark">{isShelfCollapsed(key) ? '▶' : '▼'}</span>
+    </button>
+{/snippet}
+
 <div class="landing-container" data-theme={uiTheme}>
     <!-- Brand Logo and slogan at top left -->
     <div class="header-logo-container">
@@ -2305,10 +2337,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             <!-- Always render Quark's Choice if available -->
             {#if quarksChoiceList && quarksChoiceList.length > 0}
                 <div class="public-books-separator">
-                    <div class="golden-plate no-pointer">Quark's Choice</div>
+                    {@render shelfPlate('quark', "Quark's Choice")}
                 </div>
                 <Bookshelf
-                    books={quarksChoiceList}
+                    books={isShelfCollapsed('quark') ? [] : quarksChoiceList}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     isPublicShelf={true}
@@ -2335,10 +2367,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             <!-- Render My Books if user has any books -->
             {#if topBooksList && topBooksList.length > 0}
                 <div class="public-books-separator">
-                    <div class="golden-plate no-pointer">My Books</div>
+                    {@render shelfPlate('mine', "My Books")}
                 </div>
                 <Bookshelf
-                    books={topBooksList}
+                    books={isShelfCollapsed('mine') ? [] : topBooksList}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -2365,10 +2397,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             <!-- Always render Sample Books (preceded by Sample Books golden plate) -->
             {#if sampleBooksList && sampleBooksList.length > 0}
                 <div class="public-books-separator">
-                    <div class="golden-plate no-pointer">Sample Books</div>
+                    {@render shelfPlate('sample', "Sample Books")}
                 </div>
                 <Bookshelf
-                    books={sampleBooksList}
+                    books={isShelfCollapsed('sample') ? [] : sampleBooksList}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
@@ -2397,45 +2429,52 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
             <!-- Render Public Books if showPublicSection is true -->
             {#if showPublicSection}
-                <div class="public-books-separator">
-                    <div class="golden-plate no-pointer">Public Books</div>
-                </div>
-
                 {#if isLoadingMorePublic && publicBooksList.length === 0}
+                    <div class="public-books-separator">
+                        {@render shelfPlate('public-0', 'Public Books')}
+                    </div>
                     <div class="empty-shelf">
                         <p>Loading Public Books...</p>
                     </div>
                 {:else if filteredPublicBooksList.length === 0}
+                    <div class="public-books-separator">
+                        {@render shelfPlate('public-0', 'Public Books')}
+                    </div>
                     <div class="empty-shelf">
                         <p>No public books match the current filters.</p>
                     </div>
                 {:else}
-                    <Bookshelf
-                        books={filteredPublicBooksList}
-                        currentUserId={data.currentUserId ?? 'global'}
-                        showActions={true}
-                        isPublicShelf={true}
-                        bind:selectedBookId={selectedBookId}
-                        onPromptSelect={handlePromptSelect}
-                        onEditBook={handleEditBook}
-                        onDeleteBook={handleDeleteBook}
-                        onDownloadBook={handleDownloadBook}
-                        fromPage="home"
-                        showStackBtn={false}
-                        isStackSelection={isStackSelectionMode}
-                        selectedStackBookIds={selectedStackBookIds}
-                        isHyperRoboSelection={isHyperRoboSelectionMode}
-                        selectedHyperRoboBookIds={selectedHyperRoboBookIds}
-                        onToggleSelection={handleToggleSelectionWrapper}
-                        onStackClick={handleStackClick}
-                        onDuplicateStack={handleDuplicateStack}
-                        onToggleStackSelectionMode={toggleStackSelectionMode}
-                        onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
-                        onHyperRoboClick={openHyperRoboView}
-                        showMoreBtn={true}
-                        moreDisabled={!hasMorePublic || isLoadingMorePublic}
-                        onMoreClick={handleLoadPublicBooks}
-                    />
+                    {#each publicChunks as chunk, ci (ci)}
+                        <div class="public-books-separator">
+                            {@render shelfPlate(`public-${ci}`, ci === 0 ? 'Public Books' : `Public Books ${ci + 1}`)}
+                        </div>
+                        <Bookshelf
+                            books={isShelfCollapsed(`public-${ci}`) ? [] : chunk}
+                            currentUserId={data.currentUserId ?? 'global'}
+                            showActions={true}
+                            isPublicShelf={true}
+                            bind:selectedBookId={selectedBookId}
+                            onPromptSelect={handlePromptSelect}
+                            onEditBook={handleEditBook}
+                            onDeleteBook={handleDeleteBook}
+                            onDownloadBook={handleDownloadBook}
+                            fromPage="home"
+                            showStackBtn={false}
+                            isStackSelection={isStackSelectionMode}
+                            selectedStackBookIds={selectedStackBookIds}
+                            isHyperRoboSelection={isHyperRoboSelectionMode}
+                            selectedHyperRoboBookIds={selectedHyperRoboBookIds}
+                            onToggleSelection={handleToggleSelectionWrapper}
+                            onStackClick={handleStackClick}
+                            onDuplicateStack={handleDuplicateStack}
+                            onToggleStackSelectionMode={toggleStackSelectionMode}
+                            onToggleHyperRoboSelectionMode={toggleHyperRoboSelectionMode}
+                            onHyperRoboClick={openHyperRoboView}
+                            showMoreBtn={ci === publicChunks.length - 1}
+                            moreDisabled={!hasMorePublic || isLoadingMorePublic}
+                            onMoreClick={handleLoadPublicBooks}
+                        />
+                    {/each}
                 {/if}
             {/if}
 
@@ -5428,6 +5467,18 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
     .golden-plate.no-pointer {
         cursor: default;
+    }
+
+    .golden-plate.shelf-toggle {
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .golden-plate.shelf-toggle .plate-mark {
+        font-size: 12px;
+        letter-spacing: 0;
     }
 
     /* Plugin/Skills tab stylings */
