@@ -6,6 +6,7 @@
     import Bookshelf from '$lib/components/Bookshelf.svelte';
     import AiModelPicker from '$lib/components/AiModelPicker.svelte';
     import { AI_KEYS_CHANGED_EVENT, aiRequestHeaders } from '$lib/ai-model';
+    import { DEFAULT_ACTIVE_PLUGIN_IDS } from '$lib/plugins';
     import PublicSearchMenu from '$lib/components/PublicSearchMenu.svelte';
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
@@ -261,7 +262,7 @@
         // Check onboarding trigger (new logins with empty profile data)
         if (data.session?.user) {
             const metadata = data.session.user.user_metadata || {};
-            activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
+            activePluginIds = metadata.active_plugin_ids || DEFAULT_ACTIVE_PLUGIN_IDS;
             
             if (!metadata.nickname || !metadata.language) {
                 onboardingNickname = metadata.nickname || metadata.full_name || metadata.name || data.session.user.email?.split('@')[0] || '';
@@ -498,7 +499,12 @@
     }
 
     // Stack states
-    let activeStack = $state<any | null>(null);
+    // Hierarchical Stack navigation: ids of the stacks opened from the home shelf (root -> current)
+    let stackPathIds = $state<string[]>([]);
+    let activeStack = $derived.by(() => {
+        const id = stackPathIds[stackPathIds.length - 1];
+        return id ? (data.books.find((b: any) => b.id === id) ?? null) : null;
+    });
     let isStackSelectionMode = $state(false);
     let showStackModal = $state(false);
     let stackTitle = $state('HyperStack001');
@@ -576,6 +582,12 @@
     let publicSearchTimerId: number | undefined;
 
     let myBooksList = $derived(data.books.filter((b: any) => !b.isSample && !b.isQuarkChoice));
+    // Items already inside a stack live in that stack's hierarchy, not on the top shelf
+    let topBooksList = $derived(
+        isStackSelectionMode || isHyperRoboSelectionMode
+            ? myBooksList
+            : myBooksList.filter((b: any) => !stackedItemIds.has(b.id) && !stackedItemIds.has(b.slug))
+    );
     let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample));
     let quarksChoiceList = $derived(data.books.filter((b: any) => b.isQuarkChoice));
 
@@ -1100,17 +1112,44 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         showStackUnpublishModal = false;
     }
 
-    function handleStackClick(book: any) {
+    function openStackPreview(book: any) {
         const subItems = parseStackMarkdown(book.markdownContent || '');
         const itemIds = subItems.map(item => item.id);
         window.open(`/hyperbookshelf?books=${itemIds.join(',')}&title=${encodeURIComponent(book.title)}`, '_blank');
     }
+
+    // Own stacks open in-page (with the prompt/edit/delete/download icons); others keep the preview
+    function handleStackClick(book: any) {
+        if (myBooksList.some((b: any) => b.id === book.id)) {
+            stackPathIds = [...stackPathIds, book.id];
+            selectedBookId = '';
+        } else {
+            openStackPreview(book);
+        }
+    }
+
+    function leaveStack() {
+        stackPathIds = stackPathIds.slice(0, -1);
+        selectedBookId = '';
+    }
+
+    // IDs of every item contained in any of the user's own stacks (hidden from the top shelf)
+    let stackedItemIds = $derived.by(() => {
+        const ids = new Set<string>();
+        for (const b of data.books) {
+            if (b.isSample || b.isQuarkChoice || !b.isStack) continue;
+            for (const ref of parseStackMarkdown(b.markdownContent || '')) ids.add(ref.id);
+        }
+        return ids;
+    });
 
     // Derived books to display on the shelf
     let displayedBooks = $derived.by(() => {
         if (!activeStack) {
             return data.books;
         }
+        // While editing a stack, every own item must be selectable
+        if (isStackSelectionMode) return myBooksList;
 
         const subItemRefs = parseStackMarkdown(activeStack.markdownContent || '');
         const matchedBooks: any[] = [];
@@ -1560,7 +1599,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         githubOwner = metadata.github_owner || '';
         githubRepo = metadata.github_repo || '';
         
-        activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
+        activePluginIds = metadata.active_plugin_ids || DEFAULT_ACTIVE_PLUGIN_IDS;
         resetSkillForm();
         
         settingsActiveTab = 'profile';
@@ -2059,6 +2098,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         <button class="theme-switch" onclick={toggleTheme}>
             {uiTheme === 'dark' ? '☀️' : '🌙'}
         </button>
+        {#if activeStack}
+            <button class="theme-switch" onclick={() => openStackPreview(activeStack)} title="Preview (no menu)">🔍</button>
+        {/if}
         {#if data.session?.user}
             <div 
                 class="user-profile clickable-profile" 
@@ -2226,6 +2268,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     <!-- 3D wooden bookshelf displayed directly on the landing page -->
     <div class="bookshelf-section">
         {#if activeStack}
+            <div class="public-books-separator">
+                <button type="button" class="theme-switch" onclick={leaveStack}>‹ Back</button>
+                <div class="golden-plate no-pointer">{activeStack.title}</div>
+            </div>
             {#if !displayedBooks || displayedBooks.length === 0}
                 <div class="empty-shelf">
                     <p>There are no books or cards in this stack.</p>
@@ -2287,12 +2333,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             {/if}
 
             <!-- Render My Books if user has any books -->
-            {#if myBooksList && myBooksList.length > 0}
+            {#if topBooksList && topBooksList.length > 0}
                 <div class="public-books-separator">
                     <div class="golden-plate no-pointer">My Books</div>
                 </div>
                 <Bookshelf
-                    books={myBooksList}
+                    books={topBooksList}
                     currentUserId={data.currentUserId ?? 'global'}
                     showActions={true}
                     bind:selectedBookId={selectedBookId}
