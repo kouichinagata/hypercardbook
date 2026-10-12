@@ -8,7 +8,7 @@ const systemInstruction = `You are a meta-prompt engineer who writes Agent Skill
 A Skill is a SKILL.md file. The agent first sees only each skill's name and description, and loads the full instructions only when a request matches the description.
 
 Output a JSON object with exactly these fields:
-- "name": lowercase letters, numbers, and hyphens only (max 64 characters), e.g. "horror-effects".
+- "name": lowercase letters, numbers, and hyphens only (max 64 characters), e.g. "manga-book".
 - "description": In the user's language, state WHAT the skill does AND WHEN to use it
   (e.g. "…を行う。…したいとき、…と頼まれたときに使う。"). Max 1024 characters.
   This text is the only thing the agent sees before deciding to load the skill, so make the trigger conditions concrete.

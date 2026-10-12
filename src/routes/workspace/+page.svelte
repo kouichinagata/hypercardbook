@@ -5,6 +5,7 @@
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
     import AiModelPicker from '$lib/components/AiModelPicker.svelte';
+    import { DEFAULT_ACTIVE_PLUGIN_IDS } from '$lib/plugins';
     import { AI_KEYS_CHANGED_EVENT, aiRequestHeaders, hasUserGeminiKey, imageModelLabel, selectedImageModel } from '$lib/ai-model';
     import { assembleMangaBook, extractMangaJob, requestImage, runMangaJob, runPool, type MangaJob } from '$lib/manga-job';
     import { marked } from 'marked';
@@ -1589,7 +1590,7 @@ ${markdown}
         }
 
         const metadata = data.session?.user?.user_metadata || {};
-        activePluginIds = metadata.active_plugin_ids || ['hypercard-hook'];
+        activePluginIds = metadata.active_plugin_ids || DEFAULT_ACTIVE_PLUGIN_IDS;
 
         const urlMode = page.url.searchParams.get('mode');
         if (urlMode === 'card') {

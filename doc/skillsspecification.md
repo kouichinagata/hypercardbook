@@ -55,6 +55,7 @@ HyperCardBook の Skills は、上記の Agent Skills（SKILL.md）形式に準�
 ### 2.2 保存先
 * **ユーザー Skill**: Supabase の `skills`（name, description, body, enabled）と `skill_files`（path, content）。RLS により本人のみ読み書きできます（`supabase_migration_skills.sql`）。
 * **組み込み Skill**: リポジトリの `src/lib/server/builtin-skills/<name>/SKILL.md`。ビルドに同梱され、設定画面で有効化したもの（`user_metadata.active_plugin_ids` に name を含むもの）だけが使われます。同名のユーザー Skill がある場合はユーザー Skill が優先されます。
+  * 同梱は `bookmark-postit`、`manga-book`、`manga-sprite`。`active_plugin_ids` が未設定のユーザーの既定値は `src/lib/plugins.ts` の `DEFAULT_ACTIVE_PLUGIN_IDS`（`hypercard-hook`、`manga-book`、`manga-sprite`）。`bookmark-postit` は既定では無効です。
 * `skill_files.path` の DB 制約は `supabase_migration_skills.sql` と `supabase_migration_skill_scripts.sql`（`scripts/*.py|*.js` を追加許可）で定義します。
 * API: `/api/skills`（GET 一覧 / GET `?name=` 1件と添付ファイル / POST 作成・更新・有効切替 / DELETE）。サーバー側の処理は `src/lib/server/skills.ts`。
 * 旧方式（`data/skills/` と `user_metadata.user_plugins`）からの移行は `npm run skills:migrate`（`--dry-run` 対応）で行います。

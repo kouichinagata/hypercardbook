@@ -2,12 +2,13 @@
     import { onMount } from 'svelte';
     import Book from '$lib/components/Book.svelte';
     import { effectivePlanFromUser } from '$lib/plan';
+    import { DEFAULT_ACTIVE_PLUGIN_IDS } from '$lib/plugins';
     import Card from '$lib/components/Card.svelte';
 
     let { data } = $props();
 
     let isCard = $derived(data.markdown.includes('play_mode: card') || (!data.markdown.includes('play_mode: book') && !/Page\s*\d+:/i.test(data.markdown) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(data.markdown)));
-    let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || ['hypercard-hook']);
+    let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || DEFAULT_ACTIVE_PLUGIN_IDS);
     let isProPlan = $derived(['pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user)));
     
     let currentLanguage = $state('ja');

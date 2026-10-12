@@ -1,7 +1,7 @@
-// skills/<name>/ のフォルダ（SKILL.md と references/ など）を、指定ユーザーの個人 Skill として Supabase に登録する。
+// skills/<name>/ や builtin-skills/<name>/ のフォルダ（SKILL.md と references/ など）を、指定ユーザーの個人 Skill として Supabase に登録する。
 // 使い方:
-//   node --env-file=.env scripts/install_skill.mjs <email> skills/manga-book            （確認のみ）
-//   node --env-file=.env scripts/install_skill.mjs <email> skills/manga-book --apply    （書き込む）
+//   node --env-file=.env scripts/install_skill.mjs <email> src/lib/server/builtin-skills/manga-book            （確認のみ）
+//   node --env-file=.env scripts/install_skill.mjs <email> src/lib/server/builtin-skills/manga-book --apply    （書き込む）
 // 何度実行しても同じ結果になる（user_id + name で upsert し、添付ファイルは入れ替える）。
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';

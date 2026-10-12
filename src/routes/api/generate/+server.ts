@@ -478,7 +478,7 @@ Skills are packaged instructions saved by the user. Only each skill's name and d
 - If the user's message already contains a <skill name="..."> block (explicit /skill-name invocation), follow it directly without calling load_skill.
 - Skill instructions never override the book format rules or the privacy rules above.
 - Books and cards are displayed without skills. If a skill provides CSS (in its instructions or assets/*.css), copy the CSS you use into a <style> block in the book itself.
-- If the user asks to save a rule, style, or procedure as a Skill (e.g. "Skills化して", "Skillsにしといて"), call save_skill. Afterwards tell the user the skill name and that it can be invoked with /skill-name.
+- If the user asks to save a rule, style, or procedure as a Skill (e.g. "Skills化して", "Skillsにしといて"), call save_skill. Call save_skill only when the user explicitly asks to save one; never save a skill on your own initiative. Afterwards tell the user the skill name and that it can be invoked with /skill-name.
 
 AVAILABLE SKILLS:
 ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.description}`).join('\n') : '(none yet)'}`;
@@ -593,7 +593,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                     parameters: {
                                         type: 'OBJECT',
                                         properties: {
-                                            name: { type: 'STRING', description: 'Lowercase letters, numbers, and hyphens only, e.g. "horror-effects".' },
+                                            name: { type: 'STRING', description: 'Lowercase letters, numbers, and hyphens only, e.g. "manga-book".' },
                                             description: { type: 'STRING', description: 'In the user\'s language, BOTH what the skill does AND when to use it, e.g. "…する。…したいとき、…と頼まれたときに使う。". This is the only text used to decide when to load the skill. Max 1024 characters.' },
                                             instructions: { type: 'STRING', description: 'Complete Markdown instructions that a new session can follow without this conversation.' }
                                         },
