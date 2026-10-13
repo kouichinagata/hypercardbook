@@ -21,6 +21,7 @@ import { loadReferenceInputs, measureStoredBytes, storageLimitForPlan } from '$l
 import { SPEECH_MAX_LINES, generateSpeeches } from '$lib/server/tts';
 import { applyEdits, applyPageEdit, lineDiff } from '$lib/markdown-edit';
 import { applyMarkdownEditCommand } from '$lib/server/card-edit';
+import { formatCount, statusFrame } from '$lib/status-marker';
 
 // edit_card / edit_book が失敗したとき、AI が edits を作り直してよい回数
 const MAX_EDIT_RETRIES = 3;
@@ -504,6 +505,10 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                     let markdownEdited = false;
                     let savedEditMarkdown: string | null = null;
 
+                    // Live progress line shown in the chat while the AI works (removed by the browser, never saved)
+                    const emitStatus = (text: string) => controller.enqueue(encoder.encode(statusFrame(text)));
+                    let lastToolProgressAt = 0;
+
                     for (const skill of invokedSkills) {
                         controller.enqueue(encoder.encode(`📚 Using skill: **${skill.name}**\n\n`));
                     }
@@ -829,6 +834,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                     const calls = candidate.content?.parts?.filter((p: any) => p.functionCall);
                                     if (calls && calls.length > 0) {
                                         functionCalls.push(...calls);
+                                        emitStatus(`Writing ${calls[0].functionCall?.name ?? 'tool call'}…`);
                                     }
                                 }
 
@@ -838,6 +844,8 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         };
 
                         const textLengthBeforeTurn = responseText.length;
+                        const turnModel = activeProvider === 'anthropic' && !isWebSearchPhase ? textAi.model : GEMINI_TEXT_MODEL;
+                        emitStatus(turn === 0 ? `Asking ${turnModel}…` : `Continuing with ${turnModel} (step ${turn + 1})…`);
                         if (activeProvider === 'anthropic' && !isWebSearchPhase) {
                             try {
                                 const claudeTurn = await streamClaudeTurn({
@@ -850,7 +858,17 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                         description: d.description,
                                         input_schema: toJsonSchema(d.parameters) ?? { type: 'object', properties: {} }
                                     })),
-                                    onText: emitText
+                                    onText: emitText,
+                                    onToolStart: (name) => {
+                                        lastToolProgressAt = Date.now();
+                                        emitStatus(`Writing ${name}…`);
+                                    },
+                                    onToolProgress: (name, chars) => {
+                                        const now = Date.now();
+                                        if (now - lastToolProgressAt < 1500) return;
+                                        lastToolProgressAt = now;
+                                        emitStatus(`Writing ${name}… ${formatCount(chars)} chars`);
+                                    }
                                 });
                                 claudeContent = claudeTurn.content;
                                 functionCalls = claudeTurn.calls.map(c => ({ functionCall: { id: c.id, name: c.name, args: c.args } }));
@@ -883,6 +901,10 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                             for (const call of functionCalls) {
                                 const fc = call.functionCall;
                                 if (!fc) continue;
+
+                                const isEditTool = fc.name === 'edit_card' || fc.name === 'edit_book' || fc.name === 'edit_page';
+                                const pageHint = fc.args?.page_index !== undefined && fc.args?.page_index !== null ? ` (page ${fc.args.page_index})` : '';
+                                emitStatus(`${isEditTool ? 'Applying' : 'Running'} ${fc.name}${pageHint}…`);
 
                                 let resultData = null;
 

@@ -183,6 +183,10 @@ export async function streamClaudeTurn(options: {
 	tools?: { name: string; description: string; input_schema: unknown }[];
 	maxTokens?: number;
 	onText: (text: string) => void;
+	/** Called when Claude starts writing a tool call (before its arguments are complete). */
+	onToolStart?: (name: string) => void;
+	/** Called while a tool call's arguments are being written; `chars` is the JSON length so far. */
+	onToolProgress?: (name: string, chars: number) => void;
 	signal?: AbortSignal;
 }): Promise<ClaudeTurn> {
 	const response = await claudeRequest(options.apiKey, {
@@ -205,6 +209,7 @@ export async function streamClaudeTurn(options: {
 		if (event.type === 'content_block_start') {
 			blocks[event.index] = { ...event.content_block, partial: '' };
 			if (event.content_block.type === 'text' && event.content_block.text) options.onText(event.content_block.text);
+			if (event.content_block.type === 'tool_use') options.onToolStart?.(event.content_block.name);
 		} else if (event.type === 'content_block_delta') {
 			const block = blocks[event.index];
 			if (event.delta.type === 'text_delta') {
@@ -212,6 +217,7 @@ export async function streamClaudeTurn(options: {
 				options.onText(event.delta.text);
 			} else if (event.delta.type === 'input_json_delta') {
 				block.partial += event.delta.partial_json;
+				options.onToolProgress?.(block.name, block.partial.length);
 			}
 		} else if (event.type === 'content_block_stop') {
 			const block = blocks[event.index];

@@ -30,6 +30,7 @@
 
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
+    import { splitStatusStream } from '$lib/status-marker';
 
     // Initialize Supabase browser client for image uploads
     const supabase = createBrowserClient(
@@ -59,6 +60,8 @@
         newCard?: { markdown: string; status: 'idle' | 'saving' | 'saved' | 'error'; id?: string; error?: string };
         // AI の部分置換編集で変わった行（確認用）
         editDiff?: { unified: string; added: number; removed: number };
+        // Live progress line from the server while the AI works (shown only during generation, never saved)
+        status?: string;
     }
     let chatHistory: ChatMessage[] = $state([]);
 
@@ -101,6 +104,15 @@
     let currentInput = $state('');
     let isGenerating = $state(false);
     let errorMsg = $state('');
+    // Seconds since the current AI request started (keeps the wait visible even when the server is silent)
+    let generationElapsed = $state(0);
+    $effect(() => {
+        if (!isGenerating) return;
+        const startedAt = Date.now();
+        generationElapsed = 0;
+        const timer = setInterval(() => (generationElapsed = Math.floor((Date.now() - startedAt) / 1000)), 1000);
+        return () => clearInterval(timer);
+    });
 
     // + menu and resizable chat panel
     let showPlusMenu = $state(false);
@@ -1302,11 +1314,25 @@ ${markdown}
             let blockedCardMarkdown = '';
             
             let isFirstChunk = true;
+            let statusBuffer = '';
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value, { stream: true });
+                // Separate live status lines ([STATUS]…[/STATUS]) from the answer text before any parsing
+                const split = splitStatusStream(statusBuffer + decoder.decode(value, { stream: true }));
+                statusBuffer = split.rest;
+                let chunk = '';
+                for (const part of split.parts) {
+                    if (part.kind === 'status') {
+                        chatHistory[lastIndex].status = part.value;
+                    } else {
+                        chunk += part.value;
+                        if (part.value.trim() !== '') chatHistory[lastIndex].status = '';
+                    }
+                }
+                if (chunk === '') continue;
+
                 if (isFirstChunk && chunk.trim() !== '') {
                     accumulatedText = ''; // Thinking... をクリアしてAIテキストで上書き開始
                     isFirstChunk = false;
@@ -1332,6 +1358,13 @@ ${markdown}
                 
                 scrollToBottom();
             }
+            // A held-back partial marker at the end of the stream is ordinary text
+            if (statusBuffer) {
+                accumulatedText += statusBuffer;
+                chatHistory[lastIndex].text = accumulatedText;
+                statusBuffer = '';
+            }
+            chatHistory[lastIndex].status = '';
 
             // 部分置換編集の結果（サーバーで適用・保存済み）。全文の再保存はしない
             const editResult = planNow ? null : extractMarkdownEdit(accumulatedText);
@@ -1396,6 +1429,8 @@ ${markdown}
             // Remove Thinking... if it remains
             if (chatHistory[lastIndex] && chatHistory[lastIndex].text === 'Thinking...') {
                 chatHistory = chatHistory.slice(0, -1);
+            } else if (chatHistory[lastIndex]) {
+                chatHistory[lastIndex].status = '';
             }
         } finally {
             if (requestSource === 'home') {
@@ -2131,10 +2166,13 @@ ${markdown}
                             {:else}
                                 {#if message.text === '' || message.text === 'Thinking...'}
                                     <div style="display: flex; align-items: center; gap: 6px; color: var(--text-muted, #a1a1aa);">
-                                        <span>Thinking</span>
+                                        <span>{message.status || 'Thinking'}</span>
                                         <div class="typing-indicator" style="margin: 0; display: inline-flex;">
                                             <span></span><span></span><span></span>
                                         </div>
+                                        {#if isGenerating && idx === chatHistory.length - 1}
+                                            <span style="font-size: 0.85em; opacity: 0.8;">{generationElapsed}s</span>
+                                        {/if}
                                     </div>
                                 {:else}
                                     {@html parseMarkdownForChat(
@@ -2157,8 +2195,12 @@ ${markdown}
                                     )}
 
                                     {#if isGenerating && idx === chatHistory.length - 1 && message.role === 'model'}
-                                        <div class="typing-indicator" style="margin-top: 8px;">
-                                            <span></span><span></span><span></span>
+                                        <div style="display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--text-muted, #a1a1aa);">
+                                            <div class="typing-indicator" style="margin: 0; display: inline-flex;">
+                                                <span></span><span></span><span></span>
+                                            </div>
+                                            {#if message.status}<span>{message.status}</span>{/if}
+                                            <span style="font-size: 0.85em; opacity: 0.8;">{generationElapsed}s</span>
                                         </div>
                                     {/if}
 
