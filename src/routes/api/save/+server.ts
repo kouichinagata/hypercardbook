@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { parseBookFrontmatter } from '$lib/server/book-frontmatter';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
@@ -18,37 +19,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         }
 
         const isUuid = id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) : false;
-        let slug = '';
-        let title = '無題の書籍';
-        let author = '';
-        let coverImage = '';
-        let themeColor = '';
-        let playMode = 'book';
-        let fmIsPublic: boolean | undefined = undefined;
-        let fmPublishedAt: string | undefined = undefined;
-        let ddcCode = '';
-
-        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
-        if (fmMatch) {
-            const fmLines = fmMatch[1].split('\n');
-            fmLines.forEach((line: string) => {
-                if (/^\s/.test(line)) return;
-                const parts = line.split(':');
-                if (parts.length >= 2) {
-                    const k = parts[0].trim();
-                    const v = parts.slice(1).join(':').trim();
-                    if (k === 'id') slug = v.replace(/[^a-zA-Z0-9_\-]/g, '');
-                    if (k === 'title') title = v;
-                    if (k === 'author') author = v;
-                    if (k === 'cover_image') coverImage = v;
-                    if (k === 'theme_color') themeColor = v;
-                    if (k === 'play_mode') playMode = v;
-                    if (k === 'is_public') fmIsPublic = v === 'true';
-                    if (k === 'published_at') fmPublishedAt = v;
-                    if (k === 'ddc_code') ddcCode = v;
-                }
-            });
-        }
+        const fm = parseBookFrontmatter(markdown);
+        const { slug, title, author, coverImage, themeColor, playMode, isPublic: fmIsPublic, publishedAt: fmPublishedAt, ddcCode } = fm;
 
         const isCard = playMode === 'card';
 
@@ -92,7 +64,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const { data, error: dbError } = await supabase
             .from('books')
             .upsert(bookData)
-            .select('id')
+            .select('id, version')
             .single();
 
         if (dbError) {
@@ -171,7 +143,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             }
         }
 
-        return json({ success: true, id: data.id });
+        return json({ success: true, id: data.id, version: data.version });
     } catch (err: any) {
         console.error('Save API Error:', err);
         return json({ error: err.message || 'Failed to save book.' }, { status: 500 });

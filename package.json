@@ -10,6 +10,7 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test": "node --test tests/*.test.ts",
 		"db:migrate": "node --env-file=.env scripts/migrate.js",
 		"promotion:codes": "node --env-file=.env scripts/manage_promotion_codes.mjs",
 		"skills:migrate": "node --env-file=.env scripts/migrate_skills.mjs"

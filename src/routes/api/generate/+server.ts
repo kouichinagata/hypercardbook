@@ -19,66 +19,33 @@ import { MANGA_JOB_CLOSE, MANGA_JOB_OPEN, MANGA_PAGES_PER_CALL, MANGA_SKILL_NAME
 import { PANEL_DETECT_MAX_PAGES, SPRITE_SKILL_NAME, detectPages } from '$lib/server/panel-detect';
 import { loadReferenceInputs, measureStoredBytes, storageLimitForPlan } from '$lib/server/image-gen';
 import { SPEECH_MAX_LINES, generateSpeeches } from '$lib/server/tts';
+import { applyEdits, applyPageEdit, lineDiff } from '$lib/markdown-edit';
+import { applyMarkdownEditCommand } from '$lib/server/card-edit';
 
-function applyPageEdit(currentMarkdown: string, pageIndex: number, action: 'update' | 'delete' | 'insert', newContent: string): string {
-    const fmMatch = currentMarkdown.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n)([\s\S]*)$/);
-    let fm = '';
-    let content = currentMarkdown;
-    if (fmMatch) {
-        fm = fmMatch[1];
-        content = fmMatch[2];
+// edit_card / edit_book が失敗したとき、AI が edits を作り直してよい回数
+const MAX_EDIT_RETRIES = 3;
+const EDIT_RESULT_OPEN = '[MARKDOWN_EDIT]';
+const EDIT_RESULT_CLOSE = '[/MARKDOWN_EDIT]';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const markdownEditsParameter = {
+    type: 'ARRAY',
+    description: 'Replacements applied in order. Each old_string must match exactly once in its scope.',
+    items: {
+        type: 'OBJECT',
+        properties: {
+            old_string: {
+                type: 'STRING',
+                description: 'Exact current text to replace, copied character-for-character, including enough surrounding context to be unique. Never empty.'
+            },
+            new_string: {
+                type: 'STRING',
+                description: 'Replacement text. Use an empty string to delete old_string.'
+            }
+        },
+        required: ['old_string', 'new_string']
     }
-
-    if (pageIndex === 0) {
-        if (action === 'update') {
-            return `---\n${newContent.trim()}\n---\n${content}`;
-        }
-        return currentMarkdown;
-    }
-
-    const parts = content.split(/(Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
-    const pages: string[] = [];
-    const delimiters: string[] = [];
-    
-    delimiters.push('');
-    for (let i = 0; i < parts.length; i++) {
-        if (i === 0) {
-            pages.push(parts[i]);
-        } else if (i % 2 === 1) {
-            delimiters.push(parts[i]);
-        } else {
-            pages.push(parts[i]);
-        }
-    }
-
-    const newPages = [...pages];
-    const newDelimiters = [...delimiters];
-
-    if (pageIndex >= 1 && pageIndex < newPages.length) {
-        if (action === 'update') {
-            newPages[pageIndex] = '\n' + newContent.trim() + '\n';
-        } else if (action === 'delete') {
-            newPages[pageIndex] = '';
-            newDelimiters[pageIndex] = '';
-        } else if (action === 'insert') {
-            newPages.splice(pageIndex, 0, '\n' + newContent.trim() + '\n');
-            newDelimiters.splice(pageIndex, 0, '\n***\n');
-        }
-    } else if (pageIndex === newPages.length) {
-        if (action === 'insert' || action === 'update') {
-            newPages.push('\n' + newContent.trim() + '\n');
-            newDelimiters.push('\n***\n');
-        }
-    }
-
-    let finalContent = newPages[0];
-    for (let i = 1; i < newPages.length; i++) {
-        if (newPages[i] === '' && newDelimiters[i] === '') continue;
-        finalContent += (newDelimiters[i] || '') + newPages[i];
-    }
-
-    return fm + finalContent;
-}
+};
 
 const systemInstruction = `
 You are HyperCardBook Creator, an AI assistant specialized in creating card-style books for a vertical layout reader.
@@ -129,14 +96,20 @@ CRITICAL RULES:
    - Unless explicitly requested by the user, preserve the existing HTML layout structure, CSS class names, styling parameters, and script logic. Integrate the new content (titles, text, media URLs) seamlessly into these structures.
    - Analyze and mimic the writing style (sentence length, politeness level like "です/ます" or "である/だ", rhythm, use of emojis) of the current book markdown.
 
-5. MODIFICATIONS:
-   - If the user asks to modify the book, and the changes are minor or localized (e.g., rewriting a page, fixing typos, editing frontmatter), you MUST call the \`edit_page\` tool instead of rewriting the entire block.
-   - Only rewrite the ENTIRE Markdown block using the \`\`\`markdown code block if the request requires massive structural changes (e.g., rewriting all pages, styling changes that affect every page).
+5. MODIFICATIONS (partial replacement edits):
+   - To modify an existing book, you MUST call the \`edit_book\` tool. Do NOT output the full book.
+   - Work page by page: set \`page_index\` to the page you change (0 = the YAML frontmatter, 1 = the first page after the frontmatter, 2 = the next page after a "***" line, and so on; empty pages are not counted). Each \`old_string\` is searched only inside that page. Call \`edit_book\` once per page you change.
+   - Use \`scope: "all"\` (without page_index) ONLY when the user explicitly asks for a change across the whole book (e.g., "change X on every page"). Then each \`old_string\` must be unique in the whole book.
+   - Each edit replaces one exact substring. \`old_string\` must be copied character-for-character from the current book (spaces, line breaks, Markdown and HTML symbols included), must contain the part you change, and must match exactly once in its scope: add just enough surrounding text to make it unique. \`new_string\` is the replacement; use "" to delete. Never send an empty \`old_string\`.
+   - Change ONLY what the user asked for. Never reformat, rewrap, re-indent, rephrase, or "improve" any other text.
+   - To add a page, edit the end of the preceding page so that \`new_string\` ends with "\\n\\n***\\n\\n<new page content>". To delete a whole page, use \`scope: "all"\` with an \`old_string\` that covers the page and one of its "***" lines.
+   - If \`edit_book\` returns an error, read it, rebuild only the failing edits (copy the exact current text, widen the context to make it unique) and call it again. If it reports a conflict, stop and tell the user to reload the book.
+   - Only output the ENTIRE book in a \`\`\`markdown code block when creating a new book, or when the user explicitly asks to rewrite or restructure the whole book (e.g., rewriting all pages, a new style for every page).
 
 6. RESPONSE FORMAT:
    - You MUST output real-time progress/status updates to the user (e.g., "Designing the overall book structure...", "Generating the markdown cards...", "Applying final style adjustments...") throughout the generation process. Do NOT remain silent.
    - For full book generation: Output these progress messages first to tell the user what you are doing, then start the \`\`\`markdown block. Do NOT start the response directly with the code block.
-   - For partial updates (using tools): You MUST output clear status messages explaining what you are doing (e.g., "Analyzing the request...", "Calling the edit_page tool to update page 3...") during the tool call turns. Your response MUST NOT contain any markdown block (\`\`\`markdown). Just provide a conversational explanation (e.g., "I have updated page 3 with your changes."). in your response.
+   - For partial updates (using tools): You MUST output clear status messages explaining what you are doing (e.g., "Analyzing the request...", "Calling the edit_book tool to update page 3...") during the tool call turns. Your response MUST NOT contain any markdown block (\`\`\`markdown). Just provide a conversational explanation (e.g., "I have updated page 3 with your changes."). in your response.
 
 7. ATTACHED IMAGES AND TEXTS:
    - The user may attach images and text files to their prompt.
@@ -218,12 +191,17 @@ CRITICAL RULES:
    - Unless explicitly requested by the user, preserve the existing HTML layout structure, CSS class names, styling parameters, and script logic. Integrate the new content seamlessly into these structures.
    - Analyze and mimic the writing style (sentence length, tone/politeness level, use of emojis) of the current card markdown.
 
-4. MODIFICATIONS:
-   - If the user asks to modify the card (e.g., "change the background color to blue", "update subtitle to X", "add a section about Mount Fuji"), you will receive the current Markdown code. You must rewrite the ENTIRE Markdown block incorporating the changes. Make sure you don't lose any other existing content unless asked.
+4. MODIFICATIONS (partial replacement edits):
+   - If the user asks to modify the existing card (e.g., "change the background color to blue", "update subtitle to X", "add a section about Mount Fuji", "fix this typo"), you MUST call the \`edit_card\` tool. Do NOT output the full card.
+   - Each edit replaces one exact substring. \`old_string\` must be copied character-for-character from the current card (spaces, line breaks, Markdown and HTML symbols included), must contain the part you change, and must appear exactly once in the card: add just enough surrounding text to make it unique. \`new_string\` is the replacement; use "" to delete. Never send an empty \`old_string\`. Several edits are applied in order.
+   - Change ONLY what the user asked for. Never reformat, rewrap, re-indent, rephrase, or "improve" any other text.
+   - If \`edit_card\` returns an error, read it, rebuild only the failing edits (copy the exact current text, widen the context to make it unique) and call it again. If it reports a conflict, stop and tell the user to reload the card.
+   - Only output the ENTIRE card in a markdown code block when creating a new card, or when the user explicitly asks to rewrite or restructure the whole card.
 
 5. RESPONSE FORMAT:
-   - Provide the complete, raw Markdown card inside a single markdown code block (delimited by \` \`\`\`markdown \` and \` \`\`\` \`).
-   - If the user is just chatting or asking a general question without editing the card, you can respond with a conversational text response, but if a book is being generated or edited, ALWAYS output the complete updated markdown code block in your response.
+   - When creating a new card (or fully rewriting it as described above), provide the complete, raw Markdown card inside a single markdown code block (delimited by \` \`\`\`markdown \` and \` \`\`\` \`).
+   - When editing with \`edit_card\`, do NOT output a markdown code block; briefly tell the user what you changed.
+   - If the user is just chatting or asking a general question without editing the card, respond with a conversational text response.
 
 6. ATTACHED IMAGES AND TEXTS:
    - The user may attach images and text files to their prompt.
@@ -337,7 +315,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             activePluginIds = [],
             webSearchEnabled = false,
             webSearchSource = 'workspace',
-            planMode = false
+            planMode = false,
+            currentVersion = null
         } = await request.json();
         const session = locals.session;
         const supabase = locals.supabase;
@@ -519,6 +498,11 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                     let responseText = '';
                     let updatedMarkdown = currentMarkdown;
                     let lastPageEdit: any = null;
+                    // 部分置換編集（edit_card / edit_book）の状態。保存済みのカードは DB 上で適用し、version を進める
+                    let editVersion: number | null = Number.isInteger(currentVersion) ? currentVersion : null;
+                    let editFailures = 0;
+                    let markdownEdited = false;
+                    let savedEditMarkdown: string | null = null;
 
                     for (const skill of invokedSkills) {
                         controller.enqueue(encoder.encode(`📚 Using skill: **${skill.name}**\n\n`));
@@ -685,24 +669,56 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                             });
                         }
 
+                        if (mode === 'card') {
+                            toolDeclarations.push({
+                                name: 'edit_card',
+                                description: 'Edit the current card by exact string replacement. Use for every modification of an existing card instead of outputting the full card. Only the given replacements are applied; everything else stays byte-for-byte the same. If any edit fails, nothing is saved and the errors are returned.',
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: { edits: markdownEditsParameter },
+                                    required: ['edits']
+                                }
+                            });
+                        }
+
                         if (mode === 'book') {
                             toolDeclarations.push({
-                                name: 'edit_page',
-                                description: 'Edit, delete, or insert a specific page or the frontmatter in the current book document. Use for minor edits.',
+                                name: 'edit_book',
+                                description: 'Edit the current book by exact string replacement, normally inside one page. Use for every modification of an existing book instead of outputting the full book. If any edit fails, nothing is saved and the errors are returned.',
                                 parameters: {
                                     type: 'OBJECT',
                                     properties: {
                                         page_index: {
                                             type: 'INTEGER',
-                                            description: '1-based page index (1 for page 1, 2 for page 2). Set to 0 to update frontmatter.'
+                                            description: 'Page to edit as shown in the reader: 0 = YAML frontmatter, 1 = first page after the frontmatter, 2 = next page, ... (empty pages are not counted). Required unless scope is "all".'
+                                        },
+                                        scope: {
+                                            type: 'STRING',
+                                            description: '"page" (default) or "all". Use "all" only when the user explicitly asks for a change across the whole book.'
+                                        },
+                                        edits: markdownEditsParameter
+                                    },
+                                    required: ['edits']
+                                }
+                            });
+
+                            toolDeclarations.push({
+                                name: 'edit_page',
+                                description: 'Replace, delete, or insert a whole page, or replace the YAML frontmatter. Prefer edit_book for changes inside a page.',
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        page_index: {
+                                            type: 'INTEGER',
+                                            description: 'Page number as shown in the reader: 1 = first page after the frontmatter, 2 = next page, ... (empty pages are not counted). 0 = the YAML frontmatter (update only). For "insert", the new page is placed before this page; use the last page number + 1 to append.'
                                         },
                                         action: {
                                             type: 'STRING',
-                                            description: 'Action: "update", "delete", or "insert"'
+                                            description: 'Action: "update" (replace the page), "delete" (remove the page), or "insert" (add a new page)'
                                         },
                                         new_content: {
                                             type: 'STRING',
-                                            description: 'The new page content or frontmatter yaml text.'
+                                            description: 'The new page content (without "***"), or the frontmatter YAML text. Use an empty string for "delete".'
                                         }
                                     },
                                     required: ['page_index', 'action', 'new_content']
@@ -877,9 +893,73 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                     const act = String(fc.args?.action) as 'update' | 'delete' | 'insert';
                                     const newCont = String(fc.args?.new_content);
 
-                                    updatedMarkdown = applyPageEdit(updatedMarkdown, pageIdx, act, newCont);
-                                    lastPageEdit = { page_index: pageIdx, action: act, new_content: newCont };
-                                    resultData = { success: true, message: `Page ${pageIdx} successfully modified.` };
+                                    const pageEdit = applyPageEdit(updatedMarkdown, pageIdx, act, newCont);
+                                    if (pageEdit.ok) {
+                                        updatedMarkdown = pageEdit.markdown;
+                                        lastPageEdit = { page_index: pageIdx, action: act, new_content: newCont };
+                                        resultData = { success: true, message: `Page ${pageIdx} successfully modified.` };
+                                    } else {
+                                        resultData = { success: false, error: pageEdit.error };
+                                    }
+                                } else if (fc.name === 'edit_card' || fc.name === 'edit_book') {
+                                    const edits = fc.args?.edits;
+                                    const scopeAll = fc.name === 'edit_book' && fc.args?.scope === 'all';
+                                    const rawPage = fc.args?.page_index;
+                                    const pageIndex = fc.name === 'edit_book' && !scopeAll ? Number(rawPage) : undefined;
+
+                                    if (editFailures > MAX_EDIT_RETRIES) {
+                                        resultData = { success: false, error: 'Edit retry limit reached. Do not call edit tools again. Tell the user the edit could not be applied and why.' };
+                                    } else if (fc.name === 'edit_book' && !scopeAll && (rawPage === undefined || rawPage === null || !Number.isInteger(pageIndex))) {
+                                        editFailures++;
+                                        resultData = { success: false, error: 'page_index is required (0 = frontmatter, 1 = first page) unless scope is "all".', retries_left: Math.max(0, MAX_EDIT_RETRIES - editFailures + 1) };
+                                    } else {
+                                        let outcome: any = null;
+                                        // edit_page などのメモリ上の変更がまだ DB にないときは、DB 版に適用すると消えてしまうのでメモリ上で適用する
+                                        const inSyncWithDb = updatedMarkdown === (savedEditMarkdown ?? currentMarkdown);
+                                        if (bookId && UUID_RE.test(bookId) && editVersion !== null && inSyncWithDb) {
+                                            outcome = await applyMarkdownEditCommand(supabase, session.user.id, {
+                                                card_id: bookId,
+                                                base_version: editVersion,
+                                                edits,
+                                                page_index: pageIndex
+                                            });
+                                            if (outcome.ok) {
+                                                editVersion = outcome.version;
+                                                savedEditMarkdown = outcome.markdown;
+                                            } else if (outcome.code === 'not_found') {
+                                                outcome = null; // 自分の DB にない本（サンプルなど）は、画面側の保存に任せる
+                                            }
+                                        }
+                                        if (!outcome) {
+                                            // 未保存の本・カード: メモリ上で同じロジックを適用し、画面側の自動保存で保存する
+                                            const applied = applyEdits(updatedMarkdown, edits, { pageIndex });
+                                            outcome = applied.ok
+                                                ? { ok: true, markdown: applied.markdown, diff: lineDiff(updatedMarkdown, applied.markdown) }
+                                                : { ok: false, code: 'edit_failed', message: 'No edits were applied. Fix the failing edits and try again.', errors: applied.errors };
+                                        }
+
+                                        if (outcome.ok) {
+                                            updatedMarkdown = outcome.markdown;
+                                            markdownEdited = true;
+                                            controller.enqueue(encoder.encode(`\n✏️ Edited (+${outcome.diff.added} / −${outcome.diff.removed} lines)\n\n`));
+                                            resultData = {
+                                                success: true,
+                                                message: 'All edits were applied and saved.',
+                                                ...(editVersion !== null ? { version: editVersion } : {}),
+                                                diff: outcome.diff.unified
+                                            };
+                                        } else {
+                                            editFailures++;
+                                            resultData = {
+                                                success: false,
+                                                code: outcome.code,
+                                                error: outcome.message,
+                                                ...(outcome.errors ? { errors: outcome.errors } : {}),
+                                                retries_left: Math.max(0, MAX_EDIT_RETRIES - editFailures + 1)
+                                            };
+                                            if (outcome.code === 'conflict') editFailures = MAX_EDIT_RETRIES + 1;
+                                        }
+                                    }
                                 } else if (fc.name === 'load_skill') {
                                     const skill = skillsByName.get(String(fc.args?.name || ''));
                                     if (!skill) {
@@ -1153,7 +1233,17 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         }
                     }
 
-                    if (lastPageEdit) {
+                    if (markdownEdited) {
+                        // 画面に渡す編集結果。本文に ``` が含まれても他の解析とぶつからないよう base64 にする
+                        const payload = {
+                            markdown: updatedMarkdown,
+                            version: editVersion,
+                            saved: savedEditMarkdown !== null && savedEditMarkdown === updatedMarkdown,
+                            diff: lineDiff(currentMarkdown, updatedMarkdown)
+                        };
+                        const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+                        controller.enqueue(encoder.encode(`\n${EDIT_RESULT_OPEN}${encoded}${EDIT_RESULT_CLOSE}\n`));
+                    } else if (lastPageEdit) {
                         const partialTag = `\n[UPDATE_PAGES]\n[PAGE ${lastPageEdit.page_index}]\n${lastPageEdit.new_content}\n[/PAGE]\n[/UPDATE_PAGES]\n`;
                         controller.enqueue(encoder.encode(partialTag));
                         
@@ -1179,7 +1269,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                             await supabase.from('chat_messages').insert({
                                 book_id: bookId,
                                 role: 'model',
-                                text: responseText + (lastPageEdit ? ' (Page updated via tool)' : '')
+                                text: responseText + (lastPageEdit || markdownEdited ? ' (Page updated via tool)' : '')
                             });
                         }
                     }

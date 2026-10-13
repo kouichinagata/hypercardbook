@@ -38,7 +38,7 @@ export const load: PageServerLoad = async ({ url, locals, fetch }) => {
     // 2. Otherwise, query Supabase database as usual
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookId);
 
-    const bookQuery = supabase.from('books').select('id, markdown_content');
+    const bookQuery = supabase.from('books').select('id, markdown_content, version');
     if (isUuid) {
         bookQuery.eq('id', bookId);
     } else {
@@ -66,6 +66,7 @@ export const load: PageServerLoad = async ({ url, locals, fetch }) => {
     return {
         markdown: book.markdown_content,
         bookId: book.id,
+        version: book.version as number,
         initialChatHistory: messages || [],
         currentUserId: locals.session?.user?.id || 'global'
     };

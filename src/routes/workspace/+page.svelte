@@ -18,6 +18,8 @@
     let markdown = $state(data.markdown || '');
     let bookUuid = $state(data.bookId || '');
     let lastProcessedMarkdown = $state(data.markdown || '');
+    // DB 上の本文のバージョン（部分置換編集の競合検出に使う）。未保存・サンプルは null
+    let bookVersion = $state<number | null>(data.version ?? null);
 
     // URLパラメータや markdown コンテンツから初期モードを判定
     const initialIsCard = (page.url?.searchParams?.get('mode') === 'card') || !!(data.markdown && data.markdown.includes('play_mode: card'));
@@ -55,6 +57,8 @@
         text: string;
         // 開いている本に入れられなかった Card。ボタンで新規Cardとして保存する
         newCard?: { markdown: string; status: 'idle' | 'saving' | 'saved' | 'error'; id?: string; error?: string };
+        // AI の部分置換編集で変わった行（確認用）
+        editDiff?: { unified: string; added: number; removed: number };
     }
     let chatHistory: ChatMessage[] = $state([]);
 
@@ -80,70 +84,6 @@
     let activePluginIds = $state<string[]>([]);
     let markdownHistory = $state<string[]>([]);
     let currentCardIndex = $state(-1);
-
-    function applyPartialUpdate(currentMarkdown: string, updateText: string): string {
-        const fmMatch = currentMarkdown.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n)([\s\S]*)$/);
-        if (!fmMatch) return currentMarkdown;
-        const fm = fmMatch[1];
-        const content = fmMatch[2];
-
-        const parts = content.split(/(Page\s*\d+:|(?:^|\n)\s*\*\*\*\s*(?:\n|$))/i);
-        const pages: string[] = [];
-        const delimiters: string[] = [];
-        
-        delimiters.push('');
-        for (let i = 0; i < parts.length; i++) {
-            if (i === 0) {
-                pages.push(parts[i]);
-            } else if (i % 2 === 1) {
-                delimiters.push(parts[i]);
-            } else {
-                pages.push(parts[i]);
-            }
-        }
-
-        const updatePagesMatch = updateText.match(/\[UPDATE_PAGES\]([\s\S]*?)\[\/UPDATE_PAGES\]/i);
-        if (!updatePagesMatch) return currentMarkdown;
-        const updateContent = updatePagesMatch[1];
-
-        const pageRegex = /\[PAGE\s+(\d+)\]([\s\S]*?)\[\/PAGE\]/gi;
-        let match;
-        
-        let newPages = [...pages];
-        let newDelimiters = [...delimiters];
-        
-        while ((match = pageRegex.exec(updateContent)) !== null) {
-            const pageIdx = parseInt(match[1], 10);
-            const pageContent = match[2].trim();
-            
-            if (pageIdx >= 0 && pageIdx < newPages.length) {
-                if (pageContent === 'DELETE') {
-                    newPages[pageIdx] = '';
-                    newDelimiters[pageIdx] = '';
-                } else {
-                    newPages[pageIdx] = '\n' + pageContent + '\n';
-                }
-            } else if (pageIdx === newPages.length) {
-                newPages.push('\n' + pageContent + '\n');
-                newDelimiters.push('\n***\n');
-            }
-        }
-
-        const fmRegex = /\[FRONTMATTER\]([\s\S]*?)\[\/FRONTMATTER\]/i;
-        const fmUpdateMatch = updateText.match(fmRegex);
-        let finalFm = fm;
-        if (fmUpdateMatch) {
-            finalFm = `---\n${fmUpdateMatch[1].trim()}\n---\n`;
-        }
-
-        let finalContent = newPages[0];
-        for (let i = 1; i < newPages.length; i++) {
-            if (newPages[i] === '' && newDelimiters[i] === '') continue;
-            finalContent += (newDelimiters[i] || '') + newPages[i];
-        }
-
-        return finalFm + finalContent;
-    }
 
     function handleHookAiResult(event: { eventName: string; result: string; command?: string }) {
         chatHistory = [
@@ -1118,39 +1058,71 @@ ${markdown}
         }
     });
 
+    let pendingSave: Promise<void> | null = null;
+
+    // /api/generate が返す [MARKDOWN_EDIT]<base64 JSON>[/MARKDOWN_EDIT] を読む
+    function extractMarkdownEdit(text: string): { markdown: string; version: number | null; saved: boolean; diff?: { unified: string; added: number; removed: number } } | null {
+        const match = text.match(/\[MARKDOWN_EDIT\]([A-Za-z0-9+/=]+)\[\/MARKDOWN_EDIT\]/);
+        if (!match) return null;
+        try {
+            const bytes = Uint8Array.from(atob(match[1]), c => c.charCodeAt(0));
+            const result = JSON.parse(new TextDecoder().decode(bytes));
+            return typeof result?.markdown === 'string' ? result : null;
+        } catch (err) {
+            console.error('Failed to read the edit result:', err);
+            return null;
+        }
+    }
+
     function triggerAutoSave() {
         if (saveTimeout) clearTimeout(saveTimeout);
         saveStatus = 'Saving...';
-        saveTimeout = setTimeout(async () => {
-            try {
-                const response = await fetch('/api/save', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        markdown,
-                        id: bookUuid
-                    })
-                });
-                
-                if (response.ok) {
-                    const resData = await response.json();
-                    saveStatus = 'Synced';
-                    lastProcessedMarkdown = markdown;
-                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookUuid || '');
-                    if (resData.id && (!bookUuid || !isUuid)) {
-                        bookUuid = resData.id;
-                        goto(`/workspace?id=${resData.id}`, { replaceState: true, noScroll: true, keepFocus: true });
-                    }
-                } else {
-                    const errData = await response.json();
-                    console.error('Failed to auto-save:', errData.error);
-                    saveStatus = 'Error';
+        saveTimeout = setTimeout(() => {
+            saveTimeout = null;
+            pendingSave = performAutoSave();
+        }, 1500); // 1.5 seconds debounce
+    }
+
+    // AI に本文を渡す前に、待機中の自動保存を済ませる（AI の部分置換は DB 上の本文に適用されるため）
+    async function flushAutoSave() {
+        if (saveTimeout) {
+            clearTimeout(saveTimeout);
+            saveTimeout = null;
+            pendingSave = performAutoSave();
+        }
+        if (pendingSave) await pendingSave;
+    }
+
+    async function performAutoSave() {
+        try {
+            const response = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    markdown,
+                    id: bookUuid
+                })
+            });
+            
+            if (response.ok) {
+                const resData = await response.json();
+                saveStatus = 'Synced';
+                lastProcessedMarkdown = markdown;
+                if (Number.isInteger(resData.version)) bookVersion = resData.version;
+                const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookUuid || '');
+                if (resData.id && (!bookUuid || !isUuid)) {
+                    bookUuid = resData.id;
+                    goto(`/workspace?id=${resData.id}`, { replaceState: true, noScroll: true, keepFocus: true });
                 }
-            } catch (err) {
-                console.error('Error auto-saving:', err);
+            } else {
+                const errData = await response.json();
+                console.error('Failed to auto-save:', errData.error);
                 saveStatus = 'Error';
             }
-        }, 1500); // 1.5 seconds debounce
+        } catch (err) {
+            console.error('Error auto-saving:', err);
+            saveStatus = 'Error';
+        }
     }
 
     function handleUndo() {
@@ -1288,6 +1260,7 @@ ${markdown}
         const lastIndex = chatHistory.length - 1;
 
         try {
+            if (!planNow && data.session?.user) await flushAutoSave();
             const response = await fetch('/api/generate', {
                 method: 'POST',
                 headers: { 
@@ -1298,6 +1271,7 @@ ${markdown}
                     prompt: finalPrompt,
                     history: historyForApi,
                     currentMarkdown: markdown,
+                    currentVersion: bookVersion,
                     bookId: bookUuid,
                     mode: mode,
                     currentCardIndex: currentCardIndex,
@@ -1359,13 +1333,32 @@ ${markdown}
                 scrollToBottom();
             }
 
+            // 部分置換編集の結果（サーバーで適用・保存済み）。全文の再保存はしない
+            const editResult = planNow ? null : extractMarkdownEdit(accumulatedText);
+            if (editResult || accumulatedText.includes('[MARKDOWN_EDIT]')) {
+                chatHistory[lastIndex].text = accumulatedText.replace(/\[MARKDOWN_EDIT\][\s\S]*?(\[\/MARKDOWN_EDIT\]|$)/g, '').trim();
+            }
+
             // Final fallback parsing（Plan mode では、AI の返答を本・Card に一切反映しない）
             if (planNow) {
                 // do nothing
-            } else if (accumulatedText.includes('[UPDATE_PAGES]')) {
-                markdown = applyPartialUpdate(markdown, accumulatedText);
+            } else if (editResult) {
+                if (editResult.saved) {
+                    lastProcessedMarkdown = editResult.markdown;
+                    if (Number.isInteger(editResult.version)) bookVersion = editResult.version;
+                }
+                markdown = editResult.markdown;
+                if (editResult.diff?.unified) {
+                    chatHistory[lastIndex].editDiff = {
+                        unified: editResult.diff.unified,
+                        added: editResult.diff.added,
+                        removed: editResult.diff.removed
+                    };
+                }
             } else {
-                const finalMdMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
+                // edit_page のときは、サーバーが [UPDATE_PAGES] の後ろに編集済みの全文を付ける。最後のブロックを使う
+                const mdBlocks = [...accumulatedText.matchAll(/```markdown([\s\S]*?)```/gi)];
+                const finalMdMatch = accumulatedText.includes('[UPDATE_PAGES]') ? mdBlocks.at(-1) : mdBlocks[0];
                 if (finalMdMatch) {
                     const finalMarkdown = finalMdMatch[1].trim();
                     if (replacesBookWithCard(finalMarkdown)) {
@@ -1505,6 +1498,7 @@ ${markdown}
                 markdown = data.markdown || '';
             }
             bookUuid = data.bookId || '';
+            bookVersion = data.version ?? null;
             chatHistory = data.initialChatHistory || [];
             lastProcessedMarkdown = data.markdown || '';
 
@@ -2148,6 +2142,7 @@ ${markdown}
                                             .replace(/\[MANGA_JOB\][\s\S]*?\[\/MANGA_JOB\]/g, '')
                                             .replace(/\[MANGA_JOB\][\s\S]*/g, '')
                                             .replace(/\[UPDATED_MARKDOWN\][\s\S]*/gi, '')
+                                            .replace(/\[MARKDOWN_EDIT\][\s\S]*/g, '')
                                             .replace(
                                                 planMode
                                                     ? /(?!)/g
@@ -2165,6 +2160,14 @@ ${markdown}
                                         <div class="typing-indicator" style="margin-top: 8px;">
                                             <span></span><span></span><span></span>
                                         </div>
+                                    {/if}
+
+                                    {#if message.editDiff}
+                                        <details class="edit-diff">
+                                            <summary>✏️ Changes (+{message.editDiff.added} / −{message.editDiff.removed} lines)</summary>
+                                            <pre>{#each message.editDiff.unified.split('\n') as line}<span class={line.startsWith('+') ? 'diff-add' : line.startsWith('-') ? 'diff-del' : line.startsWith('@@') ? 'diff-hunk' : ''}>{line}
+</span>{/each}</pre>
+                                        </details>
                                     {/if}
 
                                     {#if message.newCard}
@@ -3747,6 +3750,29 @@ ${markdown}
         width: 100%;
         height: 32px;
     }
+    .edit-diff {
+        margin-top: 8px;
+        font-size: 0.8rem;
+    }
+    .edit-diff summary {
+        cursor: pointer;
+        color: var(--text-muted, #71717a);
+    }
+    .edit-diff pre {
+        margin: 6px 0 0;
+        padding: 8px;
+        max-height: 320px;
+        overflow: auto;
+        border-radius: 6px;
+        background: rgba(127, 127, 127, 0.08);
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 0.75rem;
+        line-height: 1.45;
+    }
+    .edit-diff .diff-add { display: block; background: rgba(34, 197, 94, 0.15); color: #15803d; }
+    .edit-diff .diff-del { display: block; background: rgba(239, 68, 68, 0.15); color: #b91c1c; }
+    .edit-diff .diff-hunk { display: block; color: #6366f1; }
     .new-card-box {
         margin-top: 10px;
         padding: 10px 12px;
