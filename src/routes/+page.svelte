@@ -468,8 +468,8 @@
         try {
             if (blank) {
                 sessionStorage.setItem('workspace_blank', '1');
-                // 「New」から開いたときは、自動で Plan mode にする
-                sessionStorage.setItem('workspace_plan_mode', '1');
+                // 「New」から開いたときは、自動で Plan mode にする（既存の本を選んでいるときは編集なので対象外）
+                if (!selectedBookId) sessionStorage.setItem('workspace_plan_mode', '1');
             } else {
                 sessionStorage.setItem('workspace_init_prompt', finalPrompt);
             }

@@ -119,12 +119,13 @@
     // Plan mode: 汎用AIとして相談するだけ。本・Card は作成も更新もしない（解除はユーザーが自分で行う）
     let planMode = $state(false);
 
-    // Plan mode は再読み込み・別タブでも維持する（ユーザーが自分で解除するまで ON のまま）
+    // Plan mode は New（本の id なし）では再読み込み・別タブでも維持する（ユーザーが自分で解除するまで ON のまま）。
+    // 既存の本を編集モードで開いたときは OFF で始まり、そこでの切り替えは保存しない（New 側の設定を書き換えない）
     const PLAN_MODE_KEY = 'hcb_plan_mode';
     let planModeLoaded = false;
     $effect(() => {
         const on = planMode;
-        if (!planModeLoaded) return;
+        if (!planModeLoaded || data.bookId) return;
         try { localStorage.setItem(PLAN_MODE_KEY, on ? '1' : '0'); } catch {}
     });
     const DEFAULT_CHAT_WIDTH = 400;
@@ -1492,7 +1493,7 @@ ${markdown}
         document.body.classList.add('scroll-locked');
 
         try {
-            if (localStorage.getItem(PLAN_MODE_KEY) === '1') {
+            if (!data.bookId && localStorage.getItem(PLAN_MODE_KEY) === '1') {
                 planMode = true;
             }
         } catch {}
