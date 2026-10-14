@@ -4238,6 +4238,32 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         box-shadow: 0 2px 6px rgba(139, 92, 246, 0.4);
     }
 
+    @media (max-width: 600px) {
+        /* 下段に収めるため、モデル表示（プルダウン・ラベル）を縮め、間隔と Newボタンも詰める（ランディングのみ。workspace は影響なし） */
+        .prompt-bottom-left {
+            flex: 1 1 auto;
+            min-width: 0;
+            gap: 4px;
+        }
+        /* モデル表示は内容に合わせた幅で、上限 130px・幅が足りないときは縮む */
+        .prompt-bottom-left :global(.ai-model-select),
+        .prompt-bottom-left :global(.ai-model-label) {
+            flex: 0 1 auto;
+            min-width: 64px;
+            max-width: 130px;
+            display: inline-block;
+            vertical-align: middle;
+            box-sizing: border-box;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .prompt-bottom-row .submit-btn {
+            flex-shrink: 0;
+            min-width: 72px;
+            padding: 0 10px;
+        }
+    }
+
     .submit-btn {
         display: flex;
         align-items: center;
