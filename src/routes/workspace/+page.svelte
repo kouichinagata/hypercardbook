@@ -258,13 +258,26 @@
     let monacoContainerEl = $state<HTMLDivElement | null>(null);
     let monacoEditor: any = null;
 
-    function initMonaco() {
+    // Monaco の AMD ローダー（define）が先に入ると、Mermaid が window.mermaid に乗らないので、Mermaid の読み込みを待つ
+    function waitForMermaidScript(): Promise<void> {
+        const el = document.querySelector('script[src*="mermaid"]') as HTMLScriptElement | null;
+        if (!el || el.dataset.loaded === 'true' || (window as any).mermaid) return Promise.resolve();
+        return new Promise((resolve) => {
+            el.addEventListener('load', () => resolve(), { once: true });
+            el.addEventListener('error', () => resolve(), { once: true });
+        });
+    }
+
+    async function initMonaco() {
         if (!monacoContainerEl) return;
-        
+
         if ((window as any).monaco) {
             createMonacoInstance();
             return;
         }
+
+        await waitForMermaidScript();
+        if (!monacoContainerEl || !useMonaco) return;
 
         // Dynamically load Monaco's loader.min.js to avoid polluting global namespace with 'define' on startup
         const script = document.createElement('script');
@@ -1642,6 +1655,8 @@ ${markdown}
         }
         // スマホ: 既存の Card/Book を開いた時は Chat ではなく Code / Preview から始める
         if (isMobile && data.bookId) mobilePane = activeTab === 'source' ? 'source' : 'preview';
+        // PC 版の HyperCard ワークスペースは Monaco エディタで始める（スマホ・HyperBook は従来どおりプレーンテキスト）
+        if (mode === 'card' && !isMobile) toggleMonaco();
 
         return () => {
             document.body.classList.remove('scroll-locked');
