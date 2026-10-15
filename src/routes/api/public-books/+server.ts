@@ -56,6 +56,8 @@ function formatPublicBook(book: any) {
     let playMode = 'book';
     let launchUrl = '';
     let paperoboSlug = '';
+    let paperoboAgentId = '';
+    let paperoboPublicId = '';
     let hyperbookId = '';
     let description = '';
     let hideHyperbook = false;
@@ -72,6 +74,8 @@ function formatPublicBook(book: any) {
             if (key === 'play_mode') playMode = value;
             if (key === 'launch_url') launchUrl = value;
             if (key === 'paperobo_slug') paperoboSlug = value;
+            if (key === 'paperobo_agent_id') paperoboAgentId = value;
+            if (key === 'paperobo_public_id') paperoboPublicId = value;
             if (key === 'hyperbook_id') hyperbookId = value;
             if (key === 'description') description = value.replace(/^["']|["']$/g, '');
             if (key === 'hide_hyperbook') hideHyperbook = value === 'true';
@@ -95,6 +99,8 @@ function formatPublicBook(book: any) {
         playMode,
         launchUrl,
         paperoboSlug,
+        paperoboAgentId,
+        paperoboPublicId,
         hyperbookId,
         description,
         hideHyperbook,
@@ -109,12 +115,14 @@ function formatPublicBook(book: any) {
 function matchesPublicBookType(book: ReturnType<typeof formatPublicBook>, type: string) {
     if (type === 'book') {
         return !book.isCard && book.playMode !== 'paperobo' && book.playMode !== 'hyperrobo' &&
-            book.playMode !== 'stack' && book.sourceApp !== 'hypertv';
+            book.playMode !== 'stack' && book.sourceApp !== 'hypertv' &&
+            book.sourceApp !== 'scriptbook';
     }
     if (type === 'graphic') return book.isGraphicBook;
     if (type === 'paperobo') return book.playMode === 'paperobo';
     if (type === 'hyperrobo') return book.playMode === 'hyperrobo';
     if (type === 'hypertv') return book.sourceApp === 'hypertv';
+    if (type === 'scriptbook') return book.sourceApp === 'scriptbook';
     if (type === 'card') return book.isCard;
     return true;
 }

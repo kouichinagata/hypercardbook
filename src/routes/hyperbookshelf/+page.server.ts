@@ -159,6 +159,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
             let playMode = 'book';
             let subTitle = '';
             let launchUrl = '';
+            let paperoboAgentId = '';
+            let paperoboPublicId = '';
             let paperoboSlug = '';
             let hyperbookId = '';
             let description = '';
@@ -178,6 +180,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                         if (k === 'sub_title') subTitle = v;
                         if (k === 'launch_url') launchUrl = v;
                         if (k === 'paperobo_slug') paperoboSlug = v;
+                        if (k === 'paperobo_agent_id') paperoboAgentId = v;
+                        if (k === 'paperobo_public_id') paperoboPublicId = v;
                         if (k === 'hyperbook_id') hyperbookId = v;
                         if (k === 'description') description = v.replace(/^["']|["']$/g, '');
                         if (k === 'hide_hyperbook') hideHyperbook = v === 'true';
@@ -202,6 +206,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                 playMode,
                 launchUrl,
                 paperoboSlug,
+                paperoboAgentId,
+                paperoboPublicId,
                 hyperbookId,
                 subTitle,
                 description,
