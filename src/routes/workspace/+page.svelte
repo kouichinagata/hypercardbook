@@ -141,6 +141,10 @@
     let hasUnseenUpdate = $state(false);
     let lastSeenMarkdown = '';
 
+    function goBack() {
+        if (window.history.length === 1 || window.opener) { window.close(); } else { goto('/'); }
+    }
+
     function selectMobilePane(pane: 'chat' | 'preview' | 'source') {
         mobilePane = pane;
         showMobileMenu = false;
@@ -1636,6 +1640,8 @@ ${markdown}
         } else {
             activeTab = 'preview';
         }
+        // スマホ: 既存の Card/Book を開いた時は Chat ではなく Code / Preview から始める
+        if (isMobile && data.bookId) mobilePane = activeTab === 'source' ? 'source' : 'preview';
 
         return () => {
             document.body.classList.remove('scroll-locked');
@@ -2074,8 +2080,9 @@ ${markdown}
 <div class="workspace-layout" class:resizing={isResizing} class:mobile={isMobile} data-theme={uiTheme}>
     {#if isMobile}
         <div class="mobile-topbar">
+            <button class="back-home-btn" onclick={goBack}>back</button>
             <div class="mobile-pane-toggle" role="tablist">
-                <button role="tab" aria-selected={mobilePane === 'chat'} class:active={mobilePane === 'chat'} onclick={() => selectMobilePane('chat')}>Chat</button>
+                <button role="tab" aria-selected={mobilePane === 'chat'} class:active={mobilePane === 'chat'} onclick={() => selectMobilePane('chat')}>{mode === 'card' ? 'HyperCard' : 'HyperBook'}</button>
                 <button role="tab" aria-selected={mobilePane === 'preview'} class:active={mobilePane === 'preview'} onclick={() => selectMobilePane('preview')}>
                     Preview{#if hasUnseenUpdate && mobilePane === 'chat'}<i class="update-dot"></i>{/if}
                 </button>
@@ -2097,8 +2104,8 @@ ${markdown}
         <div class="chat-panel" class:pane-hidden={isMobile && mobilePane !== 'chat'} style={isMobile ? '' : `width: ${chatWidth}px;`}>
             <div class="panel-header">
                 <div class="header-left">
-                    <button class="back-home-btn" onclick={() => { if (window.history.length === 1 || window.opener) { window.close(); } else { goto('/'); } }}>back</button>
-                    <h2>Chat</h2>
+                    {#if !isMobile}<button class="back-home-btn" onclick={goBack}>back</button>{/if}
+                    <h2>{mode === 'card' ? 'HyperCard' : 'HyperBook'}</h2>
                 </div>
                 <div class="header-right" style="display: flex; align-items: center; gap: 8px;">
                     {#if markdownHistory.length > 0}
