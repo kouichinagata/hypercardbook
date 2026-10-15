@@ -450,7 +450,7 @@ ${n}「ありがとうございました。PapeRobo Liveでした。また次回
             });
             const result = await res.json();
             if (!res.ok || !result.id) throw new Error(result.error || 'save failed');
-            await goto(`/hyperbook/${result.id}`);
+            await goto(`/workspace?id=${result.id}`);
         } catch (e) {
             alert('ScriptBookの作成に失敗しました: ' + (e instanceof Error ? e.message : e));
         }
