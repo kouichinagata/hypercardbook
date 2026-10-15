@@ -198,7 +198,7 @@
         const hash = session
             ? `#access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`
             : '';
-        const win = window.open(`${origin}/ai?${params.toString()}${hash}`, '_blank');
+        const win = window.open(`${origin}/?${params.toString()}${hash}`, '_blank');
         if (!win) return;
         const onMessage = (event: MessageEvent) => {
             if (event.origin !== origin || event.source !== win) return;
