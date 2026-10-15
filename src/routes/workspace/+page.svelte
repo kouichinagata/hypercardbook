@@ -2082,7 +2082,7 @@ ${markdown}
         <div class="mobile-topbar">
             <button class="back-home-btn" onclick={goBack}>back</button>
             <div class="mobile-pane-toggle" role="tablist">
-                <button role="tab" aria-selected={mobilePane === 'chat'} class:active={mobilePane === 'chat'} onclick={() => selectMobilePane('chat')}>{mode === 'card' ? 'HyperCard' : 'HyperBook'}</button>
+                <button role="tab" aria-selected={mobilePane === 'chat'} class:active={mobilePane === 'chat'} onclick={() => selectMobilePane('chat')}>Chat</button>
                 <button role="tab" aria-selected={mobilePane === 'preview'} class:active={mobilePane === 'preview'} onclick={() => selectMobilePane('preview')}>
                     Preview{#if hasUnseenUpdate && mobilePane === 'chat'}<i class="update-dot"></i>{/if}
                 </button>
