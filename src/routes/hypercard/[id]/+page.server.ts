@@ -1,4 +1,5 @@
 import { isCardMarkdown } from '$lib/play-mode';
+import { loadUnlistedMiniApp } from '$lib/server/unlisted-mini-app';
 import type { PageServerLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
 import fs from 'fs';
@@ -68,9 +69,11 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
             query.eq('slug', id);
         }
 
-        const { data, error: dbError } = await query.single();
+        const { data: found, error: dbError } = await query.single();
+        // A non-public MiniApp is still served to anyone who knows its UUID link (it just is not listed publicly).
+        const data = found ?? (isUuid ? await loadUnlistedMiniApp(id) : null);
 
-        if (dbError || !data) {
+        if (!data) {
             console.error(`Book not found in DB for ID/slug "${id}":`, dbError);
             throw error(404, { message: 'Book not found' });
         }

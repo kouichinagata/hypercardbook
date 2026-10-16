@@ -1,5 +1,7 @@
 // Mini App = a Card with play_mode: miniapp, listed per user in `mini_apps` and embedded by PapeRobo in a sandboxed iframe.
+// A new MiniApp is unlisted: anyone with its UUID link can use it, but it only appears on the public shelf once the author publishes it.
 const ORIGIN = 'https://www.hypercardbook.org';
+// In development the endpoints hand out the local origin so unreleased work is not shown on production.
 export const MINI_APP_TITLE = 'Hello World';
 export const MAX_MINI_APPS = 100;
 
@@ -7,23 +9,22 @@ export function newMiniAppSlug(random: () => string = () => crypto.randomUUID().
     return `miniapp-${random()}`;
 }
 
-export function helloWorldMiniAppMarkdown(slug: string, publishedAt: string): string {
+export function helloWorldMiniAppMarkdown(slug: string): string {
     return `---
 id: ${slug}
 title: ${MINI_APP_TITLE}
 play_mode: miniapp
 theme_color: white
-is_public: true
-published_at: ${publishedAt}
+is_public: false
 ---
 # Hello World
 `;
 }
 
-export function miniAppUrls(slug: string) {
+export function miniAppUrls(bookId: string, origin: string = ORIGIN) {
     return {
-        cardUrl: `${ORIGIN}/hypercard/${slug}`,
-        editUrl: `${ORIGIN}/workspace?mode=card&id=${encodeURIComponent(slug)}`
+        cardUrl: `${origin}/hypercard/${bookId}`,
+        editUrl: `${origin}/workspace?mode=card&id=${encodeURIComponent(bookId)}`
     };
 }
 
@@ -32,14 +33,14 @@ export function validMiniAppRef(ref: unknown): ref is string {
     return typeof ref === 'string' && /^[A-Za-z0-9._-]{1,200}$/.test(ref);
 }
 
-export function absoluteCoverImage(cover: string | null | undefined): string | null {
+export function absoluteCoverImage(cover: string | null | undefined, origin: string = ORIGIN): string | null {
     if (!cover) return null;
     if (cover.startsWith('data:')) return null;
-    if (cover.startsWith('/') && !cover.startsWith('//')) return `${ORIGIN}${cover}`;
+    if (cover.startsWith('/') && !cover.startsWith('//')) return `${origin}${cover}`;
     return /^https:\/\//i.test(cover) ? cover : null;
 }
 
-export function miniAppCardUrl(book: { slug?: string | null; id: string }): string {
-    const key = (book.slug && validMiniAppRef(book.slug) ? book.slug : book.id);
-    return `${ORIGIN}/hypercard/${key}`;
+// Always the book UUID: unlisted MiniApps are only served by UUID.
+export function miniAppCardUrl(book: { id: string }, origin: string = ORIGIN): string {
+    return `${origin}/hypercard/${book.id}`;
 }

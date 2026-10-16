@@ -14,7 +14,7 @@ export const GET: RequestHandler = async ({ locals }) => {
     return json({ items: data || [] });
 };
 
-// Replaces the list with the selected MiniApps (in order). Own unpublished MiniApps are published only when publish=true.
+// Replaces the list with the selected MiniApps (in order). Own MiniApps (listed or not) and public / Quark's Choice ones can be chosen.
 export const PUT: RequestHandler = async ({ request, locals }) => {
     const session = locals.session;
     if (!session) return json({ error: 'Unauthorized. Please login first.' }, { status: 401 });
@@ -36,15 +36,6 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
         const mine = book.user_id === session.user.id;
         if (!mine && !book.is_public && !book.is_quark_choice) return json({ error: `MiniApp is not available: ${ref}` }, { status: 400 });
         rows.push({ ref, book });
-    }
-
-    const unpublished = rows.filter(({ book }) => book.user_id === session.user.id && !book.is_public);
-    if (unpublished.length && body?.publish !== true) {
-        return json({ error: 'Some MiniApps are not published.', needsPublish: unpublished.map(({ book }) => book.title) }, { status: 409 });
-    }
-    for (const { book } of unpublished) {
-        const { error } = await supabase.from('books').update({ is_public: true, published_at: new Date().toISOString() }).eq('id', book.id).eq('user_id', session.user.id);
-        if (error) return json({ error: error.message }, { status: 500 });
     }
 
     const { error: delError } = await supabase.from('mini_apps').delete().eq('user_id', session.user.id);

@@ -1175,24 +1175,15 @@ HyperBook: ${hyperBook.title}
         hasMorePublic = true;
     }
 
-    async function saveMiniApps(publish = false) {
+    async function saveMiniApps() {
         if (isSavingMiniApp) return;
         isSavingMiniApp = true;
         try {
             const res = await fetch('/api/mini-apps', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ refs: selectedMiniApps.map((b) => b.id), publish })
+                body: JSON.stringify({ refs: selectedMiniApps.map((b) => b.id) })
             });
-            if (res.status === 409) {
-                const result = await res.json();
-                const names = (result.needsPublish || []).join('\n');
-                if (confirm(`These MiniApps are not published:\n${names}\n\nPublishing makes them visible to everyone and they may be searchable on Google. Publish and add them to PapeRobo?`)) {
-                    isSavingMiniApp = false;
-                    await saveMiniApps(true);
-                }
-                return;
-            }
             if (!res.ok) {
                 const result = await res.json().catch(() => ({}));
                 alert(`Failed to save: ${result.error || res.status}`);

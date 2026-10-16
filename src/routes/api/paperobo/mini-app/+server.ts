@@ -3,16 +3,19 @@ import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { createClient } from '@supabase/supabase-js';
+import { dev } from '$app/environment';
 import { absoluteCoverImage, helloWorldMiniAppMarkdown, miniAppCardUrl, miniAppUrls, newMiniAppSlug, validMiniAppRef, MINI_APP_TITLE } from '$lib/mini-app';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Called server-to-server by PapeRobo with the shared secret.
-//   create: makes a public "Hello World" MiniApp for the user and adds it to the user's list
+//   create: makes an unlisted "Hello World" MiniApp (not public; usable by anyone with its UUID link) and adds it to the user's list
 //   list:   returns the user's MiniApps (title, cover and Card URL resolved from the books table)
 //   remove: removes one entry from the user's list
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, url }) => {
     try {
+        // Local development hands out local URLs; production always uses the public origin.
+        const origin = dev ? url.origin : undefined;
         const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
         const expectedSecret = env.HYPERCARDBOOK_SHARED_SECRET || process.env.HYPERCARDBOOK_SHARED_SECRET || '';
         if (!expectedSecret) {
@@ -35,29 +38,28 @@ export const POST: RequestHandler = async ({ request }) => {
 
         if (action === 'create') {
             const slug = newMiniAppSlug();
-            const now = new Date().toISOString();
-            const { error: dbError } = await supabase.from('books').insert({
+            const { data: created, error: dbError } = await supabase.from('books').insert({
                 user_id: userId,
                 slug,
                 title: MINI_APP_TITLE,
                 author: null,
                 cover_image: null,
                 theme_color: 'white',
-                markdown_content: helloWorldMiniAppMarkdown(slug, now),
-                is_public: true,
-                published_at: now
-            });
-            if (dbError) {
+                markdown_content: helloWorldMiniAppMarkdown(slug),
+                is_public: false,
+                published_at: null
+            }).select('id').single();
+            if (dbError || !created) {
                 console.error('Failed to create mini app card:', dbError);
-                return json({ error: dbError.message }, { status: 500 });
+                return json({ error: dbError?.message || 'Failed to create the MiniApp.' }, { status: 500 });
             }
             const { data: last } = await supabase.from('mini_apps').select('position').eq('user_id', userId).order('position', { ascending: false }).limit(1).maybeSingle();
-            const { error: listError } = await supabase.from('mini_apps').insert({ user_id: userId, ref: slug, title: MINI_APP_TITLE, position: (last?.position ?? -1) + 1 });
+            const { error: listError } = await supabase.from('mini_apps').insert({ user_id: userId, ref: created.id, title: MINI_APP_TITLE, position: (last?.position ?? -1) + 1 });
             if (listError) {
                 console.error('Failed to register mini app:', listError);
                 return json({ error: listError.message }, { status: 500 });
             }
-            return json({ ok: true, slug, title: MINI_APP_TITLE, ...miniAppUrls(slug) });
+            return json({ ok: true, id: created.id, slug, title: MINI_APP_TITLE, ...miniAppUrls(created.id, origin) });
         }
 
         if (action === 'list') {
@@ -75,9 +77,9 @@ export const POST: RequestHandler = async ({ request }) => {
                 return [{
                     ref: row.ref,
                     title: book.title || row.title || 'MiniApp',
-                    coverImage: absoluteCoverImage(book.cover_image),
+                    coverImage: absoluteCoverImage(book.cover_image, origin),
                     themeColor: book.theme_color || 'white',
-                    cardUrl: miniAppCardUrl(book)
+                    cardUrl: miniAppCardUrl(book, origin)
                 }];
             });
             return json({ ok: true, apps });

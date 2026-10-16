@@ -8,9 +8,9 @@ test('slug is URL-safe and unique per call', () => {
     assert.notEqual(a, newMiniAppSlug());
 });
 
-test('Hello World Card is a public miniapp card', () => {
-    const md = helloWorldMiniAppMarkdown('miniapp-abc', '2026-01-01T00:00:00.000Z');
-    for (const line of ['id: miniapp-abc', 'title: Hello World', 'play_mode: miniapp', 'is_public: true']) assert.ok(md.includes(line), line);
+test('Hello World Card is an unlisted (not public) miniapp card', () => {
+    const md = helloWorldMiniAppMarkdown('miniapp-abc');
+    for (const line of ['id: miniapp-abc', 'title: Hello World', 'play_mode: miniapp', 'is_public: false']) assert.ok(md.includes(line), line);
     assert.ok(md.includes('# Hello World'));
 });
 
@@ -27,6 +27,24 @@ test('refs, covers and card urls are normalized', () => {
     assert.equal(absoluteCoverImage('/img/a.png'), 'https://www.hypercardbook.org/img/a.png');
     assert.equal(absoluteCoverImage('https://x.example/a.png'), 'https://x.example/a.png');
     for (const bad of [null, '', 'data:image/png;base64,AAA', '//evil.example/a.png', 'http://x.example/a.png']) assert.equal(absoluteCoverImage(bad as any), null);
-    assert.equal(miniAppCardUrl({ id: 'uuid-1', slug: 'my-slug' }), 'https://www.hypercardbook.org/hypercard/my-slug');
-    assert.equal(miniAppCardUrl({ id: 'uuid-1', slug: 'bad slug' }), 'https://www.hypercardbook.org/hypercard/uuid-1');
+    assert.equal(miniAppCardUrl({ id: 'uuid-1' }), 'https://www.hypercardbook.org/hypercard/uuid-1');
+});
+
+test('urls can be built for a local origin', () => {
+    assert.deepEqual(miniAppUrls('miniapp-abc', 'http://localhost:5173'), {
+        cardUrl: 'http://localhost:5173/hypercard/miniapp-abc',
+        editUrl: 'http://localhost:5173/workspace?mode=card&id=miniapp-abc'
+    });
+    assert.equal(miniAppCardUrl({ id: 'u' }, 'http://localhost:5173'), 'http://localhost:5173/hypercard/u');
+    assert.equal(absoluteCoverImage('/a.png', 'http://localhost:5173'), 'http://localhost:5173/a.png');
+});
+
+import { servesUnlistedMiniApp, isBookUuid } from '../src/lib/unlisted-mini-app.ts';
+
+test('unlisted MiniApps are served only by UUID', () => {
+    const uuid = '0b6f5c1e-1111-4222-8333-444455556666';
+    assert.ok(isBookUuid(uuid) && !isBookUuid('minutes') && !isBookUuid(''));
+    assert.ok(servesUnlistedMiniApp(uuid, 'miniapp'));
+    assert.ok(!servesUnlistedMiniApp('minutes', 'miniapp'));
+    assert.ok(!servesUnlistedMiniApp(uuid, 'card') && !servesUnlistedMiniApp(uuid, 'book') && !servesUnlistedMiniApp(uuid, undefined));
 });
