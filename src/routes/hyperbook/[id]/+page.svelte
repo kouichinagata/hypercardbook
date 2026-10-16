@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { isCardMarkdown } from '$lib/play-mode';
     import { onMount } from 'svelte';
     import Book from '$lib/components/Book.svelte';
     import { effectivePlanFromUser } from '$lib/plan';
@@ -7,7 +8,7 @@
 
     let { data } = $props();
 
-    let isCard = $derived(data.markdown.includes('play_mode: card') || (!data.markdown.includes('play_mode: book') && !/Page\s*\d+:/i.test(data.markdown) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(data.markdown)));
+    let isCard = $derived(isCardMarkdown(data.markdown) || (!data.markdown.includes('play_mode: book') && !/Page\s*\d+:/i.test(data.markdown) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(data.markdown)));
     let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || DEFAULT_ACTIVE_PLUGIN_IDS);
     let isProPlan = $derived(['pro', 'enterprise'].includes(effectivePlanFromUser(data.session?.user)));
     

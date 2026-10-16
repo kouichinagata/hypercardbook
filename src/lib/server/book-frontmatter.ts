@@ -1,3 +1,4 @@
+import { isCardLike } from '../play-mode.ts';
 // books テーブルの列（title / slug など）に写す YAML フロントマターの項目を読む。
 // /api/save と部分置換編集（card-edit.ts）で同じ読み方をするために共通化している。
 export interface BookFrontmatter {
@@ -53,7 +54,7 @@ export function bookColumnsFromFrontmatter(fm: BookFrontmatter) {
         title: fm.title,
         author: fm.author || null,
         cover_image: fm.coverImage || null,
-        theme_color: fm.themeColor || (fm.playMode === 'card' ? 'white' : 'black'),
+        theme_color: fm.themeColor || (isCardLike(fm.playMode) ? 'white' : 'black'),
         ddc_code: fm.ddcCode || null
     };
 }

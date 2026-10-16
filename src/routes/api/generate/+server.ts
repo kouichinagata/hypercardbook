@@ -160,7 +160,7 @@ CRITICAL RULES:
    - The YAML frontmatter block MUST always contain:
      - id: <unique-short-slug, e.g. volcanic-activity-japan>
      - title: <title of the card>
-     - play_mode: card
+     - play_mode: card (if the existing card's play_mode is miniapp, keep play_mode: miniapp unchanged)
      - author: <Author Name>
      - cover_image: <URL of Unsplash cover image suitable for the topic>
      - theme_color: white

@@ -1,3 +1,4 @@
+import { isCardLike } from '$lib/play-mode';
 import type { PageServerLoad } from './$types';
 import { ensureBiographyBook } from '$lib/server/biography';
 
@@ -14,7 +15,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
 
         const { data: books, error } = await supabase
             .from('books')
-            .select('id, slug, title, author, cover_image, theme_color, user_id, markdown_content, updated_at')
+            .select('id, slug, title, author, cover_image, theme_color, user_id, markdown_content, updated_at, is_public')
             .eq('user_id', session.user.id)
             .order('updated_at', { ascending: false });
 
@@ -58,7 +59,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                     });
                 }
 
-                const isCard = playMode === 'card';
+                const isCard = isCardLike(playMode);
                 const isStack = playMode === 'stack';
 
                 return {
@@ -69,7 +70,9 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                     coverImage: b.cover_image,
                     themeColor: b.theme_color || (isCard ? 'white' : 'black'),
                     userId: b.user_id,
+                    isPublic: b.is_public === true,
                     isCard,
+                    isMiniApp: playMode === 'miniapp',
                     isStack,
                     playMode,
                     launchUrl,
@@ -156,7 +159,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                             });
                         }
 
-                        const isCard = playMode === 'card';
+                        const isCard = isCardLike(playMode);
                         const isStack = playMode === 'stack';
 
                         return {
@@ -168,6 +171,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                             themeColor: b.theme_color || (isCard ? 'white' : 'black'),
                             userId: b.user_id,
                             isCard,
+                            isMiniApp: playMode === 'miniapp',
                             isStack,
                             playMode,
                             launchUrl,
@@ -241,7 +245,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                     });
                 }
 
-                const isCard = playMode === 'card';
+                const isCard = isCardLike(playMode);
                 const isStack = playMode === 'stack';
 
                 return {
@@ -253,6 +257,7 @@ export const load: PageServerLoad = async ({ locals, fetch }) => {
                     themeColor: bookData.theme_color || (isCard ? 'white' : 'black'),
                     userId: bookData.user_id,
                     isCard,
+                    isMiniApp: playMode === 'miniapp',
                     isStack,
                     playMode,
                     launchUrl,

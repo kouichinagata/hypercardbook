@@ -1,3 +1,4 @@
+import { isCardLike } from '$lib/play-mode';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
@@ -105,7 +106,8 @@ function formatPublicBook(book: any) {
         description,
         hideHyperbook,
         sourceApp,
-        isCard: playMode === 'card',
+        isCard: isCardLike(playMode),
+        isMiniApp: playMode === 'miniapp',
         isStack: playMode === 'stack',
         isGraphicBook: /(?:^|\n)\s*(?:layout|mode|page_mode):\s*(fill|full)\s*(?:\n|$)/i.test(markdownContent),
         ddcCode: book.ddc_code || ''
@@ -123,7 +125,8 @@ function matchesPublicBookType(book: ReturnType<typeof formatPublicBook>, type: 
     if (type === 'hyperrobo') return book.playMode === 'hyperrobo';
     if (type === 'hypertv') return book.sourceApp === 'hypertv';
     if (type === 'scriptbook') return book.sourceApp === 'scriptbook';
-    if (type === 'card') return book.isCard;
+    if (type === 'card') return book.playMode === 'card';
+    if (type === 'miniapp') return book.isMiniApp;
     return true;
 }
 

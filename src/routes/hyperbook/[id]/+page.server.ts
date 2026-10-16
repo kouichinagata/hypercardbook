@@ -1,3 +1,4 @@
+import { isCardMarkdown } from '$lib/play-mode';
 import type { PageServerLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
 import fs from 'fs';
@@ -80,7 +81,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
     }
 
         // Check if markdown is actually a "Card" instead of a "Book"
-        const isCard = markdownContent.includes('play_mode: card') || (!markdownContent.includes('play_mode: book') && !/Page\s*\d+:/i.test(markdownContent) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(markdownContent));
+        const isCard = isCardMarkdown(markdownContent) || (!markdownContent.includes('play_mode: book') && !/Page\s*\d+:/i.test(markdownContent) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(markdownContent));
         if (isCard) {
             const redirectParams = new URLSearchParams(url.searchParams);
             throw redirect(302, `/hypercard/${id}?${redirectParams.toString()}`);

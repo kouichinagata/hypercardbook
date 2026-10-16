@@ -1,3 +1,4 @@
+import { isCardLike } from '$lib/play-mode';
 import type { PageServerLoad } from './$types';
 import fs from 'fs';
 import path from 'path';
@@ -77,7 +78,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                 });
             }
 
-            const isCard = playMode === 'card';
+            const isCard = isCardLike(playMode);
             const isStack = playMode === 'stack';
 
             return {
@@ -88,6 +89,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                 coverImage,
                 themeColor: themeColor || (isCard ? 'white' : 'black'),
                 isCard,
+                isMiniApp: playMode === 'miniapp',
                 isStack,
                 subTitle,
                 description,
@@ -190,7 +192,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                 });
             }
 
-            const isCard = playMode === 'card';
+            const isCard = isCardLike(playMode);
             const isStack = playMode === 'stack';
 
             return {
@@ -202,6 +204,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
                 themeColor: b.theme_color || (isCard ? 'white' : 'black'),
                 userId: b.user_id,
                 isCard,
+                isMiniApp: playMode === 'miniapp',
                 isStack,
                 playMode,
                 launchUrl,

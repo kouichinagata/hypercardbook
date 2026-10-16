@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { isCardMarkdown } from '$lib/play-mode';
     import { onDestroy, onMount, tick } from 'svelte';
     import { page } from '$app/state';
     import { goto, invalidateAll } from '$app/navigation';
@@ -22,7 +23,7 @@
     let bookVersion = $state<number | null>(data.version ?? null);
 
     // URLパラメータや markdown コンテンツから初期モードを判定
-    const initialIsCard = (page.url?.searchParams?.get('mode') === 'card') || !!(data.markdown && data.markdown.includes('play_mode: card'));
+    const initialIsCard = (page.url?.searchParams?.get('mode') === 'card') || !!(data.markdown && isCardMarkdown(data.markdown));
     let mode = $state(initialIsCard ? 'card' : 'book'); // 'book' or 'card'
     let activeTab = $state(initialIsCard ? 'source' : 'preview'); // 'preview' or 'source'
     let replaceTargetIsCover = $state(false);
@@ -1326,8 +1327,8 @@ ${markdown}
             let accumulatedText = '';
 
             // 保存済みの本を開いているときは、AI が返した Card で本を置き換えない（Card は Card モードの新規画面で作る）
-            const protectBook = mode === 'book' && !!bookUuid && !markdown.includes('play_mode: card');
-            const replacesBookWithCard = (md: string) => protectBook && md.includes('play_mode: card');
+            const protectBook = mode === 'book' && !!bookUuid && !isCardMarkdown(markdown);
+            const replacesBookWithCard = (md: string) => protectBook && isCardMarkdown(md);
             let blockedCardReplace = false;
             let blockedCardMarkdown = '';
             
@@ -1369,7 +1370,7 @@ ${markdown}
                         blockedCardMarkdown = parsedMarkdown;
                     } else {
                         markdown = parsedMarkdown;
-                        const parsedIsCard = parsedMarkdown.includes('play_mode: card');
+                        const parsedIsCard = isCardMarkdown(parsedMarkdown);
                         mode = parsedIsCard ? 'card' : 'book';
                     }
                 }
@@ -1643,7 +1644,7 @@ ${markdown}
         if (urlMode === 'card') {
             mode = 'card';
         } else if (markdown) {
-            const parsedIsCard = markdown.includes('play_mode: card');
+            const parsedIsCard = isCardMarkdown(markdown);
             mode = parsedIsCard ? 'card' : 'book';
         }
 

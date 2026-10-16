@@ -8,6 +8,7 @@
     import { AI_KEYS_CHANGED_EVENT, aiRequestHeaders } from '$lib/ai-model';
     import { DEFAULT_ACTIVE_PLUGIN_IDS } from '$lib/plugins';
     import PublicSearchMenu from '$lib/components/PublicSearchMenu.svelte';
+    import { MAX_MINI_APPS } from '$lib/mini-app';
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
     import { LANGUAGES } from '$lib/languages';
@@ -308,6 +309,11 @@
                 urlParams.get('public') || '',
                 urlParams.get('name') || 'AI'
             );
+        }
+
+        // PapeRoboの「＋追加」から: ?mini_app_select=1 （MiniAppを本棚から選ぶ）
+        if (urlParams.get('mini_app_select') === '1') {
+            void startMiniAppSelection();
         }
 
         // Launch parameters: ?prompt=...&mode=card|book&run=exec
@@ -702,6 +708,15 @@ ${n}「ありがとうございました。PapeRobo Liveでした。また次回
     let isStackPublic = $state(false);
     let stackPublishedAt = $state<string | null>(null);
 
+    // MiniApp selection (opened from PapeRobo with ?mini_app_select=1): pick MiniApps for the PapeRobo list
+    let isMiniAppSelectionMode = $state(false);
+    let showMiniAppModal = $state(false);
+    let selectedMiniApps = $state<any[]>([]); // Array of { id, title }
+    let isSavingMiniApp = $state(false);
+    let miniAppSavedNotice = $state(false);
+    let shelfSelecting = $derived(isStackSelectionMode || isMiniAppSelectionMode);
+    let shelfSelectedIds = $derived(isMiniAppSelectionMode ? selectedMiniApps.map((b) => b.id) : selectedStackBooks.map((b) => b.id));
+
     let showPublicSection = $state(false);
     let publicBooksList = $state<any[]>([]);
     let hasMorePublic = $state(true);
@@ -714,7 +729,7 @@ ${n}「ありがとうございました。PapeRobo Liveでした。また次回
     let collapsedShelves = $state<Record<string, boolean>>({ sample: true });
     function isShelfCollapsed(key: string) {
         // Everything must stay selectable while composing a Stack / HyperRobo
-        if (isStackSelectionMode || isHyperRoboSelectionMode) return false;
+        if (isStackSelectionMode || isHyperRoboSelectionMode || isMiniAppSelectionMode) return false;
         return !!collapsedShelves[key];
     }
     function toggleShelf(key: string) {
@@ -726,12 +741,14 @@ ${n}「ありがとうございました。PapeRobo Liveでした。また次回
     let myBooksList = $derived(data.books.filter((b: any) => !b.isSample && !b.isQuarkChoice));
     // Items already inside a stack live in that stack's hierarchy, not on the top shelf
     let topBooksList = $derived(
-        isStackSelectionMode || isHyperRoboSelectionMode
+        isMiniAppSelectionMode
+            ? myBooksList.filter((b: any) => b.isMiniApp)
+        : isStackSelectionMode || isHyperRoboSelectionMode
             ? myBooksList
             : myBooksList.filter((b: any) => !stackedItemIds.has(b.id) && !stackedItemIds.has(b.slug))
     );
-    let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample));
-    let quarksChoiceList = $derived(data.books.filter((b: any) => b.isQuarkChoice));
+    let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample && (!isMiniAppSelectionMode || b.isMiniApp)));
+    let quarksChoiceList = $derived(data.books.filter((b: any) => b.isQuarkChoice && (!isMiniAppSelectionMode || b.isMiniApp)));
 
     /* ===== Public Books 絞り込み ===== */
     let pbTypeFilter = $state('all');
@@ -749,7 +766,8 @@ ${n}「ありがとうございました。PapeRobo Liveでした。また次回
         { id: 'paperobo', label: 'PapeRobo' },
         { id: 'hypertv', label: 'Scenario Books' },
         { id: 'scriptbook', label: 'Script Books' },
-        { id: 'card', label: 'Card' }
+        { id: 'card', label: 'Card' },
+        { id: 'miniapp', label: 'MiniApp' }
     ];
 
     let filteredPublicBooksList = $derived(publicBooksList);
@@ -1094,10 +1112,100 @@ HyperBook: ${hyperBook.title}
     }
 
     function handleToggleSelectionWrapper(book: any) {
-        if (isHyperRoboSelectionMode) {
+        if (isMiniAppSelectionMode) {
+            handleToggleMiniApp(book);
+        } else if (isHyperRoboSelectionMode) {
             handleToggleHyperRoboSelection(book);
         } else {
             handleToggleSelection(book);
+        }
+    }
+
+    function handleToggleMiniApp(book: any) {
+        if (!book.isMiniApp) return;
+        if (selectedMiniApps.some((b) => b.id === book.id)) {
+            selectedMiniApps = selectedMiniApps.filter((b) => b.id !== book.id);
+        } else if (selectedMiniApps.length < MAX_MINI_APPS) {
+            selectedMiniApps = [...selectedMiniApps, { id: book.id, title: book.title }];
+        }
+    }
+
+    function moveMiniApp(index: number, direction: number) {
+        const target = index + direction;
+        if (target < 0 || target >= selectedMiniApps.length) return;
+        const updated = [...selectedMiniApps];
+        const [moved] = updated.splice(index, 1);
+        updated.splice(target, 0, moved);
+        selectedMiniApps = updated;
+    }
+
+    async function startMiniAppSelection() {
+        if (!data.currentUserId) {
+            alert('Please log in to choose MiniApps.');
+            return;
+        }
+        selectedMiniApps = [];
+        miniAppSavedNotice = false;
+        try {
+            const res = await fetch('/api/mini-apps');
+            if (res.ok) {
+                const result = await res.json();
+                // The list stores slugs for apps made by PapeRobo; map them to the shelf's book ids.
+                selectedMiniApps = (result.items || []).flatMap((item: any) => {
+                    const book = data.books.find((b: any) => b.id === item.ref || b.slug === item.ref);
+                    return [{ id: book?.id ?? item.ref, title: book?.title ?? item.title }];
+                });
+            }
+        } catch (err) {
+            console.error('Failed to load MiniApp list:', err);
+        }
+        isMiniAppSelectionMode = true;
+        showMiniAppModal = true;
+        pbTypeFilter = 'miniapp';
+        void refreshPublicBooks();
+    }
+
+    function cancelMiniAppSelection() {
+        isMiniAppSelectionMode = false;
+        showMiniAppModal = false;
+        selectedMiniApps = [];
+        pbTypeFilter = 'all';
+        showPublicSection = false;
+        publicBooksList = [];
+        hasMorePublic = true;
+    }
+
+    async function saveMiniApps(publish = false) {
+        if (isSavingMiniApp) return;
+        isSavingMiniApp = true;
+        try {
+            const res = await fetch('/api/mini-apps', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refs: selectedMiniApps.map((b) => b.id), publish })
+            });
+            if (res.status === 409) {
+                const result = await res.json();
+                const names = (result.needsPublish || []).join('\n');
+                if (confirm(`These MiniApps are not published:\n${names}\n\nPublishing makes them visible to everyone and they may be searchable on Google. Publish and add them to PapeRobo?`)) {
+                    isSavingMiniApp = false;
+                    await saveMiniApps(true);
+                }
+                return;
+            }
+            if (!res.ok) {
+                const result = await res.json().catch(() => ({}));
+                alert(`Failed to save: ${result.error || res.status}`);
+                return;
+            }
+            miniAppSavedNotice = true;
+            cancelMiniAppSelection();
+            window.close(); // works when PapeRobo opened this tab; otherwise the notice stays
+        } catch (err) {
+            console.error('Save MiniApps error:', err);
+            alert('An error occurred while saving.');
+        } finally {
+            isSavingMiniApp = false;
         }
     }
 
@@ -2449,10 +2557,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDeleteBook={handleDeleteBook}
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
-                    showStackBtn={true}
-                    showHyperRoboBtn={true}
-                    isStackSelection={isStackSelectionMode}
-                    selectedStackBookIds={selectedStackBookIds}
+                    showStackBtn={!isMiniAppSelectionMode}
+                    showHyperRoboBtn={!isMiniAppSelectionMode}
+                    isStackSelection={shelfSelecting}
+                    selectedStackBookIds={shelfSelectedIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
                     selectedHyperRoboBookIds={selectedHyperRoboBookIds}
                     onToggleSelection={handleToggleSelectionWrapper}
@@ -2481,8 +2589,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
                     showHyperCardTvBtn={true}
-                    isStackSelection={isStackSelectionMode}
-                    selectedStackBookIds={selectedStackBookIds}
+                    isStackSelection={shelfSelecting}
+                    selectedStackBookIds={shelfSelectedIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
                     selectedHyperRoboBookIds={selectedHyperRoboBookIds}
                     onToggleSelection={handleToggleSelectionWrapper}
@@ -2509,10 +2617,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDeleteBook={handleDeleteBook}
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
-                    showStackBtn={true}
-                    showHyperRoboBtn={true}
-                    isStackSelection={isStackSelectionMode}
-                    selectedStackBookIds={selectedStackBookIds}
+                    showStackBtn={!isMiniAppSelectionMode}
+                    showHyperRoboBtn={!isMiniAppSelectionMode}
+                    isStackSelection={shelfSelecting}
+                    selectedStackBookIds={shelfSelectedIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
                     selectedHyperRoboBookIds={selectedHyperRoboBookIds}
                     onToggleSelection={handleToggleSelectionWrapper}
@@ -2539,10 +2647,10 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDeleteBook={handleDeleteBook}
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
-                    showStackBtn={myBooksList.length === 0}
-                    showHyperRoboBtn={myBooksList.length === 0}
-                    isStackSelection={isStackSelectionMode}
-                    selectedStackBookIds={selectedStackBookIds}
+                    showStackBtn={myBooksList.length === 0 && !isMiniAppSelectionMode}
+                    showHyperRoboBtn={myBooksList.length === 0 && !isMiniAppSelectionMode}
+                    isStackSelection={shelfSelecting}
+                    selectedStackBookIds={shelfSelectedIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}
                     selectedHyperRoboBookIds={selectedHyperRoboBookIds}
                     onToggleSelection={handleToggleSelectionWrapper}
@@ -2590,8 +2698,8 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                             onDownloadBook={handleDownloadBook}
                             fromPage="home"
                             showStackBtn={false}
-                            isStackSelection={isStackSelectionMode}
-                            selectedStackBookIds={selectedStackBookIds}
+                            isStackSelection={shelfSelecting}
+                            selectedStackBookIds={shelfSelectedIds}
                             isHyperRoboSelection={isHyperRoboSelectionMode}
                             selectedHyperRoboBookIds={selectedHyperRoboBookIds}
                             onToggleSelection={handleToggleSelectionWrapper}
@@ -2721,6 +2829,60 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 <button class="btn-popup btn-popup-primary" onclick={saveStack} disabled={selectedStackBooks.length === 0}>
                     Save
                 </button>
+            </div>
+        </div>
+    {/if}
+
+    <!-- MiniApp selection panel -->
+    {#if showMiniAppModal}
+        <div class="stack-popup-panel">
+            <div class="stack-popup-header">
+                <h3>MiniApp</h3>
+                <div class="stack-header-actions" style="display: flex; gap: 8px; align-items: center;">
+                    <button class="close-popup-btn" onclick={cancelMiniAppSelection} disabled={isSavingMiniApp}>✕</button>
+                </div>
+            </div>
+            <div class="stack-popup-body">
+                <p class="select-hint">Select MiniApps to use in PapeRobo chats.</p>
+                <p class="select-hint">⚠ MiniApps made by others run scripts. Choose only ones you trust.</p>
+                <div class="stack-listbox-container">
+                    <label class="listbox-label">MiniApp ({selectedMiniApps.length}/{MAX_MINI_APPS})</label>
+                    <div class="stack-listbox">
+                        {#if selectedMiniApps.length === 0}
+                            <div class="empty-listbox">No items selected</div>
+                        {:else}
+                            <div class="listbox-items">
+                                {#each selectedMiniApps as item, idx (item.id)}
+                                    <div class="listbox-item">
+                                        <span class="item-title" title={item.title}>{item.title}</span>
+                                        <span class="item-badge">MiniApp</span>
+                                        <div class="item-controls">
+                                            <button type="button" class="control-arrow-btn" onclick={() => moveMiniApp(idx, -1)} disabled={idx === 0} title="Move Up">▲</button>
+                                            <button type="button" class="control-arrow-btn" onclick={() => moveMiniApp(idx, 1)} disabled={idx === selectedMiniApps.length - 1} title="Move Down">▼</button>
+                                            <button type="button" class="control-remove-btn" onclick={() => handleToggleMiniApp({ id: item.id, isMiniApp: true })} title="Delete">✕</button>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                </div>
+            </div>
+            <div class="stack-popup-footer">
+                <button class="btn-popup btn-popup-secondary" onclick={cancelMiniAppSelection} disabled={isSavingMiniApp}>Cancel</button>
+                <button class="btn-popup btn-popup-primary" onclick={() => saveMiniApps()} disabled={isSavingMiniApp}>
+                    {isSavingMiniApp ? 'Saving...' : 'Save'}
+                </button>
+            </div>
+        </div>
+    {/if}
+    {#if miniAppSavedNotice}
+        <div class="stack-popup-panel">
+            <div class="stack-popup-body">
+                <p class="select-hint">Saved. Return to PapeRobo.</p>
+            </div>
+            <div class="stack-popup-footer">
+                <button class="btn-popup btn-popup-primary" onclick={() => miniAppSavedNotice = false}>OK</button>
             </div>
         </div>
     {/if}

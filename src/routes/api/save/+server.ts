@@ -1,3 +1,4 @@
+import { isCardLike } from '$lib/play-mode';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { parseBookFrontmatter } from '$lib/server/book-frontmatter';
@@ -22,7 +23,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const fm = parseBookFrontmatter(markdown);
         const { slug, title, author, coverImage, themeColor, playMode, isPublic: fmIsPublic, publishedAt: fmPublishedAt, ddcCode } = fm;
 
-        const isCard = playMode === 'card';
+        const isCard = isCardLike(playMode);
 
         const bookData: any = {
             user_id: session.user.id,
