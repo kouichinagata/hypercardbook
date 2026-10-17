@@ -1,5 +1,6 @@
 <script lang="ts">
     import { isCardMarkdown } from '$lib/play-mode';
+    import { judgeAiReplace } from '$lib/markdown-guard';
     import { onDestroy, onMount, tick } from 'svelte';
     import { page } from '$app/state';
     import { goto, invalidateAll } from '$app/navigation';
@@ -206,7 +207,9 @@
     let hasGeminiKey = $state(false);
     let imageAllowed = $derived(isPaidPlan || hasGeminiKey);
     let mangaAbort: AbortController | null = null;
-    onDestroy(() => mangaAbort?.abort());
+    // AI 実行（チャット送信）の中止用。Stop ボタンと、画面を離れたときに使う
+    let generateAbort: AbortController | null = null;
+    onDestroy(() => { mangaAbort?.abort(); generateAbort?.abort(); });
     onMount(() => {
         const refresh = () => { hasGeminiKey = hasUserGeminiKey(); };
         refresh();
@@ -1223,6 +1226,8 @@ ${markdown}
         attachedFiles = [];
         isGenerating = true;
         errorMsg = '';
+        const generateController = new AbortController();
+        generateAbort = generateController;
         scrollToBottom();
 
         // Backup current book state before AI modifications
@@ -1249,7 +1254,7 @@ ${markdown}
                             ? `${promptText.trim()}\n\nCreate variation ${i + 1} of ${imageCount} with a distinct composition while preserving the requested subject and style.`
                             : promptText.trim();
                         try {
-                            slots[i] = await requestImage(variantPrompt, imageCount > 1 ? '2:3' : '1:1', referenceImages);
+                            slots[i] = await requestImage(variantPrompt, imageCount > 1 ? '2:3' : '1:1', referenceImages, generateController.signal);
                         } catch (err: any) {
                             lastError = err?.message || lastError;
                         }
@@ -1261,6 +1266,7 @@ ${markdown}
                 } else {
                     const imgRes = await fetch('/api/generate-image', {
                         method: 'POST',
+                        signal: generateController.signal,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             prompt: promptText,
@@ -1285,9 +1291,9 @@ ${markdown}
                 }
             } catch (imgErr) {
                 console.error('[Workspace Image Gen Error]:', imgErr);
-                const message = imgErr instanceof Error ? imgErr.message : 'Image generation failed.';
+                const message = generateController.signal.aborted ? '⏹ Stopped.' : `⚠️ ${imgErr instanceof Error ? imgErr.message : 'Image generation failed.'}`;
                 chatHistory = chatHistory.map((item, index) => index === loadingIndex
-                    ? { role: 'model', text: `⚠️ ${message}` }
+                    ? { role: 'model', text: message }
                     : item
                 );
             }
@@ -1301,7 +1307,8 @@ ${markdown}
             if (!planNow && data.session?.user) await flushAutoSave();
             const response = await fetch('/api/generate', {
                 method: 'POST',
-                headers: { 
+                signal: generateController.signal,
+                headers: {
                     'Content-Type': 'application/json',
                     ...aiRequestHeaders()
                 },
@@ -1335,7 +1342,12 @@ ${markdown}
 
             // 保存済みの本を開いているときは、AI が返した Card で本を置き換えない（Card は Card モードの新規画面で作る）
             const protectBook = mode === 'book' && !!bookUuid && !isCardMarkdown(markdown);
-            const replacesBookWithCard = (md: string) => protectBook && isCardMarkdown(md);
+            // 開いている本文を AI の返信で置き換えてよいか: apply 以外は反映しない（block は新規 Card の保存ボタンを案内）
+            const hasSavedId = !!bookUuid;
+            const baseMarkdown = markdown;
+            const replacesBookWithCard = (md: string) =>
+                (protectBook && isCardMarkdown(md)) || judgeAiReplace(baseMarkdown, md, hasSavedId) === 'block';
+            const mayApply = (md: string) => !replacesBookWithCard(md) && judgeAiReplace(baseMarkdown, md, hasSavedId) === 'apply';
             let blockedCardReplace = false;
             let blockedCardMarkdown = '';
             
@@ -1375,7 +1387,7 @@ ${markdown}
                     if (replacesBookWithCard(parsedMarkdown)) {
                         blockedCardReplace = true;
                         blockedCardMarkdown = parsedMarkdown;
-                    } else {
+                    } else if (mayApply(parsedMarkdown)) {
                         markdown = parsedMarkdown;
                         const parsedIsCard = isCardMarkdown(parsedMarkdown);
                         mode = parsedIsCard ? 'card' : 'book';
@@ -1423,19 +1435,11 @@ ${markdown}
                     if (replacesBookWithCard(finalMarkdown)) {
                         blockedCardReplace = true;
                         blockedCardMarkdown = finalMarkdown;
-                    } else {
+                    } else if (mayApply(finalMarkdown)) {
                         markdown = finalMarkdown;
                     }
-                } else if (accumulatedText.includes('---')) {
-                    const startIndex = accumulatedText.indexOf('---');
-                    const fallbackMarkdown = accumulatedText.substring(startIndex).trim();
-                    if (replacesBookWithCard(fallbackMarkdown)) {
-                        blockedCardReplace = true;
-                        blockedCardMarkdown = fallbackMarkdown;
-                    } else {
-                        markdown = fallbackMarkdown;
-                    }
                 }
+                // ```markdown ブロックが無い返信（会話・表の "---" を含む文章など）は本文に一切反映しない
             }
             if (blockedCardReplace) {
                 // 警告文はチャット履歴（=AIへの入力）に混ぜない。画面のボタンで案内する
@@ -1450,15 +1454,26 @@ ${markdown}
             }
 
         } catch (err: any) {
-            console.error('Generation failed:', err);
-            errorMsg = err.message || 'API Key error. Check GEMINI_API_KEY.';
-            // Remove Thinking... if it remains
-            if (chatHistory[lastIndex] && chatHistory[lastIndex].text === 'Thinking...') {
-                chatHistory = chatHistory.slice(0, -1);
-            } else if (chatHistory[lastIndex]) {
-                chatHistory[lastIndex].status = '';
+            if (generateController.signal.aborted) {
+                // ユーザーが Stop を押した。エラー表示は出さず、届いた分の回答は残す
+                if (chatHistory[lastIndex] && chatHistory[lastIndex].text === 'Thinking...') {
+                    chatHistory = chatHistory.slice(0, -1);
+                } else if (chatHistory[lastIndex]) {
+                    chatHistory[lastIndex].status = '';
+                    chatHistory[lastIndex].text += '\n\n⏹ Stopped.';
+                }
+            } else {
+                console.error('Generation failed:', err);
+                errorMsg = err.message || 'API Key error. Check GEMINI_API_KEY.';
+                // Remove Thinking... if it remains
+                if (chatHistory[lastIndex] && chatHistory[lastIndex].text === 'Thinking...') {
+                    chatHistory = chatHistory.slice(0, -1);
+                } else if (chatHistory[lastIndex]) {
+                    chatHistory[lastIndex].status = '';
+                }
             }
         } finally {
+            if (generateAbort === generateController) generateAbort = null;
             if (requestSource === 'home') {
                 featureSource = 'workspace';
                 if (!isPaidPlan) {
@@ -2380,13 +2395,23 @@ ${markdown}
                                 </div>
                                 <AiModelPicker disabled={!data.session?.user || isGenerating} imageMode={imageGenEnabled && imageAllowed} />
                             </div>
-                            <button 
-                                type="submit" 
-                                class="inner-run-btn"
-                                disabled={!data.session?.user || isGenerating || (!currentInput.trim() && attachedFiles.length === 0)}
-                            >
-                                Run ⌘↵
-                            </button>
+                            {#if isGenerating}
+                                <button
+                                    type="button"
+                                    class="inner-run-btn"
+                                    onclick={() => { generateAbort?.abort(); mangaAbort?.abort(); }}
+                                >
+                                    Stop ■
+                                </button>
+                            {:else}
+                                <button
+                                    type="submit"
+                                    class="inner-run-btn"
+                                    disabled={!data.session?.user || (!currentInput.trim() && attachedFiles.length === 0)}
+                                >
+                                    Run ⌘↵
+                                </button>
+                            {/if}
                         </div>
                     </div>
                 </form>

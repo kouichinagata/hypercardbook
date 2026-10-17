@@ -2,6 +2,7 @@ import { isCardLike } from '$lib/play-mode';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { parseBookFrontmatter } from '$lib/server/book-frontmatter';
+import { saveIdentityConflict } from '$lib/markdown-guard';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
@@ -43,11 +44,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             // Fetch existing fields to prevent overwriting with defaults
             const { data: existingBook } = await supabase
                 .from('books')
-                .select('slug, is_public, published_at')
+                .select('slug, is_public, published_at, markdown_content')
                 .eq('id', id)
                 .single();
 
             if (existingBook) {
+                // 開いている MiniApp の play_mode / id が消える・変わる保存は、AI の返信文の誤保存などで起こるので拒否する
+                const conflict = saveIdentityConflict(
+                    { slug: existingBook.slug, playMode: parseBookFrontmatter(existingBook.markdown_content || '').playMode },
+                    markdown
+                );
+                if (conflict) {
+                    console.warn('[save] rejected identity change:', id, conflict);
+                    return json({ error: `Save rejected: ${conflict}` }, { status: 409 });
+                }
                 bookData.slug = slug || existingBook.slug;
                 bookData.is_public = resolvedIsPublic !== undefined ? resolvedIsPublic : existingBook.is_public;
                 bookData.published_at = resolvedPublishedAt !== undefined ? resolvedPublishedAt : existingBook.published_at;

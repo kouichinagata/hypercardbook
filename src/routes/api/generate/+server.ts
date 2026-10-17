@@ -1,3 +1,4 @@
+import { miniAppInstruction } from '$lib/server/mini-app-instruction';
 import { json } from '@sveltejs/kit';
 import { effectivePlanFromUser, isPaidPlan, isProPlan } from '$lib/plan';
 import type { RequestHandler } from './$types';
@@ -496,6 +497,9 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
         }
 
         activeSystemInstruction += `\n\nGITHUB INTEGRATION INSTRUCTIONS:\n- You have direct access to the user's GitHub repository via the 'github_push' tool.\n- If the user asks to "push to github", "save to github", or "githubにpushして", you MUST call the 'github_push' tool. Tell the user once it has succeeded and provide the repository file URL returned by the tool.`;
+
+        // Reapply the Mini App contract on every turn, for both Gemini and Claude.
+        activeSystemInstruction += miniAppInstruction(mode, currentMarkdown, planMode);
 
         // Plan mode: skills and other instructions above may still be loaded, but the Plan mode rules must win. Repeat them last.
         if (planMode) {
