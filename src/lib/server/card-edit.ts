@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { applyEdits, lineDiff, validateEdits, type LineDiff, type MarkdownEdit, type MarkdownEditError } from '../markdown-edit.ts';
-import { bookColumnsFromFrontmatter, parseBookFrontmatter } from './book-frontmatter.ts';
+import { bookColumnsFromFrontmatter, isSameDocument, parseBookFrontmatter } from '../book-frontmatter.ts';
+import { isMiniApp } from '../play-mode.ts';
 
 // カード（books の 1 行）に部分置換編集を適用して保存する。
 // AI のツール呼び出しからも、Skill のサンドボックス実行の結果からも、この関数を通す。
@@ -58,6 +59,10 @@ export async function applyMarkdownEditCommand(
     const applied = applyEdits(before, edits, { pageIndex });
     if (!applied.ok) {
         return { ok: false, code: 'edit_failed', message: 'No edits were applied. Fix the failing edits and try again.', errors: applied.errors };
+    }
+    // /api/save と同じく、MiniApp の id / play_mode が消える・変わる編集は保存しない
+    if (isMiniApp(parseBookFrontmatter(before).playMode) && !isSameDocument(before, applied.markdown)) {
+        return { ok: false, code: 'invalid_command', message: 'No edits were applied: a MiniApp must keep its id and play_mode.' };
     }
 
     const update: Record<string, unknown> = { markdown_content: applied.markdown, version: baseVersion + 1 };

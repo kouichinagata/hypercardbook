@@ -83,6 +83,24 @@ test('一意に一致する編集が成功し、保存されてバージョン�
     assert.equal(state.row!.markdown_content, CARD.replace('緑茶は日本で', '煎茶は日本で'));
 });
 
+test('MiniApp の play_mode / id を消す・変える編集は保存しない', async () => {
+    const mini = CARD.replace('play_mode: card', 'play_mode: miniapp');
+    for (const edit of [
+        { old_string: 'play_mode: miniapp\n', new_string: '' },
+        { old_string: 'play_mode: miniapp', new_string: 'play_mode: book' },
+        { old_string: 'id: tea', new_string: 'id: coffee' }
+    ]) {
+        const { client, state } = mockSupabase({ ...cardRow(), markdown_content: mini });
+        const result = await applyMarkdownEditCommand(client, USER, { card_id: CARD_ID, base_version: 3, edits: [edit] });
+        assert.equal(result.ok, false);
+        assert.equal(state.updates, 0);
+        assert.equal(state.row!.markdown_content, mini);
+    }
+    const { client } = mockSupabase({ ...cardRow(), markdown_content: mini });
+    const ok = await applyMarkdownEditCommand(client, USER, { card_id: CARD_ID, base_version: 3, edits: [{ old_string: '緑茶は日本で', new_string: '煎茶は日本で' }] });
+    assert.equal(ok.ok, true);
+});
+
 test('new_string が空なら削除になる', () => {
     const result = applyEdits(CARD, [{ old_string: '\n![tea](https://example.com/tea.png)\n', new_string: '' }]);
     assert.equal(result.ok, true);

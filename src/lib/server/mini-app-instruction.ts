@@ -1,4 +1,4 @@
-import { parseBookFrontmatter } from './book-frontmatter.ts';
+import { parseBookFrontmatter } from '../book-frontmatter.ts';
 
 /** Shared by every text provider and every creation/edit request in the Card workspace. */
 export function miniAppInstruction(mode: unknown, markdown: unknown, planMode: unknown): string {

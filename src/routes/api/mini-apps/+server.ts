@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { MAX_MINI_APPS, validMiniAppRef } from '$lib/mini-app';
 import { isMiniApp } from '$lib/play-mode';
-import { parseBookFrontmatter } from '$lib/server/book-frontmatter';
+import { parseBookFrontmatter } from '$lib/book-frontmatter';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

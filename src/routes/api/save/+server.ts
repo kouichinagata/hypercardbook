@@ -1,8 +1,7 @@
-import { isCardLike } from '$lib/play-mode';
+import { isCardLike, isMiniApp } from '$lib/play-mode';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { parseBookFrontmatter } from '$lib/server/book-frontmatter';
-import { saveIdentityConflict } from '$lib/markdown-guard';
+import { isSameDocument, parseBookFrontmatter } from '$lib/book-frontmatter';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
@@ -49,14 +48,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                 .single();
 
             if (existingBook) {
-                // 開いている MiniApp の play_mode / id が消える・変わる保存は、AI の返信文の誤保存などで起こるので拒否する
-                const conflict = saveIdentityConflict(
-                    { slug: existingBook.slug, playMode: parseBookFrontmatter(existingBook.markdown_content || '').playMode },
-                    markdown
-                );
-                if (conflict) {
-                    console.warn('[save] rejected identity change:', id, conflict);
-                    return json({ error: `Save rejected: ${conflict}` }, { status: 409 });
+                // MiniApp の id / play_mode が消える・変わる保存は拒否する（AI の返信文の誤保存などで MiniApp が壊れるのを防ぐ）
+                const existingMarkdown = existingBook.markdown_content || '';
+                if (isMiniApp(parseBookFrontmatter(existingMarkdown).playMode) && !isSameDocument(existingMarkdown, markdown)) {
+                    console.warn('[save] rejected: a MiniApp must keep its id and play_mode', id);
+                    return json({ error: 'Save rejected: a MiniApp must keep its id and play_mode.' }, { status: 409 });
                 }
                 bookData.slug = slug || existingBook.slug;
                 bookData.is_public = resolvedIsPublic !== undefined ? resolvedIsPublic : existingBook.is_public;

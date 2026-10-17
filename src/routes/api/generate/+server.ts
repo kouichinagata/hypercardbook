@@ -318,7 +318,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             webSearchEnabled = false,
             webSearchSource = 'workspace',
             planMode = false,
-            currentVersion = null
+            currentVersion = null,
+            undoHistory = []
         } = await request.json();
         const session = locals.session;
         const supabase = locals.supabase;
@@ -498,6 +499,17 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
 
         activeSystemInstruction += `\n\nGITHUB INTEGRATION INSTRUCTIONS:\n- You have direct access to the user's GitHub repository via the 'github_push' tool.\n- If the user asks to "push to github", "save to github", or "githubにpushして", you MUST call the 'github_push' tool. Tell the user once it has succeeded and provide the repository file URL returned by the tool.`;
 
+        // 画面の Undo 履歴（版番号と増減行数だけ。全文は受け取らない）。undo_markdown で戻せる版
+        const undoEntries = (Array.isArray(undoHistory) ? undoHistory : []).filter((h: any) => Number.isInteger(h?.version) && h.version >= 1);
+        const undoVersions = new Set<number>(undoEntries.map((h: any) => h.version));
+        activeSystemInstruction += `\n\nDOCUMENT IDENTITY:\n- When you output the whole open book/card in a markdown code block, keep its id and play_mode exactly as they are. A different id or play_mode is treated as a different document and is not applied to the open one.`;
+        if (undoEntries.length > 0) {
+            const list = undoEntries
+                .map((h: any) => `- version ${h.version}: "${String(h.title ?? '').slice(0, 80)}" (play_mode: ${String(h.play_mode ?? '').slice(0, 20)}), ${String(h.changed ?? '').slice(0, 20)} lines to the next version`)
+                .join('\n');
+            activeSystemInstruction += `\n\nUNDO HISTORY (the same history as the Undo button; the open document is newer than the last version):\n${list}\n- If the user asks to undo, go back, or restore an earlier state, pick the version and call undo_markdown. Do not rewrite the document yourself to restore it.\n- Never say that you restored, undid, or reverted anything unless undo_markdown returned success in this turn.`;
+        }
+
         // Reapply the Mini App contract on every turn, for both Gemini and Claude.
         activeSystemInstruction += miniAppInstruction(mode, currentMarkdown, planMode);
 
@@ -521,6 +533,8 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                     let editVersion: number | null = Number.isInteger(currentVersion) ? currentVersion : null;
                     let editFailures = 0;
                     let markdownEdited = false;
+                    // undo_markdown が選んだ版。画面に渡して、Undo ボタンと同じ処理で戻してもらう
+                    let undoVersion: number | null = null;
                     let savedEditMarkdown: string | null = null;
 
                     // Live progress line shown in the chat while the AI works (removed by the browser, never saved)
@@ -688,6 +702,20 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                         }
                                     },
                                     required: ['lines']
+                                }
+                            });
+                        }
+
+                        if (undoVersions.size > 0) {
+                            toolDeclarations.push({
+                                name: 'undo_markdown',
+                                description: 'Restore the open book/card to a version from the UNDO HISTORY, exactly like pressing the Undo button until that version. Later versions are discarded. Do not combine with edits in the same turn.',
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        version: { type: 'INTEGER', description: 'Version number from the UNDO HISTORY list.' }
+                                    },
+                                    required: ['version']
                                 }
                             });
                         }
@@ -928,6 +956,19 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
 
                                 if (planMode && !PLAN_MODE_TOOLS.has(fc.name)) {
                                     resultData = { success: false, error: 'Plan mode is on. Books and cards are never changed in Plan mode.' };
+                                } else if (fc.name === 'undo_markdown') {
+                                    const version = Number(fc.args?.version);
+                                    if (markdownEdited || lastPageEdit) {
+                                        resultData = { success: false, error: 'The document was already edited in this turn. Undo was not applied.' };
+                                    } else if (!undoVersions.has(version)) {
+                                        resultData = { success: false, error: `Unknown version. Available versions: ${[...undoVersions].join(', ')}` };
+                                    } else {
+                                        undoVersion = version;
+                                        controller.enqueue(encoder.encode(`\n↩ Undo to version ${version}\n\n`));
+                                        resultData = { success: true, message: `The open document is restored to version ${version} (same as the Undo button). Do not output the document.` };
+                                    }
+                                } else if (isEditTool && undoVersion !== null) {
+                                    resultData = { success: false, error: 'Undo was already applied in this turn. Do not edit in the same turn.' };
                                 } else if (fc.name === 'edit_page') {
                                     const pageIdx = Number(fc.args?.page_index);
                                     const act = String(fc.args?.action) as 'update' | 'delete' | 'insert';
@@ -936,6 +977,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                     const pageEdit = applyPageEdit(updatedMarkdown, pageIdx, act, newCont);
                                     if (pageEdit.ok) {
                                         updatedMarkdown = pageEdit.markdown;
+                                        markdownEdited = true;
                                         lastPageEdit = { page_index: pageIdx, action: act, new_content: newCont };
                                         resultData = { success: true, message: `Page ${pageIdx} successfully modified.` };
                                     } else {
@@ -1273,7 +1315,11 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         }
                     }
 
-                    if (markdownEdited) {
+                    if (undoVersion !== null) {
+                        // 画面が markdownHistory から戻す（全文はサーバーにないので、版番号だけを渡す）
+                        const encoded = Buffer.from(JSON.stringify({ undo: undoVersion }), 'utf8').toString('base64');
+                        controller.enqueue(encoder.encode(`\n${EDIT_RESULT_OPEN}${encoded}${EDIT_RESULT_CLOSE}\n`));
+                    } else if (markdownEdited) {
                         // 画面に渡す編集結果。本文に ``` が含まれても他の解析とぶつからないよう base64 にする
                         const payload = {
                             markdown: updatedMarkdown,
@@ -1283,12 +1329,6 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         };
                         const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
                         controller.enqueue(encoder.encode(`\n${EDIT_RESULT_OPEN}${encoded}${EDIT_RESULT_CLOSE}\n`));
-                    } else if (lastPageEdit) {
-                        const partialTag = `\n[UPDATE_PAGES]\n[PAGE ${lastPageEdit.page_index}]\n${lastPageEdit.new_content}\n[/PAGE]\n[/UPDATE_PAGES]\n`;
-                        controller.enqueue(encoder.encode(partialTag));
-                        
-                        const mdBlock = `\n\`\`\`markdown\n${updatedMarkdown}\n\`\`\`\n`;
-                        controller.enqueue(encoder.encode(mdBlock));
                     }
 
                     if (bookId && responseText) {

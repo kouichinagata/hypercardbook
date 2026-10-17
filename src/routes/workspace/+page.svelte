@@ -1,6 +1,6 @@
 <script lang="ts">
     import { isCardMarkdown } from '$lib/play-mode';
-    import { judgeAiReplace } from '$lib/markdown-guard';
+    import { isSameDocument, parseBookFrontmatter } from '$lib/book-frontmatter';
     import { onDestroy, onMount, tick } from 'svelte';
     import { page } from '$app/state';
     import { goto, invalidateAll } from '$app/navigation';
@@ -33,6 +33,7 @@
     import { createBrowserClient } from '@supabase/ssr';
     import { env } from '$env/dynamic/public';
     import { splitStatusStream } from '$lib/status-marker';
+    import { lineDiff } from '$lib/markdown-edit';
 
     // Initialize Supabase browser client for image uploads
     const supabase = createBrowserClient(
@@ -58,7 +59,7 @@
     interface ChatMessage {
         role: 'user' | 'model';
         text: string;
-        // 開いている本に入れられなかった Card。ボタンで新規Cardとして保存する
+        // 開いている文書に入れなかった別の Card / Book。ボタンで新規の行として保存する
         newCard?: { markdown: string; status: 'idle' | 'saving' | 'saved' | 'error'; id?: string; error?: string };
         // AI の部分置換編集で変わった行（確認用）
         editDiff?: { unified: string; added: number; removed: number };
@@ -584,7 +585,7 @@
         return slug;
     }
 
-    // AI が返した Card を、既存の本・Card を上書きしない新規Cardとして保存する（id は送らず、非公開）
+    // AI が返した別の Card / Book を、既存の本・Card を上書きしない新規の行として保存する（id は送らず、非公開）
     async function saveNewCard(idx: number) {
         const card = chatHistory[idx]?.newCard;
         if (!card || card.status === 'saving' || card.status === 'saved') return;
@@ -1102,13 +1103,14 @@ ${markdown}
     let pendingSave: Promise<void> | null = null;
 
     // /api/generate が返す [MARKDOWN_EDIT]<base64 JSON>[/MARKDOWN_EDIT] を読む
-    function extractMarkdownEdit(text: string): { markdown: string; version: number | null; saved: boolean; diff?: { unified: string; added: number; removed: number } } | null {
+    // undo: AI の undo_markdown ツールが選んだ版（markdownHistory の 1 始まりの番号）。画面で handleUndo と同じ処理で戻す
+    function extractMarkdownEdit(text: string): { markdown: string; version: number | null; saved: boolean; diff?: { unified: string; added: number; removed: number }; undo?: number } | null {
         const match = text.match(/\[MARKDOWN_EDIT\]([A-Za-z0-9+/=]+)\[\/MARKDOWN_EDIT\]/);
         if (!match) return null;
         try {
             const bytes = Uint8Array.from(atob(match[1]), c => c.charCodeAt(0));
             const result = JSON.parse(new TextDecoder().decode(bytes));
-            return typeof result?.markdown === 'string' ? result : null;
+            return typeof result?.markdown === 'string' || Number.isInteger(result?.undo) ? result : null;
         } catch (err) {
             console.error('Failed to read the edit result:', err);
             return null;
@@ -1166,12 +1168,18 @@ ${markdown}
         }
     }
 
-    function handleUndo() {
-        if (markdownHistory.length === 0) return;
-        const previousMarkdown = markdownHistory[markdownHistory.length - 1];
-        markdownHistory = markdownHistory.slice(0, -1);
+    // markdownHistory[index] の版に戻し、それより後の履歴を捨てる。Undo ボタンと AI の undo_markdown ツールの両方が使う
+    function undoTo(index: number): boolean {
+        if (!Number.isInteger(index) || index < 0 || index >= markdownHistory.length) return false;
+        const previousMarkdown = markdownHistory[index];
+        markdownHistory = markdownHistory.slice(0, index);
         markdown = previousMarkdown;
         triggerAutoSave();
+        return true;
+    }
+
+    function handleUndo() {
+        undoTo(markdownHistory.length - 1);
     }
 
     // Scroll chat list to bottom
@@ -1229,6 +1237,13 @@ ${markdown}
         const generateController = new AbortController();
         generateAbort = generateController;
         scrollToBottom();
+
+        // AI に渡す Undo 履歴の一覧（全文は渡さない）。version N は markdownHistory[N-1]、changed はその版から次の版への増減行数
+        const undoHistory = markdownHistory.map((md, i) => {
+            const fm = parseBookFrontmatter(md);
+            const diff = lineDiff(md, markdownHistory[i + 1] ?? markdown);
+            return { version: i + 1, title: fm.title, play_mode: fm.playMode, changed: `+${diff.added}/-${diff.removed}` };
+        });
 
         // Backup current book state before AI modifications
         markdownHistory = [...markdownHistory, markdown];
@@ -1317,6 +1332,7 @@ ${markdown}
                     history: historyForApi,
                     currentMarkdown: markdown,
                     currentVersion: bookVersion,
+                    undoHistory,
                     bookId: bookUuid,
                     mode: mode,
                     currentCardIndex: currentCardIndex,
@@ -1340,16 +1356,22 @@ ${markdown}
             const decoder = new TextDecoder();
             let accumulatedText = '';
 
-            // 保存済みの本を開いているときは、AI が返した Card で本を置き換えない（Card は Card モードの新規画面で作る）
-            const protectBook = mode === 'book' && !!bookUuid && !isCardMarkdown(markdown);
-            // 開いている本文を AI の返信で置き換えてよいか: apply 以外は反映しない（block は新規 Card の保存ボタンを案内）
-            const hasSavedId = !!bookUuid;
+            // 保存済みの文書を開いているときは、id / play_mode が違う全文（別の Card・Book）で置き換えず「Save as new」に回す
             const baseMarkdown = markdown;
-            const replacesBookWithCard = (md: string) =>
-                (protectBook && isCardMarkdown(md)) || judgeAiReplace(baseMarkdown, md, hasSavedId) === 'block';
-            const mayApply = (md: string) => !replacesBookWithCard(md) && judgeAiReplace(baseMarkdown, md, hasSavedId) === 'apply';
+            const replacesOpenDocument = (md: string) => !!bookUuid && !isSameDocument(baseMarkdown, md);
             let blockedCardReplace = false;
             let blockedCardMarkdown = '';
+            // AI が ```markdown で返した全文を扱う。先頭に id と play_mode の無いもの（会話中の例・スキルの文書など）は本文にしない
+            const takeFullMarkdown = (md: string, setMode: boolean) => {
+                if (!parseBookFrontmatter(md).hasIdentity) return;
+                if (replacesOpenDocument(md)) {
+                    blockedCardReplace = true;
+                    blockedCardMarkdown = md;
+                    return;
+                }
+                markdown = md;
+                if (setMode) mode = isCardMarkdown(md) ? 'card' : 'book';
+            };
             
             let isFirstChunk = true;
             let statusBuffer = '';
@@ -1383,15 +1405,7 @@ ${markdown}
                 // Real-time markdown parsing
                 const mdBlockMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
                 if (!planNow && mdBlockMatch && mdBlockMatch[1].trim()) {
-                    const parsedMarkdown = mdBlockMatch[1].trim();
-                    if (replacesBookWithCard(parsedMarkdown)) {
-                        blockedCardReplace = true;
-                        blockedCardMarkdown = parsedMarkdown;
-                    } else if (mayApply(parsedMarkdown)) {
-                        markdown = parsedMarkdown;
-                        const parsedIsCard = isCardMarkdown(parsedMarkdown);
-                        mode = parsedIsCard ? 'card' : 'book';
-                    }
+                    takeFullMarkdown(mdBlockMatch[1].trim(), true);
                 }
                 
                 scrollToBottom();
@@ -1413,6 +1427,11 @@ ${markdown}
             // Final fallback parsing（Plan mode では、AI の返答を本・Card に一切反映しない）
             if (planNow) {
                 // do nothing
+            } else if (editResult && Number.isInteger(editResult.undo)) {
+                // AI の undo_markdown ツール: Undo ボタンと同じ処理で戻す。戻せなければ（履歴が変わっていれば）そう表示する
+                if (!undoTo((editResult.undo as number) - 1)) {
+                    chatHistory[lastIndex].text += `\n\n⚠️ Undo to version ${editResult.undo} could not be applied (the history has changed).`;
+                }
             } else if (editResult) {
                 if (editResult.saved) {
                     lastProcessedMarkdown = editResult.markdown;
@@ -1427,18 +1446,9 @@ ${markdown}
                     };
                 }
             } else {
-                // edit_page のときは、サーバーが [UPDATE_PAGES] の後ろに編集済みの全文を付ける。最後のブロックを使う
-                const mdBlocks = [...accumulatedText.matchAll(/```markdown([\s\S]*?)```/gi)];
-                const finalMdMatch = accumulatedText.includes('[UPDATE_PAGES]') ? mdBlocks.at(-1) : mdBlocks[0];
-                if (finalMdMatch) {
-                    const finalMarkdown = finalMdMatch[1].trim();
-                    if (replacesBookWithCard(finalMarkdown)) {
-                        blockedCardReplace = true;
-                        blockedCardMarkdown = finalMarkdown;
-                    } else if (mayApply(finalMarkdown)) {
-                        markdown = finalMarkdown;
-                    }
-                }
+                // edit_card / edit_book / edit_page の結果は [MARKDOWN_EDIT] で届く。ここは AI が書いた全文だけ
+                const finalMdMatch = accumulatedText.match(/```markdown([\s\S]*?)```/i);
+                if (finalMdMatch) takeFullMarkdown(finalMdMatch[1].trim(), false);
                 // ```markdown ブロックが無い返信（会話・表の "---" を含む文章など）は本文に一切反映しない
             }
             if (blockedCardReplace) {
@@ -2259,13 +2269,14 @@ ${markdown}
                                     {/if}
 
                                     {#if message.newCard}
+                                        {@const kind = isCardMarkdown(message.newCard.markdown) ? 'Card' : 'Book'}
                                         <div class="new-card-box">
-                                            <div>⚠️ This book was not changed. A Card was returned.</div>
+                                            <div>⚠️ The open document was not changed. A different {kind} was returned.</div>
                                             {#if message.newCard.status === 'saved'}
-                                                <div>✅ Saved as a new Card (private). <a href={`/hypercard/${message.newCard.id}`} target="_blank">Open</a></div>
+                                                <div>✅ Saved as a new {kind} (private). <a href={`/${kind === 'Card' ? 'hypercard' : 'hyperbook'}/${message.newCard.id}`} target="_blank">Open</a></div>
                                             {:else}
                                                 <button type="button" class="new-card-btn" disabled={message.newCard.status === 'saving'} onclick={() => saveNewCard(idx)}>
-                                                    {message.newCard.status === 'saving' ? 'Saving…' : '💾 Save as new Card'}
+                                                    {message.newCard.status === 'saving' ? 'Saving…' : `💾 Save as new ${kind}`}
                                                 </button>
                                                 {#if message.newCard.status === 'error'}
                                                     <div class="new-card-error">Save failed: {message.newCard.error}</div>
