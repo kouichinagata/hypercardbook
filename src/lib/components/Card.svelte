@@ -165,11 +165,7 @@
             return;
         }
         
-        let textToSpeak = `Title: ${cardTitle}\n`;
-        if (cardSubTitle) textToSpeak += `${cardSubTitle}\n`;
-        
-        const bodyText = cardBodyHtml.replace(/<[^>]*>/g, '').trim();
-        textToSpeak += bodyText;
+        const textToSpeak = cardBodyHtml.replace(/<[^>]*>/g, '').trim();
         
         if (!textToSpeak.trim()) return;
         speak(textToSpeak);
@@ -229,34 +225,6 @@
                 const parts = line.split(':');
                 if (parts.length >= 2 && parts[0].trim() === 'id') {
                     return parts.slice(1).join(':').trim().replace(/[^a-zA-Z0-9_\-]/g, '');
-                }
-            }
-        }
-        return '';
-    });
-
-    let cardSubTitle = $derived.by(() => {
-        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
-        if (fmMatch) {
-            const fmLines = fmMatch[1].split('\n');
-            for (let line of fmLines) {
-                const parts = line.split(':');
-                if (parts.length >= 2 && parts[0].trim() === 'sub_title') {
-                    return parts.slice(1).join(':').trim();
-                }
-            }
-        }
-        return '';
-    });
-
-    let cardCoverImage = $derived.by(() => {
-        const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
-        if (fmMatch) {
-            const fmLines = fmMatch[1].split('\n');
-            for (let line of fmLines) {
-                const parts = line.split(':');
-                if (parts.length >= 2 && parts[0].trim() === 'cover_image') {
-                    return normalizePath(parts.slice(1).join(':').trim());
                 }
             }
         }
@@ -427,17 +395,6 @@
         {/if}
 
         <div class="card-webview-frame" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} style={!['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? `background-color: ${cardThemeColor};` : ''} class:embed-mode={isEmbed}>
-            <div class="card-webview-header">
-                <p class="card-webview-title">{cardTitle}</p>
-                {#if cardCoverImage}
-                    <div class="card-webview-cover-wrapper">
-                        <img src={cardCoverImage} alt={cardTitle} class="clicked-img-cover" />
-                    </div>
-                {/if}
-                {#if cardSubTitle}
-                    <p class="card-webview-subtitle">{cardSubTitle}</p>
-                {/if}
-            </div>
             <div class="card-webview-body markdown-body">
                 {@html cardBodyHtml}
             </div>
@@ -575,51 +532,6 @@
     .card-webview-frame[data-theme-color="gold"] {
         background: linear-gradient(135deg, #4e2f15 0%, #2e1605 100%);
         color: #ffd700;
-    }
-
-    .card-webview-header {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 16px;
-        text-align: center;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-        padding-bottom: 24px;
-    }
-
-    .card-webview-frame[data-theme-color="black"] .card-webview-header,
-    .card-webview-frame[data-theme-color="blue"] .card-webview-header,
-    .card-webview-frame[data-theme-color="gold"] .card-webview-header {
-        border-bottom-color: rgba(255, 255, 255, 0.1);
-    }
-
-    .card-webview-title {
-        font-size: 16px;
-        font-weight: 500;
-        margin: 0;
-        opacity: 0.85;
-    }
-
-    .card-webview-cover-wrapper {
-        width: 100%;
-        max-height: 300px;
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    }
-
-    .card-webview-cover-wrapper img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-    }
-
-    .card-webview-subtitle {
-        font-size: 16px;
-        font-weight: 500;
-        margin: 0;
-        opacity: 0.85;
     }
 
     .card-webview-body {

@@ -152,14 +152,24 @@ export function toJsonSchema(schema: any): any {
 export type ClaudeMessage = { role: 'user' | 'assistant'; content: string | any[] };
 
 /** Gemini 形式の会話履歴（role: user/model, parts: [{text}]）を Claude の messages へ変換する。 */
-export function toClaudeMessages(contents: { role: string; parts: { text?: string }[] }[]): ClaudeMessage[] {
+export function toClaudeMessages(contents: { role: string; parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] }[]): ClaudeMessage[] {
 	const messages: ClaudeMessage[] = [];
 	for (const item of contents) {
 		const text = (item.parts || []).map((part) => part.text || '').join('');
-		if (!text.trim()) continue;
+		const images = (item.parts || []).flatMap((part) => part.inlineData ? [part.inlineData] : []);
+		if (!text.trim() && images.length === 0) continue;
 		const role = item.role === 'user' ? 'user' : 'assistant';
 		const last = messages.at(-1);
-		if (last && last.role === role && typeof last.content === 'string') last.content += `\n\n${text}`;
+		if (images.length > 0 && role === 'user') {
+			// 画像つきのメッセージは、Claude の content ブロック形式にする
+			messages.push({
+				role,
+				content: [
+					...images.map((image) => ({ type: 'image', source: { type: 'base64', media_type: image.mimeType, data: image.data } })),
+					...(text.trim() ? [{ type: 'text', text }] : [])
+				]
+			});
+		} else if (last && last.role === role && typeof last.content === 'string') last.content += `\n\n${text}`;
 		else messages.push({ role, content: text });
 	}
 	// 先頭は user でなければならない。

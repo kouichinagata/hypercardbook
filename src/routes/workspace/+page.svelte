@@ -379,6 +379,13 @@
         error?: string;
     }
     let attachedFiles = $state<AttachedFile[]>([]);
+    let previewImage = $state<{ url: string; name: string } | null>(null);
+    $effect(() => {
+        if (!previewImage) return;
+        const close = (e: KeyboardEvent) => { if (e.key === 'Escape') previewImage = null; };
+        window.addEventListener('keydown', close);
+        return () => window.removeEventListener('keydown', close);
+    });
     let fileInputEl = $state<HTMLInputElement | null>(null);
 
     function compressImage(file: File): Promise<Blob> {
@@ -629,7 +636,7 @@
         if (e.key === 'Enter') {
             if (e.metaKey || e.ctrlKey) {
                 e.preventDefault();
-                if (currentInput.trim() && !isGenerating && data.session?.user) {
+                if ((currentInput.trim() || attachedFiles.length > 0) && !isGenerating && data.session?.user) {
                     sendPrompt(currentInput);
                 }
             } else {
@@ -1175,7 +1182,7 @@ ${markdown}
     }
 
     async function sendPrompt(promptText: string) {
-        if (!promptText.trim() || isGenerating) return;
+        if ((!promptText.trim() && !attachedFiles.some(f => f.status === 'success')) || isGenerating) return;
 
         const hasPending = attachedFiles.some(f => f.status === 'uploading' || f.status === 'loading');
         if (hasPending) {
@@ -1189,7 +1196,7 @@ ${markdown}
 
         let visiblePrompt = promptText;
         if (successFiles.length > 0) {
-            visiblePrompt += '\n\n<!-- ATTACHMENTS_START -->';
+            visiblePrompt += (promptText.trim() ? '\n\n' : '') + '<!-- ATTACHMENTS_START -->';
             if (images.length > 0) {
                 visiblePrompt += '\n### Attached Images\n' + images.map(img => `![${img.name}](${img.url})`).join('\n');
             }
@@ -1204,7 +1211,7 @@ ${markdown}
         const historyForApi = $state.snapshot(chatHistory).map(({ role, text }) => ({ role, text }));
         const requestSource = featureSource;
         const planNow = planMode;
-        const canUseImageGeneration = imageGenEnabled && (imageAllowed || requestSource === 'home');
+        const canUseImageGeneration = imageGenEnabled && (imageAllowed || requestSource === 'home') && !!promptText.trim();
         const canUseWebSearch = webSearchEnabled && (isPaidPlan || requestSource === 'home');
         const imageCount = requestedImageCount(promptText);
         const referenceImages = imageReferenceUrls(visiblePrompt, images);
@@ -1670,7 +1677,7 @@ ${markdown}
 
     function handleChatSubmit(e: SubmitEvent) {
         e.preventDefault();
-        if (currentInput.trim()) {
+        if (currentInput.trim() || attachedFiles.length > 0) {
             sendPrompt(currentInput);
         }
     }
@@ -2283,7 +2290,9 @@ ${markdown}
                                 {#if file.status === 'uploading' || file.status === 'loading'}
                                     <div class="badge-spinner"></div>
                                 {:else if file.type === 'image' && file.url}
-                                    <img src={file.url} alt={file.name} class="badge-thumb" />
+                                    <button type="button" class="badge-thumb-btn" onclick={() => previewImage = { url: file.url!, name: file.name }} title="Preview image">
+                                        <img src={file.url} alt={file.name} class="badge-thumb" />
+                                    </button>
                                 {:else}
                                     <span class="badge-icon">📄</span>
                                 {/if}
@@ -2471,6 +2480,12 @@ ${markdown}
             {/if}
         </div>
     </div>
+
+    {#if previewImage}
+        <div class="image-preview-overlay" onclick={() => previewImage = null} role="presentation">
+            <img src={previewImage.url} alt={previewImage.name} class="image-preview-img" />
+        </div>
+    {/if}
 
     {#if showMediaPanel}
         <div class="modal-overlay" onclick={() => showMediaPanel = false} onkeydown={(e) => e.key === 'Escape' && (showMediaPanel = false)} role="presentation">
@@ -4092,6 +4107,32 @@ ${markdown}
         object-fit: cover;
         border-radius: 3px;
         border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .badge-thumb-btn {
+        display: flex;
+        padding: 0;
+        border: none;
+        background: none;
+        cursor: zoom-in;
+    }
+
+    .image-preview-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        cursor: zoom-out;
+    }
+
+    .image-preview-img {
+        max-width: 92vw;
+        max-height: 92vh;
+        object-fit: contain;
+        border-radius: 8px;
     }
 
     .badge-icon {

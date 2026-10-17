@@ -341,7 +341,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         
         query += `User's latest request: ${prompt}`;
 
-        const contents = [
+        const contents: { role: string; parts: any[] }[] = [
             ...history.map((h: any) => ({
                 role: h.role === 'user' ? 'user' : 'model',
                 parts: [{ text: h.text }]
@@ -351,6 +351,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                 parts: [{ text: query }]
             }
         ];
+
+        // 添付画像（本人のストレージにあるもの）をAIが実際に見られるよう、最新のメッセージに画像として付ける
+        const attachmentBlock = String(prompt ?? '').match(/<!-- ATTACHMENTS_START -->([\s\S]*?)<!-- ATTACHMENTS_END -->/)?.[1] ?? '';
+        const attachedImageUrls = [...new Set(Array.from(attachmentBlock.matchAll(/!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/g), (m) => m[1]))].slice(0, 4);
+        if (attachedImageUrls.length > 0) {
+            try {
+                const attachedImages = await loadReferenceInputs(supabase, session.user.id, attachedImageUrls);
+                for (const image of attachedImages ?? []) {
+                    contents[contents.length - 1].parts.push({ inlineData: { mimeType: image.mime_type, data: image.data } });
+                }
+            } catch (err) {
+                console.error('Failed to load attached images:', err);
+            }
+        }
 
         const userMetadata = session?.user?.user_metadata || {};
         const hypercardbookMd = userMetadata.hypercardbook_md || '';

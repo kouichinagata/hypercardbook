@@ -88,6 +88,13 @@
         error?: string;
     }
     let attachedFiles = $state<AttachedFile[]>([]);
+    let previewImage = $state<{ url: string; name: string } | null>(null);
+    $effect(() => {
+        if (!previewImage) return;
+        const close = (e: KeyboardEvent) => { if (e.key === 'Escape') previewImage = null; };
+        window.addEventListener('keydown', close);
+        return () => window.removeEventListener('keydown', close);
+    });
     let fileInputEl = $state<HTMLInputElement | null>(null);
 
     async function processAndUploadImage(file: File): Promise<string> {
@@ -2432,7 +2439,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 {#if file.status === 'uploading' || file.status === 'loading'}
                                     <div class="badge-spinner"></div>
                                 {:else if file.type === 'image' && file.url}
-                                    <img src={file.url} alt={file.name} class="badge-thumb" />
+                                    <button type="button" class="badge-thumb-btn" onclick={() => previewImage = { url: file.url!, name: file.name }} title="Preview image">
+                                        <img src={file.url} alt={file.name} class="badge-thumb" />
+                                    </button>
                                 {:else}
                                     <span class="badge-icon">📄</span>
                                 {/if}
@@ -2959,6 +2968,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     {isSavingHyperRobo ? 'Saving...' : 'Save'}
                 </button>
             </div>
+        </div>
+    {/if}
+
+    {#if previewImage}
+        <div class="image-preview-overlay" onclick={() => previewImage = null} role="presentation">
+            <img src={previewImage.url} alt={previewImage.name} class="image-preview-img" />
         </div>
     {/if}
 
@@ -5174,6 +5189,32 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         object-fit: cover;
         border-radius: 3px;
         border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .badge-thumb-btn {
+        display: flex;
+        padding: 0;
+        border: none;
+        background: none;
+        cursor: zoom-in;
+    }
+
+    .image-preview-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        cursor: zoom-out;
+    }
+
+    .image-preview-img {
+        max-width: 92vw;
+        max-height: 92vh;
+        object-fit: contain;
+        border-radius: 8px;
     }
 
     .badge-icon {
