@@ -1,4 +1,6 @@
 import { isCardMarkdown } from '$lib/play-mode';
+import { dev } from '$app/environment';
+import { servedOnMarkdown, viewerRedirect, type ContentRow } from '$lib/content-origin';
 import type { PageServerLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
 import fs from 'fs';
@@ -16,6 +18,8 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
 
     let markdownContent = '';
     let ownerId = 'global';
+    // The DB row, when the content came from the books table (samples and static books stay on www)
+    let row: ContentRow | null = null;
 
     // Check if the book ID matches a file in the 'samples' directory (sample books)
     const sampleFilename = id.endsWith('.md') ? id : `${id}.md`;
@@ -44,7 +48,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
         } else {
             // Fallback to database lookup if filesystem file does not exist
             const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-            const query = supabase.from('books').select('markdown_content, user_id');
+            const query = supabase.from('books').select('id, markdown_content, user_id, created_at, is_public');
             if (isUuid) {
                 query.eq('id', id);
             } else {
@@ -59,11 +63,12 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
             }
             markdownContent = data.markdown_content;
             ownerId = data.user_id || 'global';
+            row = data;
         }
     } else {
         // 2. Otherwise, query Supabase database as usual
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-        const query = supabase.from('books').select('markdown_content, user_id');
+        const query = supabase.from('books').select('id, markdown_content, user_id, created_at, is_public');
         if (isUuid) {
             query.eq('id', id);
         } else {
@@ -78,7 +83,12 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
         }
         markdownContent = data.markdown_content;
         ownerId = data.user_id || 'global';
+        row = data;
     }
+
+        // Public content created from the cutover (and the standard MiniApps) is served from the markdown domain
+        const target = viewerRedirect(url, row ? servedOnMarkdown(row) : false, dev);
+        if (target) throw redirect(302, target);
 
         // Check if markdown is actually a "Card" instead of a "Book"
         const isCard = isCardMarkdown(markdownContent) || (!markdownContent.includes('play_mode: book') && !/Page\s*\d+:/i.test(markdownContent) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(markdownContent));

@@ -5,6 +5,7 @@ import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { createClient } from '@supabase/supabase-js';
 import { dev } from '$app/environment';
+import { contentOrigins, servedOnMarkdown } from '$lib/content-origin';
 import { absoluteCoverImage, helloWorldMiniAppMarkdown, miniAppCardUrl, miniAppUrls, newMiniAppSlug, validMiniAppRef, MINI_APP_TITLE, STANDARD_MINI_APP_REFS } from '$lib/mini-app';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -16,8 +17,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 //   remove: removes one entry from the user's list (standard MiniApps cannot be removed)
 export const POST: RequestHandler = async ({ request, url }) => {
     try {
-        // Local development hands out local URLs; production always uses the public origin.
-        const origin = dev ? url.origin : undefined;
+        // Local development hands out local URLs; production always uses the public origins.
+        // Card URLs point at the domain each MiniApp is served from (new ones and the standard MiniApps: the markdown domain).
+        const origins = contentOrigins(url, dev);
         const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
         const expectedSecret = env.HYPERCARDBOOK_SHARED_SECRET || process.env.HYPERCARDBOOK_SHARED_SECRET || '';
         if (!expectedSecret) {
@@ -66,7 +68,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
                 console.error('Failed to register mini app:', listError);
                 return json({ error: listError.message }, { status: 500 });
             }
-            return json({ ok: true, id: created.id, slug, title: MINI_APP_TITLE, ...miniAppUrls(created.id, origin) });
+            return json({ ok: true, id: created.id, slug, title: MINI_APP_TITLE, ...miniAppUrls(created.id, origins.www), cardUrl: miniAppCardUrl(created, origins.markdown) });
         }
 
         if (action === 'list') {
@@ -78,8 +80,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
             const uuids = refs.filter((ref) => UUID.test(ref));
             const slugs = refs.filter((ref) => !UUID.test(ref));
             const found: any[] = [];
-            if (uuids.length) found.push(...((await supabase.from('books').select('id, slug, title, cover_image, theme_color').in('id', uuids)).data || []));
-            if (slugs.length) found.push(...((await supabase.from('books').select('id, slug, title, cover_image, theme_color').in('slug', slugs)).data || []));
+            if (uuids.length) found.push(...((await supabase.from('books').select('id, slug, title, cover_image, theme_color, created_at, is_public').in('id', uuids)).data || []));
+            if (slugs.length) found.push(...((await supabase.from('books').select('id, slug, title, cover_image, theme_color, created_at, is_public').in('slug', slugs)).data || []));
             const shown = new Set<string>();
             const apps = allRows.flatMap((row) => {
                 const book = found.find((b) => b.id === row.ref || b.slug === row.ref);
@@ -90,9 +92,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
                     ref: row.ref,
                     standard: row.standard,
                     title: book.title || row.title || 'MiniApp',
-                    coverImage: absoluteCoverImage(book.cover_image, origin),
+                    coverImage: absoluteCoverImage(book.cover_image, origins.www),
                     themeColor: book.theme_color || 'white',
-                    cardUrl: miniAppCardUrl(book, origin)
+                    cardUrl: miniAppCardUrl(book, servedOnMarkdown(book, true) ? origins.markdown : origins.www)
                 }];
             });
             return json({ ok: true, apps });

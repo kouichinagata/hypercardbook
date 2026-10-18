@@ -62,3 +62,9 @@ test('a Card on the local HyperCardBook talks to the local PapeRobo only', () =>
     void app.w.paperobo.ask('a');
     assert.deepEqual(app.posted.map((p) => p.origin), ['http://127.0.0.1:5180', 'http://localhost:5180']);
 });
+
+test('a Card on the local markdown domain also talks to the local PapeRobo', () => {
+    const app = miniApp({ hostname: 'markdown.localhost', ancestors: ['http://127.0.0.1:5180'] });
+    void app.w.paperobo.ask('a');
+    assert.deepEqual(app.posted.map((p) => p.origin), ['http://127.0.0.1:5180', 'http://localhost:5180']);
+});

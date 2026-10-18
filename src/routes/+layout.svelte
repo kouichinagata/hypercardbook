@@ -3,6 +3,8 @@
 	import { invalidate, invalidateAll } from '$app/navigation';
 	import { createBrowserClient } from '@supabase/ssr';
 	import { env } from '$env/dynamic/public';
+	import { dev } from '$app/environment';
+	import { isMarkdownHost } from '$lib/content-origin';
 	import '../app.css';
 
 	let { data, children } = $props();
@@ -14,6 +16,8 @@
 	);
 
 	onMount(() => {
+		// The content domain (markdown.hypercardbook.org) never signs in or stores API keys: author scripts run there.
+		if (isMarkdownHost(window.location.hostname, dev)) return;
 		// URLのハッシュからトークンを取得してセッションを同期
 		if (typeof window !== 'undefined' && window.location.hash) {
 			const hash = window.location.hash.substring(1);

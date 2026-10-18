@@ -13,7 +13,7 @@
     var PRODUCTION = ['https://paperobo.hypercardbook.org'];
     // A Card served by the local HyperCardBook talks to the local PapeRobo (npm run dev on port 5180).
     var LOCAL = ['http://127.0.0.1:5180', 'http://localhost:5180'];
-    var local = /^(localhost|127\.0\.0\.1)$/.test(w.location.hostname);
+    var local = /^((markdown\.)?localhost|127\.0\.0\.1)$/.test(w.location.hostname);
     var origins = local ? LOCAL : PRODUCTION;
     var used = false;
 

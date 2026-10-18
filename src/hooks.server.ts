@@ -2,13 +2,24 @@ import { createServerClient } from '@supabase/ssr';
 import { type Handle, redirect } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
+import { dev } from '$app/environment';
+import { contentOrigins, isMarkdownHost } from '$lib/content-origin';
+
+// Paths the markdown (content) domain serves: the viewers and the static files they read.
+const MARKDOWN_PATHS = /^\/(hypercard|hyperbook)\/[^/]+\/?$|^\/(samples|books|js)\//;
 
 export const handle: Handle = async ({ event, resolve }) => {
+    // The content domain never signs anyone in: no session cookies are read or written there.
+    const markdownHost = isMarkdownHost(event.url.hostname, dev);
+    if (markdownHost && !MARKDOWN_PATHS.test(event.url.pathname)) {
+        if (event.url.pathname.startsWith('/api/')) return new Response(JSON.stringify({ error: 'Not found.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        throw redirect(302, `${contentOrigins(event.url, dev).www}${event.url.pathname}${event.url.search}#`);
+    }
     event.locals.supabase = createServerClient(
         publicEnv.PUBLIC_SUPABASE_URL || env.PUBLIC_SUPABASE_URL || '',
         publicEnv.PUBLIC_SUPABASE_ANON_KEY || env.PUBLIC_SUPABASE_ANON_KEY || '',
         {
-            cookies: {
+            cookies: markdownHost ? { getAll: () => [], setAll() {} } : {
                 getAll() {
                     return event.cookies.getAll();
                 },
