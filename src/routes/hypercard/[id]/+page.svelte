@@ -6,6 +6,11 @@
     let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || DEFAULT_ACTIVE_PLUGIN_IDS);
 </script>
 
+<svelte:head>
+    <!-- Loaded before the Card body so the MiniApp's own scripts can call paperobo.ask() -->
+    {#if data.isMiniApp}<script src="/js/paperobo-ask.v1.js"></script>{/if}
+</svelte:head>
+
 <Card 
     markdown={data.markdown} 
     id={data.id} 

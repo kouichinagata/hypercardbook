@@ -1,4 +1,5 @@
-import { isCardMarkdown } from '$lib/play-mode';
+import { isCardMarkdown, isMiniApp } from '$lib/play-mode';
+import { parseBookFrontmatter } from '$lib/book-frontmatter';
 import { loadUnlistedMiniApp } from '$lib/server/unlisted-mini-app';
 import type { PageServerLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
@@ -105,6 +106,8 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
             id,
             backUrl,
             isEmbed,
+            // Only MiniApps get the PapeRobo Ask API (paperobo.ask)
+            isMiniApp: isMiniApp(parseBookFrontmatter(markdownContent).playMode),
             currentUserId: ownerId
         };
 };

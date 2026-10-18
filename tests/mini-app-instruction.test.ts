@@ -7,7 +7,7 @@ const mini = helloWorldMiniAppMarkdown('miniapp-test');
 test('new Mini App and subsequent edits receive the embedding contract', () => {
     const initial = miniAppInstruction('card', mini, false);
     assert.ok(initial.includes('330 x 480') && initial.includes('240 x 349'));
-    for (const rule of ['11:16', 'edit_card', 'play_mode: miniapp', 'allow-same-origin', 'in-memory fallback', 'publication settings']) assert.ok(initial.includes(rule), rule);
+    for (const rule of ['11:16', 'edit_card', 'play_mode: miniapp', 'allow-same-origin', 'in-memory fallback', 'publication settings', 'paperobo.ask(prompt)', 'ONCE per launch', 'NOT_IN_PAPEROBO']) assert.ok(initial.includes(rule), rule);
     assert.equal(miniAppInstruction('card', mini + '\n<button>Start</button>', false), initial);
 });
 test('ordinary Cards, Books, Plan mode and mentions in body do not receive Mini App generation rules', () => {
