@@ -1,3 +1,4 @@
+import { addMiniAppByRef } from '$lib/server/mini-app-registration';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
@@ -10,6 +11,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Called server-to-server by PapeRobo with the shared secret.
 //   create: makes an unlisted "Hello World" MiniApp (not public; usable by anyone with its UUID link) and adds it to the user's list
+//   add:    appends an existing MiniApp by its URL reference without replacing the list
 //   list:   returns the user's MiniApps (title, cover and Card URL resolved from the books table)
 //   remove: removes one entry from the user's list
 export const POST: RequestHandler = async ({ request, url }) => {
@@ -35,6 +37,11 @@ export const POST: RequestHandler = async ({ request, url }) => {
             return json({ error: 'Server integration is misconfigured.' }, { status: 500 });
         }
         const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+
+        if (action === 'add') {
+            const result = await addMiniAppByRef(supabase, userId, payload.ref);
+            return json(result.error ? { error: result.error } : { ok: true }, { status: result.status });
+        }
 
         if (action === 'create') {
             const slug = newMiniAppSlug();
