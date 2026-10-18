@@ -4,6 +4,10 @@ const ORIGIN = 'https://www.hypercardbook.org';
 // In development the endpoints hand out the local origin so unreleased work is not shown on production.
 export const MINI_APP_TITLE = 'Hello World';
 export const MAX_MINI_APPS = 100;
+// Standard MiniApps (books.id): shown first in every user's PapeRobo list, cannot be removed by users
+export const STANDARD_MINI_APP_REFS: readonly string[] = [
+    '50d2d3d1-30f9-4e2e-883d-1243be839389' // テトリス (miniapp-6762974123f8-)
+];
 
 export function newMiniAppSlug(random: () => string = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12)): string {
     return `miniapp-${random()}`;
