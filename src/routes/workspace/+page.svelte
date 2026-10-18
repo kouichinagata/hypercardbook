@@ -65,14 +65,20 @@
         editDiff?: { unified: string; added: number; removed: number };
         // Live progress line from the server while the AI works (shown only during generation, never saved)
         status?: string;
+        // When the message was sent (ISO). Loaded from chat_messages.created_at for saved history
+        at?: string;
     }
     let chatHistory: ChatMessage[] = $state([]);
+    // Per-message Preview / Markdown toggle and Copy feedback, keyed by index (reset on New Chat)
+    let chatMdMode = $state<Record<number, 'preview' | 'markdown'>>({});
+    let copiedChatIdx = $state(-1);
 
     // Trigger mermaid rendering when workspace preview or chat history updates
     $effect(() => {
         const _trigger1 = chatHistory;
         const _trigger2 = markdown;
         const _trigger3 = currentCardIndex;
+        const _trigger4 = { ...chatMdMode };
         tick().then(() => {
             if (typeof window !== 'undefined' && (window as any).mermaid) {
                 try {
@@ -96,7 +102,8 @@
             ...chatHistory,
             {
                 role: 'model',
-                text: `🤖 **[HyperHooks: ${event.eventName}]**\n${event.result}`
+                text: `🤖 **[HyperHooks: ${event.eventName}]**\n${event.result}`,
+                at: new Date().toISOString()
             }
         ];
         tick().then(() => {
@@ -563,6 +570,7 @@
             }
         }
         chatHistory = [];
+        chatMdMode = {};
         currentInput = '';
         attachedFiles = [];
         errorMsg = '';
@@ -1228,7 +1236,7 @@ ${markdown}
         const referenceImages = imageReferenceUrls(visiblePrompt, images);
 
         // Add user message to history
-        chatHistory = [...chatHistory, { role: 'user', text: visiblePrompt }];
+        chatHistory = [...chatHistory, { role: 'user', text: visiblePrompt, at: new Date().toISOString() }];
 
         currentInput = '';
         attachedFiles = [];
@@ -1253,9 +1261,9 @@ ${markdown}
             const loadingIndex = chatHistory.length;
             const modelLabel = imageModelLabel(selectedImageModel());
             const setImageStatus = (text: string) => {
-                chatHistory = chatHistory.map((message, index) => index === loadingIndex ? { role: 'model', text } : message);
+                chatHistory = chatHistory.map((message, index) => index === loadingIndex ? { ...message, text } : message);
             };
-            chatHistory = [...chatHistory, { role: 'model', text: `🏙️ Generating images with ${modelLabel}...` }];
+            chatHistory = [...chatHistory, { role: 'model', text: `🏙️ Generating images with ${modelLabel}...`, at: new Date().toISOString() }];
             scrollToBottom();
             try {
                 let generatedImages: { name: string; url: string }[] = [];
@@ -1308,14 +1316,14 @@ ${markdown}
                 console.error('[Workspace Image Gen Error]:', imgErr);
                 const message = generateController.signal.aborted ? '⏹ Stopped.' : `⚠️ ${imgErr instanceof Error ? imgErr.message : 'Image generation failed.'}`;
                 chatHistory = chatHistory.map((item, index) => index === loadingIndex
-                    ? { role: 'model', text: message }
+                    ? { ...item, text: message }
                     : item
                 );
             }
         }
 
         // Append temporary Thinking... AI response after image generation.
-        chatHistory = [...chatHistory, { role: 'model', text: 'Thinking...' }];
+        chatHistory = [...chatHistory, { role: 'model', text: 'Thinking...', at: new Date().toISOString() }];
         const lastIndex = chatHistory.length - 1;
 
         try {
@@ -1500,13 +1508,13 @@ ${markdown}
         const total = job.pages.length;
         const index = chatHistory.length;
         const setStatus = (text: string) => {
-            chatHistory = chatHistory.map((message, i) => i === index ? { role: 'model', text } : message);
+            chatHistory = chatHistory.map((message, i) => i === index ? { ...message, text } : message);
         };
         const abort = new AbortController();
         mangaAbort = abort;
         const warnBeforeLeaving = (event: BeforeUnloadEvent) => event.preventDefault();
         window.addEventListener('beforeunload', warnBeforeLeaving);
-        chatHistory = [...chatHistory, { role: 'model', text: `🎨 Drawing ${total} manga page${total === 1 ? '' : 's'}… Please keep this tab open until it finishes.` }];
+        chatHistory = [...chatHistory, { role: 'model', text: `🎨 Drawing ${total} manga page${total === 1 ? '' : 's'}… Please keep this tab open until it finishes.`, at: new Date().toISOString() }];
         scrollToBottom();
         try {
             const result = await runMangaJob(job, (p) => {
@@ -1537,6 +1545,48 @@ ${markdown}
             return '<br>'.repeat(match.length - 1) + '\n';
         });
         return marked.parse(processed) as string;
+    }
+
+    // The Markdown a bubble shows: the user's text without attachments, or the AI reply without internal tags
+    function chatSource(message: ChatMessage, idx: number): string {
+        if (message.role === 'user') return parseUserMessage(message.text).body;
+        return message.text
+            .replace(/\[MANGA_JOB\][\s\S]*?\[\/MANGA_JOB\]/g, '')
+            .replace(/\[MANGA_JOB\][\s\S]*/g, '')
+            .replace(/\[UPDATED_MARKDOWN\][\s\S]*/gi, '')
+            .replace(/\[MARKDOWN_EDIT\][\s\S]*/g, '')
+            .replace(
+                planMode
+                    ? /(?!)/g
+                    : isGenerating && idx === chatHistory.length - 1
+                    ? /```(?:markdown)?[\s\S]*/gi
+                    : /```(?:markdown)?[\s\S]*?```/gi,
+                mode === 'card' ? '[Card generated/updated]' : '[Book generated/updated]'
+            )
+            .replace(/\[UPDATE_PAGES\][\s\S]*?\[\/UPDATE_PAGES\]/gi, '[Book pages updated]')
+            .replace(/\[UPDATE_PAGES\][\s\S]*/gi, '')
+            .trim();
+    }
+
+    async function copyChatMessage(idx: number, text: string) {
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            try { document.execCommand('copy'); } finally { area.remove(); }
+        }
+        copiedChatIdx = idx;
+        setTimeout(() => { if (copiedChatIdx === idx) copiedChatIdx = -1; }, 1500);
+    }
+
+    function formatChatTime(at: string): string {
+        const date = new Date(at);
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     }
 
     onMount(() => {
@@ -2197,7 +2247,11 @@ ${markdown}
                         <div class="bubble-content">
                             {#if message.role === 'user'}
                                 {@const parsed = parseUserMessage(message.text)}
-                                {@html parseMarkdownForChat(parsed.body)}
+                                {#if chatMdMode[idx] === 'markdown'}
+                                    <pre class="chat-md-source">{parsed.body}</pre>
+                                {:else}
+                                    {@html parseMarkdownForChat(parsed.body)}
+                                {/if}
                                 
                                 {#if parsed.images.length > 0}
                                     <div class="bubble-attached-images-grid">
@@ -2231,24 +2285,11 @@ ${markdown}
                                         {/if}
                                     </div>
                                 {:else}
-                                    {@html parseMarkdownForChat(
-                                        message.text
-                                            .replace(/\[MANGA_JOB\][\s\S]*?\[\/MANGA_JOB\]/g, '')
-                                            .replace(/\[MANGA_JOB\][\s\S]*/g, '')
-                                            .replace(/\[UPDATED_MARKDOWN\][\s\S]*/gi, '')
-                                            .replace(/\[MARKDOWN_EDIT\][\s\S]*/g, '')
-                                            .replace(
-                                                planMode
-                                                    ? /(?!)/g
-                                                    : isGenerating && idx === chatHistory.length - 1
-                                                    ? /```(?:markdown)?[\s\S]*/gi
-                                                    : /```(?:markdown)?[\s\S]*?```/gi,
-                                                mode === 'card' ? '[Card generated/updated]' : '[Book generated/updated]'
-                                            )
-                                            .replace(/\[UPDATE_PAGES\][\s\S]*?\[\/UPDATE_PAGES\]/gi, '[Book pages updated]')
-                                            .replace(/\[UPDATE_PAGES\][\s\S]*/gi, '')
-                                            .trim()
-                                    )}
+                                    {#if chatMdMode[idx] === 'markdown'}
+                                        <pre class="chat-md-source">{chatSource(message, idx)}</pre>
+                                    {:else}
+                                        {@html parseMarkdownForChat(chatSource(message, idx))}
+                                    {/if}
 
                                     {#if isGenerating && idx === chatHistory.length - 1 && message.role === 'model'}
                                         <div style="display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--text-muted, #a1a1aa);">
@@ -2285,6 +2326,17 @@ ${markdown}
                                         </div>
                                     {/if}
                                 {/if}
+                            {/if}
+                            {#if !(message.text === '' || message.text === 'Thinking...') && !(isGenerating && idx === chatHistory.length - 1)}
+                                {@const source = chatSource(message, idx)}
+                                {@const chatMode = chatMdMode[idx] ?? 'preview'}
+                                <div class="chat-msg-meta">
+                                    {#if source}
+                                        <button type="button" onclick={() => void copyChatMessage(idx, source)}>{copiedChatIdx === idx ? 'Copied' : 'Copy'}</button>
+                                        <span class="chat-mode-switch"><button type="button" class:active={chatMode === 'preview'} aria-pressed={chatMode === 'preview'} onclick={() => chatMdMode[idx] = 'preview'}>Preview</button><span aria-hidden="true">/</span><button type="button" class:active={chatMode === 'markdown'} aria-pressed={chatMode === 'markdown'} onclick={() => chatMdMode[idx] = 'markdown'}>Markdown</button></span>
+                                    {/if}
+                                    {#if message.at}<time datetime={message.at}>{formatChatTime(message.at)}</time>{/if}
+                                </div>
                             {/if}
                         </div>
                     </div>
@@ -2940,6 +2992,49 @@ ${markdown}
     .message-bubble.user .bubble-content {
         background: #8b5cf6;
         color: #ffffff;
+    }
+
+    .chat-msg-meta {
+        display: flex;
+        align-items: baseline;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 6px;
+        font-size: 11px;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
+    .chat-msg-meta button {
+        border: 0;
+        padding: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        opacity: 0.6;
+        cursor: pointer;
+    }
+
+    .chat-msg-meta button:hover, .chat-msg-meta button.active {
+        opacity: 1;
+    }
+
+    .chat-msg-meta button.active {
+        text-decoration: underline;
+    }
+
+    .chat-mode-switch > span, .chat-msg-meta time {
+        opacity: 0.6;
+    }
+
+    .bubble-content .chat-md-source {
+        margin: 0;
+        padding: 0;
+        background: none;
+        font-family: inherit;
+        font-size: inherit;
+        white-space: pre-wrap;
+        word-break: break-word;
     }
 
 

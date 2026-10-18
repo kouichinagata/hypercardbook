@@ -55,7 +55,7 @@ export const load: PageServerLoad = async ({ url, locals, fetch }) => {
     // Fetch chat history
     const { data: messages, error: chatError } = await supabase
         .from('chat_messages')
-        .select('role, text')
+        .select('role, text, at:created_at')
         .eq('book_id', book.id)
         .order('created_at', { ascending: true });
 
