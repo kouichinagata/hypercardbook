@@ -268,7 +268,8 @@
     // Monaco Editor states
     let useMonaco = $state(false);
     let monacoContainerEl = $state<HTMLDivElement | null>(null);
-    let monacoEditor: any = null;
+    // $state.raw: the sync effects must re-run once the editor exists (it loads asynchronously); raw, so Monaco's object is not proxied
+    let monacoEditor: any = $state.raw(null);
 
     // Monaco の AMD ローダー（define）が先に入ると、Mermaid が window.mermaid に乗らないので、Mermaid の読み込みを待つ
     function waitForMermaidScript(): Promise<void> {
