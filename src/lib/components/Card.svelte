@@ -284,8 +284,9 @@
         if (signErrorSlots.includes(slot)) {
             return `<span class="sign-slot sign-error" data-slot="${slot}">sign error</span>`;
         }
-        const title = slotIsSignable(slot) ? 'クリックしてサイン' : 'この欄はあなたはサインできません';
-        return `<span class="sign-slot sign-pending" data-slot="${slot}" title="${title}">✍ sign here</span>`;
+        const signable = slotIsSignable(slot);
+        const title = signable ? 'Click to sign' : 'You cannot sign this slot';
+        return `<span class="sign-slot sign-pending" data-slot="${slot}" data-signable="${signable}" title="${title}">✍ sign here</span>`;
     }
 
     let cardBodyHtml = $derived.by(() => {
@@ -467,6 +468,10 @@
     :global(.card-webview-body .sign-pending) {
         background: #fff6b3;
         cursor: pointer;
+    }
+    :global(.card-webview-body .sign-focus) {
+        outline: 3px solid #f59e0b;
+        outline-offset: 2px;
     }
     :global(.card-webview-body .sign-signed) {
         background: #dbeafe;

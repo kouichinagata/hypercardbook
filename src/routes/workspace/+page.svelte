@@ -515,14 +515,14 @@
         });
         const out = await res.json();
         if (!res.ok) {
-            alert(`サイン依頼リンクを作れませんでした: ${out.error}`);
+            alert(`Could not create the sign request link: ${out.error}`);
             return;
         }
         try {
             await navigator.clipboard.writeText(out.url);
-            alert(`サイン依頼リンクをコピーしました（${new Date(out.expiresAt).toLocaleDateString()} まで有効。新しく作ると前のリンクは無効になります）`);
+            alert(`Sign request link copied (valid until ${new Date(out.expiresAt).toLocaleDateString()}; creating a new one disables the previous link)`);
         } catch {
-            prompt('サイン依頼リンク', out.url);
+            prompt('Sign request link', out.url);
         }
     }
 

@@ -25,14 +25,14 @@
 </script>
 
 <svelte:head>
-    <title>サイン依頼</title>
+    <title>Sign request</title>
     <meta name="robots" content="noindex" />
 </svelte:head>
 
 <div class="sign-page">
     <div class="sign-bar">
-        <span>黄色の「sign here」をタップしてサインしてください（{new Date(data.expiresAt).toLocaleDateString()} まで有効）</span>
-        <input bind:value={name} placeholder="お名前（任意）" maxlength="100" />
+        <span>Tap a yellow "sign here" to sign (valid until {new Date(data.expiresAt).toLocaleDateString()})</span>
+        <input bind:value={name} placeholder="Your name (optional)" maxlength="100" />
     </div>
     <div class="sign-card">
         <Card {markdown} isEmbed={true} showNewTab={false} {signer} onMarkdownChange={(next) => (markdown = next)} />

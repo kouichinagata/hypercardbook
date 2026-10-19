@@ -33,3 +33,13 @@ test('signing a slot rewrites only that slot, and guests never sign my', async (
     assert.equal(signSlotInMarkdown(md, 9, 'your', 'https://x.test/b.webp'), null);
     assert.deepEqual(['my', 'your', 'any'].map((k) => guestMaySign(k as any)), [false, true, true]);
 });
+
+test('stepIndex moves through the slots and wraps around', async () => {
+    const { stepIndex } = await import('../src/lib/signature/sign-navigator.ts');
+    assert.equal(stepIndex(0, -1, 1), -1);
+    assert.equal(stepIndex(3, -1, 1), 0);
+    assert.equal(stepIndex(3, -1, -1), 2);
+    assert.equal(stepIndex(3, 2, 1), 0);
+    assert.equal(stepIndex(3, 0, -1), 2);
+    assert.equal(stepIndex(1, 0, 1), 0);
+});

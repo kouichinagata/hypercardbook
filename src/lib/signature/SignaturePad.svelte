@@ -6,7 +6,7 @@
     let {
         onsave,
         oncancel,
-        title = 'サインしてください'
+        title = 'Please sign'
     }: {
         onsave: (result: { svg: string }) => void | Promise<void>;
         oncancel: () => void;
@@ -91,11 +91,11 @@
             onpointerup={up}
             onpointercancel={up}
         ></canvas>
-        {#if failed}<div class="sign-failed">サインできませんでした。もう一度お試しください。</div>{/if}
+        {#if failed}<div class="sign-failed">Could not sign. Please try again.</div>{/if}
         <div class="sign-actions">
-            <button type="button" onclick={oncancel} disabled={busy}>キャンセル</button>
-            <button type="button" onclick={clear} disabled={busy || !hasInk}>消す</button>
-            <button type="button" class="primary" onclick={save} disabled={busy || !hasInk}>サインする</button>
+            <button type="button" onclick={oncancel} disabled={busy}>Cancel</button>
+            <button type="button" onclick={clear} disabled={busy || !hasInk}>Clear</button>
+            <button type="button" class="primary" onclick={save} disabled={busy || !hasInk}>Sign</button>
         </div>
     </div>
 </div>

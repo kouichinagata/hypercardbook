@@ -2,6 +2,8 @@
     import Card from '$lib/components/Card.svelte';
     import { DEFAULT_ACTIVE_PLUGIN_IDS } from '$lib/plugins';
     import { onMount } from 'svelte';
+    import { page } from '$app/state';
+    import SignNavigator from '$lib/signature/SignNavigator.svelte';
 
     let { data } = $props();
     let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || DEFAULT_ACTIVE_PLUGIN_IDS);
@@ -56,3 +58,7 @@
     onMarkdownChange={(next: string) => (markdown = next)}
     {signer}
 />
+
+{#if page.url.searchParams.get('sign') === '1'}
+    <SignNavigator />
+{/if}
