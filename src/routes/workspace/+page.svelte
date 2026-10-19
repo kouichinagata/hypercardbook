@@ -484,6 +484,48 @@
         return publicUrlData.publicUrl;
     }
 
+    // Signing goes through the server (WebP storage, SVG original, document update); the owner may sign any slot
+    const signer = {
+        canSign: () => !!data.session?.user && !!bookUuid,
+        sign: async (slot: number, kind: string, result: { svg: string; webp: string }) => {
+            await flushAutoSave();
+            const res = await fetch('/api/sign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookId: bookUuid, slot, kind, baseVersion: bookVersion, ...result })
+            });
+            const out = await res.json();
+            if (!res.ok) throw new Error(out.error || 'sign failed');
+            bookVersion = out.version;
+            return out.markdown as string;
+        }
+    };
+
+    function applySignedMarkdown(next: string) {
+        markdown = next;
+    }
+
+    // Copy the sign link: whoever has it can sign the "your" / "MarkdownAIVerify" slots without logging in
+    async function copySignLink() {
+        if (!bookUuid) return;
+        const res = await fetch('/api/sign/links', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookId: bookUuid })
+        });
+        const out = await res.json();
+        if (!res.ok) {
+            alert(`サイン依頼リンクを作れませんでした: ${out.error}`);
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(out.url);
+            alert(`サイン依頼リンクをコピーしました（${new Date(out.expiresAt).toLocaleDateString()} まで有効。新しく作ると前のリンクは無効になります）`);
+        } catch {
+            prompt('サイン依頼リンク', out.url);
+        }
+    }
+
     async function handleAttachedFilesChange(e: Event) {
         const input = e.target as HTMLInputElement;
         if (!input.files || input.files.length === 0) return;
@@ -1877,7 +1919,8 @@ ${markdown}
 
     function handleWebViewClick(e: MouseEvent) {
         const target = e.target as HTMLElement;
-        if (target && target.tagName === 'IMG') {
+        // Signature images are not replaceable media
+        if (target && target.tagName === 'IMG' && !target.closest('.sign-slot')) {
             const src = target.getAttribute('src') || '';
             const alt = target.getAttribute('alt') || '';
             const isCover = target.classList.contains('clicked-img-cover') || target.classList.contains('cover-image') || target.id === 'coverImg';
@@ -2170,6 +2213,11 @@ ${markdown}
         <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handleExportHtmlLink(); }} disabled={isExportingHtml} title="Publish HTML">
             🌐{#if labels}<span class="action-label">Publish HTML</span>{/if}
         </button>
+        {#if mode === 'card'}
+            <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; copySignLink(); }} title="Copy sign request link">
+                ✍️{#if labels}<span class="action-label">Sign request link</span>{/if}
+            </button>
+        {/if}
         <a class="card-action-btn tabs-action-btn" href={mode === 'card' ? `/hypercard/${cardSlug}?embed=true` : `/hyperbook/${bookUuid}`} target="_blank" title="New tab" style="text-decoration: none;">
             🔗{#if labels}<span class="action-label">Open in new tab</span>{/if}
         </a>
@@ -2525,7 +2573,7 @@ ${markdown}
             <div class="preview-container" class:hidden={activeTab !== 'preview'}>
                 {#if mode === 'card'}
                     <div onclick={handleWebViewClick} role="presentation" class="preview-scroll-wrapper" style="width: 100%; height: 100%; overflow-y: auto;">
-                        <Card markdown={markdown} id={bookUuid || cardSlug} isEmbed={true} showNewTab={false} activePluginIds={activePluginIds} currentUserId={data.currentUserId} />
+                        <Card markdown={markdown} id={bookUuid || cardSlug} isEmbed={true} showNewTab={false} activePluginIds={activePluginIds} currentUserId={data.currentUserId} onMarkdownChange={applySignedMarkdown} {signer} />
                     </div>
                 {:else}
                     {#if markdown}

@@ -2,6 +2,8 @@
     import { marked } from 'marked';
     import { onDestroy, onMount } from 'svelte';
     import { browser } from '$app/environment';
+    import SignaturePad from '$lib/signature/SignaturePad.svelte';
+    import { replaceSignedImages, signSlotKinds, replaceSignMarkers, type SignKind } from '$lib/signature/markers';
 
     let {
         markdown = '',
@@ -10,7 +12,15 @@
         isEmbed = false,
         backUrl = '/',
         activePluginIds = [],
-        currentUserId = 'global'
+        currentUserId = 'global',
+        onMarkdownChange = undefined,
+        signer = undefined
+    }: {
+        markdown?: string; id?: string; showNewTab?: boolean; isEmbed?: boolean; backUrl?: string;
+        activePluginIds?: string[]; currentUserId?: string;
+        onMarkdownChange?: (markdown: string) => void;
+        // Who may sign which slot, and how: sign() returns the new Markdown (the server has already saved it)
+        signer?: { canSign: (kind: SignKind) => boolean; sign: (slot: number, kind: SignKind, result: { svg: string; webp: string }) => Promise<string> };
     } = $props();
 
     // Iframe postMessage connection states
@@ -245,10 +255,45 @@
         return 'white';
     });
 
+    // {{MarkdownAIVerify}} signature slots: pending (yellow) -> signed (blue, a plain Markdown image link) / error (red).
+    // Signing needs the host to provide both callbacks (the workspace of the user's own bookshelf); other views only show colors.
+    let signingSlot = $state<number | null>(null);
+    let signErrorSlots = $state<number[]>([]);
+    let signKinds = $derived(signSlotKinds(markdown));
+
+    async function saveSignature(slot: number, result: { svg: string; webp: string }) {
+        try {
+            onMarkdownChange?.(await signer!.sign(slot, signKinds[slot] ?? 'any', result));
+        } catch (err) {
+            console.error('Signature failed:', err);
+            signErrorSlots = [...signErrorSlots, slot];
+        }
+        signingSlot = null;
+    }
+
+    function slotIsSignable(slot: number): boolean {
+        return !!signer && !!signKinds[slot] && signer.canSign(signKinds[slot]);
+    }
+
+    function handleBodyClick(e: MouseEvent) {
+        const el = (e.target as HTMLElement | null)?.closest?.('.sign-pending') as HTMLElement | null;
+        if (el && slotIsSignable(Number(el.dataset.slot))) signingSlot = Number(el.dataset.slot);
+    }
+
+    function renderSignSlot(slot: number): string {
+        if (signErrorSlots.includes(slot)) {
+            return `<span class="sign-slot sign-error" data-slot="${slot}">sign error</span>`;
+        }
+        const title = slotIsSignable(slot) ? 'クリックしてサイン' : 'この欄はあなたはサインできません';
+        return `<span class="sign-slot sign-pending" data-slot="${slot}" title="${title}">✍ sign here</span>`;
+    }
+
     let cardBodyHtml = $derived.by(() => {
         if (!markdown) return '';
         let cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
         cleanMd = cleanMd.replace(new RegExp(styleBlockPattern), '');
+        cleanMd = replaceSignedImages(cleanMd, (url) => `<span class="sign-slot sign-signed"><img src="${url}" alt="signature"></span>`);
+        cleanMd = replaceSignMarkers(cleanMd, renderSignSlot);
 
         let processed = cleanMd.split('\n').map(line => {
             const trimmed = line.trim();
@@ -395,14 +440,46 @@
         {/if}
 
         <div class="card-webview-frame" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} style={!['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? `background-color: ${cardThemeColor};` : ''} class:embed-mode={isEmbed}>
-            <div class="card-webview-body markdown-body">
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+            <div class="card-webview-body markdown-body" onclick={handleBodyClick}>
                 {@html cardBodyHtml}
             </div>
         </div>
     </div>
 </div>
 
+{#if signingSlot !== null}
+    <SignaturePad
+        onsave={(result) => saveSignature(signingSlot!, result)}
+        oncancel={() => (signingSlot = null)}
+    />
+{/if}
+
 <style>
+    :global(.card-webview-body .sign-slot) {
+        display: inline-block;
+        min-width: 8em;
+        padding: 0 0.5em;
+        border-radius: 4px;
+        color: #555;
+        vertical-align: middle;
+    }
+    :global(.card-webview-body .sign-pending) {
+        background: #fff6b3;
+        cursor: pointer;
+    }
+    :global(.card-webview-body .sign-signed) {
+        background: #dbeafe;
+    }
+    :global(.card-webview-body .sign-signed img) {
+        display: block;
+        height: 3.5em;
+        width: auto;
+        margin: 0;
+    }
+    :global(.card-webview-body .sign-error) {
+        background: #fecaca;
+    }
     .card-reader-container {
         width: 100vw;
         height: 100vh;
