@@ -32,7 +32,7 @@ async function harness(t) {
         return path.join(dir,destination);
     }
     const module=await compile('src/lib/server/paperoboDocuments.ts','documents.mjs',{'$env/dynamic/private':fixture,'$env/dynamic/public':fixture,'@supabase/supabase-js':fixture,'$app/environment':fixture,'$lib/content-origin':path.join(root,'src/lib/content-origin.ts'),'$lib/book-frontmatter':path.join(root,'src/lib/book-frontmatter.ts'),'./paperoboDocumentTicket':path.join(root,'src/lib/server/paperoboDocumentTicket.ts')});
-    const route=await compile('src/routes/api/paperobo/documents/+server.ts','route.mjs',{'$lib/server/paperoboDocuments':module});
+    const route=await compile('src/routes/api/paperobo/documents/+server.ts','route.mjs',{'$lib/server/paperoboDocuments':module,'$lib/signature/markers':path.join(root,'src/lib/signature/markers.ts')});
     const handler=(await import(pathToFileURL(route).href)).POST;
     const api=(body,secret='test-only-key')=>handler({request:new Request('https://www.hypercardbook.org/api/paperobo/documents',{method:'POST',headers:{authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify(body)}),url:new URL('https://www.hypercardbook.org/api/paperobo/documents')});
     return {state,api,documents:await import(pathToFileURL(module).href)};
@@ -64,4 +64,24 @@ test('private previews use expiring grants; download/add require current publica
     const copy=h.state.inserts[0];assert.equal(copy.user_id,owner);assert.equal(copy.is_public,false);assert.equal(copy.published_at,null);assert.match(copy.markdown_content,/is_public: false/);assert.doesNotMatch(copy.markdown_content,/id: public/);
     h.state.rows.find(r=>r.id==='public').is_public=false;
     await assert.rejects(h.api({action:'download',id:'public',userId:owner}),e=>e.status===404);
+});
+
+test('open reports unsigned signature slots using the existing marker parser, only for ordinary Cards',async t=>{
+    const h=await harness(t);
+    const card=h.state.rows.find(row=>row.id==='card');
+    const open=async id=>(await h.api({action:'open',id,userId:other,selectedBy:owner})).json();
+    assert.equal((await open('card')).hasSignMarkers,false);
+    for(const marker of ['{{MarkdownAIVerify}}','{{myMarkdownAIVerify}}','{{yourMarkdownAIVerify}}','{{your MarkdownAIVerify}}']) {
+        card.markdown_content=`---\nplay_mode: card\n---\n${marker}`;
+        assert.equal((await open('card')).hasSignMarkers,true);
+    }
+    for(const body of ['`{{MarkdownAIVerify}}`','```\n{{myMarkdownAIVerify}}\n```','~~~\n{{yourMarkdownAIVerify}}\n~~~','![MarkdownAIVerify:your](https://example.test/signature.webp)']) {
+        card.markdown_content=`---\nplay_mode: card\n---\n${body}`;
+        assert.equal((await open('card')).hasSignMarkers,false);
+    }
+    for(const id of ['book','miniapp']) {
+        const row=h.state.rows.find(row=>row.id===id);
+        row.markdown_content+='\n{{MarkdownAIVerify}}';
+        assert.equal((await open(id)).hasSignMarkers,false);
+    }
 });

@@ -1,3 +1,4 @@
+import { hasSignMarkers } from '$lib/signature/markers';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
@@ -36,7 +37,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
         if (row.markdown_content.length > 1_000_000) throw error(413, '資料の本文は100万文字以内にしてください。');
         return json({ ok: true, document: { id: row.id, title: row.title, kind: documentKind(row.markdown_content), source: row.markdown_content, isPublic: row.is_public === true } });
     }
-    if (body.action === 'open') return json({ ok: true, ...documentLinks(row,selectedBy,url,true), isPublic: row.is_public === true });
+    if (body.action === 'open') return json({ ok: true, ...documentLinks(row,selectedBy,url,true), isPublic: row.is_public === true, hasSignMarkers: documentKind(row.markdown_content) === 'card' && hasSignMarkers(row.markdown_content) });
     if (body.action === 'download' || body.action === 'add') {
         if (row.is_public !== true) throw error(403, '公開資料のみ保存できます。');
         if (body.action === 'download') return json({ ok: true, source: row.markdown_content, title: row.title });
