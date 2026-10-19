@@ -1,4 +1,4 @@
-// Handwritten signature: strokes -> SVG (the original) -> WebP (what is displayed)
+// Handwritten signature: strokes -> SVG (the original). The server renders the WebP from that SVG.
 export type Point = { x: number; y: number };
 
 export const SIGNATURE_WIDTH = 600;
@@ -33,24 +33,4 @@ export function strokesToSvg(strokes: Point[][]): string {
 /** Only SVG produced by strokesToSvg is accepted (no scripts, no external references) */
 export function isValidSignatureSvg(svg: unknown): svg is string {
     return typeof svg === 'string' && svg.length <= 200_000 && SVG_PATTERN.test(svg);
-}
-
-export function isValidSignatureWebp(webp: unknown): webp is string {
-    return typeof webp === 'string' && webp.length <= 400_000 && /^data:image\/webp;base64,[A-Za-z0-9+/]+=*$/.test(webp);
-}
-
-/** Browser only: render the SVG original to a WebP data URL */
-export async function svgToWebp(svg: string): Promise<string> {
-    const img = new Image();
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    await img.decode();
-    const canvas = document.createElement('canvas');
-    canvas.width = SIGNATURE_WIDTH * 2;
-    canvas.height = SIGNATURE_HEIGHT * 2;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('canvas unavailable');
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const webp = canvas.toDataURL('image/webp', 0.92);
-    if (!webp.startsWith('data:image/webp')) throw new Error('webp unsupported');
-    return webp;
 }

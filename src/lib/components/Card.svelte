@@ -20,7 +20,7 @@
         activePluginIds?: string[]; currentUserId?: string;
         onMarkdownChange?: (markdown: string) => void;
         // Who may sign which slot, and how: sign() returns the new Markdown (the server has already saved it)
-        signer?: { canSign: (kind: SignKind) => boolean; sign: (slot: number, kind: SignKind, result: { svg: string; webp: string }) => Promise<string> };
+        signer?: { canSign: (kind: SignKind) => boolean; sign: (slot: number, kind: SignKind, result: { svg: string }) => Promise<string> };
     } = $props();
 
     // Iframe postMessage connection states
@@ -261,7 +261,7 @@
     let signErrorSlots = $state<number[]>([]);
     let signKinds = $derived(signSlotKinds(markdown));
 
-    async function saveSignature(slot: number, result: { svg: string; webp: string }) {
+    async function saveSignature(slot: number, result: { svg: string }) {
         try {
             onMarkdownChange?.(await signer!.sign(slot, signKinds[slot] ?? 'any', result));
         } catch (err) {

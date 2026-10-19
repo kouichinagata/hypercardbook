@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { SIGNATURE_HEIGHT, SIGNATURE_WIDTH, strokesToSvg, svgToWebp, type Point } from './signature-svg';
+    import { SIGNATURE_HEIGHT, SIGNATURE_WIDTH, strokesToSvg, type Point } from './signature-svg';
 
     // Standalone: no dependency on Card, so PapeRobo can mount it too
     let {
@@ -8,7 +8,7 @@
         oncancel,
         title = 'サインしてください'
     }: {
-        onsave: (result: { svg: string; webp: string }) => void | Promise<void>;
+        onsave: (result: { svg: string }) => void | Promise<void>;
         oncancel: () => void;
         title?: string;
     } = $props();
@@ -18,6 +18,7 @@
     let current: Point[] | null = null;
     let hasInk = $state(false);
     let busy = $state(false);
+    let failed = $state(false);
 
     onMount(() => clear());
 
@@ -67,9 +68,11 @@
     async function save() {
         if (!hasInk || busy) return;
         busy = true;
+        failed = false;
         try {
-            const svg = strokesToSvg(strokes);
-            await onsave({ svg, webp: await svgToWebp(svg) });
+            await onsave({ svg: strokesToSvg(strokes) });
+        } catch {
+            failed = true;
         } finally {
             busy = false;
         }
@@ -88,6 +91,7 @@
             onpointerup={up}
             onpointercancel={up}
         ></canvas>
+        {#if failed}<div class="sign-failed">サインできませんでした。もう一度お試しください。</div>{/if}
         <div class="sign-actions">
             <button type="button" onclick={oncancel} disabled={busy}>キャンセル</button>
             <button type="button" onclick={clear} disabled={busy || !hasInk}>消す</button>
@@ -128,6 +132,11 @@
         touch-action: none;
         cursor: crosshair;
         display: block;
+    }
+    .sign-failed {
+        margin-top: 8px;
+        color: #b91c1c;
+        font-size: 14px;
     }
     .sign-actions {
         display: flex;

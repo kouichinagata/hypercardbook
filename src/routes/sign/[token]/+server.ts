@@ -7,8 +7,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
     const admin = adminClient();
     const link = await resolveSignLink(admin, params.token);
     if (!link) return json({ error: 'This link is invalid or expired.' }, { status: 404 });
-    const { slot, kind, baseVersion, svg, webp, name } = await request.json();
+    const { slot, kind, baseVersion, svg, name } = await request.json();
     const signerName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 100) : null;
-    const outcome = await applySignature(admin, { bookId: link.bookId, slot, kind, baseVersion, svg, webp, actor: { type: 'guest', name: signerName } });
+    const outcome = await applySignature(admin, { bookId: link.bookId, slot, kind, baseVersion, svg, actor: { type: 'guest', name: signerName } });
     return outcome.ok ? json(outcome) : json({ error: outcome.error }, { status: outcome.status });
 };

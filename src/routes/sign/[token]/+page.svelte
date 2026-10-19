@@ -10,7 +10,7 @@
     // Without login only your / MarkdownAIVerify slots can be signed (my is the owner's)
     const signer = {
         canSign: guestMaySign,
-        sign: async (slot: number, kind: string, result: { svg: string; webp: string }) => {
+        sign: async (slot: number, kind: string, result: { svg: string }) => {
             const res = await fetch(location.pathname, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

@@ -1,9 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import sharp from 'sharp';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { guestMaySign, signSlotInMarkdown, signSlotKinds, type SignKind } from '../signature/markers.ts';
-import { isValidSignatureSvg, isValidSignatureWebp } from '../signature/signature-svg.ts';
+import { isValidSignatureSvg } from '../signature/signature-svg.ts';
 
 // Signing is done here, in one place: the owner (logged in), a guest with a sign link, and PapeRobo all go through applySignature.
 const BUCKET = 'HyperCardBookBucket';
@@ -40,7 +41,7 @@ export async function resolveSignLink(admin: SupabaseClient, token: string): Pro
 }
 
 export type SignActor = { type: 'owner'; userId: string } | { type: 'guest'; name: string | null };
-export type SignInput = { bookId: string; slot: number; kind: SignKind; baseVersion: number; svg: unknown; webp: unknown; actor: SignActor };
+export type SignInput = { bookId: string; slot: number; kind: SignKind; baseVersion: number; svg: unknown; actor: SignActor };
 export type SignOutcome = { ok: true; markdown: string; version: number } | { ok: false; status: number; error: string };
 
 /**
@@ -54,8 +55,8 @@ async function storeSignature(admin: SupabaseClient, record: Record<string, unkn
 }
 
 export async function applySignature(admin: SupabaseClient, input: SignInput): Promise<SignOutcome> {
-    const { bookId, slot, kind, baseVersion, svg, webp, actor } = input;
-    if (!isValidSignatureSvg(svg) || !isValidSignatureWebp(webp)) return { ok: false, status: 400, error: 'Invalid signature.' };
+    const { bookId, slot, kind, baseVersion, svg, actor } = input;
+    if (!isValidSignatureSvg(svg)) return { ok: false, status: 400, error: 'Invalid signature.' };
     if (!Number.isInteger(slot) || !['my', 'your', 'any'].includes(kind) || !Number.isInteger(baseVersion)) return { ok: false, status: 400, error: 'Invalid request.' };
 
     const { data: book } = await admin.from('books').select('id, user_id, markdown_content, version').eq('id', bookId).maybeSingle();
@@ -68,8 +69,14 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
     const before: string = book.markdown_content || '';
     if (signSlotKinds(before)[slot] !== kind) return { ok: false, status: 409, error: 'No such slot.' };
 
-    const bytes = Buffer.from((webp as string).split(',')[1], 'base64');
-    if (bytes.subarray(0, 4).toString() !== 'RIFF' || bytes.subarray(8, 12).toString() !== 'WEBP') return { ok: false, status: 400, error: 'Invalid signature image.' };
+    // The WebP is always rendered here from the validated SVG, never taken from the client
+    let bytes: Buffer;
+    try {
+        bytes = await sharp(Buffer.from(svg as string), { density: 144 }).webp({ quality: 90 }).toBuffer();
+    } catch (err) {
+        console.error('[signature] render failed:', err);
+        return { ok: false, status: 500, error: 'Could not render the signature image.' };
+    }
 
     const path = `${book.user_id}/signatures/${randomUUID()}.webp`;
     const { error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, { contentType: 'image/webp', cacheControl: '31536000', upsert: false });

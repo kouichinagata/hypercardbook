@@ -487,7 +487,7 @@
     // Signing goes through the server (WebP storage, SVG original, document update); the owner may sign any slot
     const signer = {
         canSign: () => !!data.session?.user && !!bookUuid,
-        sign: async (slot: number, kind: string, result: { svg: string; webp: string }) => {
+        sign: async (slot: number, kind: string, result: { svg: string }) => {
             await flushAutoSave();
             const res = await fetch('/api/sign', {
                 method: 'POST',
