@@ -1,3 +1,4 @@
+import { sharedDocument } from '$lib/server/paperoboDocuments';
 import { isCardMarkdown, isMiniApp } from '$lib/play-mode';
 import { dev } from '$app/environment';
 import { servedOnMarkdown, viewerRedirect, type ContentRow } from '$lib/content-origin';
@@ -8,7 +9,7 @@ import { error, redirect } from '@sveltejs/kit';
 import fs from 'fs';
 import path from 'path';
 
-export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
+export const load: PageServerLoad = async ({ params, locals, url, fetch, setHeaders }) => {
     const { id } = params;
     const supabase = locals.supabase;
     const booksParam = url.searchParams.get('books');
@@ -22,10 +23,17 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
     let row: ContentRow | null = null;
 
     // Check if the book ID matches a file in the 'samples' directory (sample books)
+    const shareToken = url.searchParams.get('paperobo_share');
+    if (shareToken) setHeaders({ 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' });
     const sampleFilename = id.endsWith('.md') ? id : `${id}.md`;
     const res = await fetch(`/samples/${sampleFilename}`);
     
-    if (res.ok) {
+    if (shareToken) {
+        const shared = await sharedDocument(shareToken, 'preview', id);
+        markdownContent = shared.markdown_content;
+        ownerId = shared.user_id;
+        row = shared;
+    } else if (res.ok) {
         try {
             markdownContent = await res.text();
         } catch (err) {
@@ -89,7 +97,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch }) => {
     }
 
         // Public content created from the cutover (and the standard MiniApps) is served from the markdown domain
-        const target = viewerRedirect(url, row ? servedOnMarkdown(row) : false, dev);
+        const target = viewerRedirect(url, shareToken ? true : row ? servedOnMarkdown(row) : false, dev);
         if (target) throw redirect(302, target);
 
         // Check if markdown is actually a "Book" instead of a "Card"

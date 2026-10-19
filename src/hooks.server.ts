@@ -11,7 +11,7 @@ const MARKDOWN_PATHS = /^\/(hypercard|hyperbook)\/[^/]+\/?$|^\/(samples|books|js
 export const handle: Handle = async ({ event, resolve }) => {
     // The content domain never signs anyone in: no session cookies are read or written there.
     const markdownHost = isMarkdownHost(event.url.hostname, dev);
-    if (markdownHost && !MARKDOWN_PATHS.test(event.url.pathname)) {
+    if (markdownHost && !MARKDOWN_PATHS.test(event.url.pathname) && event.url.pathname !== '/paperobo/cover') {
         if (event.url.pathname.startsWith('/api/')) return new Response(JSON.stringify({ error: 'Not found.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
         throw redirect(302, `${contentOrigins(event.url, dev).www}${event.url.pathname}${event.url.search}#`);
     }
@@ -62,6 +62,7 @@ export const handle: Handle = async ({ event, resolve }) => {
                        !pathname.startsWith('/api/paperobo/published-notification') &&
                        !pathname.startsWith('/api/paperobo/call-history') &&
                        !pathname.startsWith('/api/paperobo/mini-app') &&
+                       pathname !== '/api/paperobo/documents' &&
                        !pathname.startsWith('/api/biography') &&
                        !pathname.startsWith('/api/hypertv/scenario');
 

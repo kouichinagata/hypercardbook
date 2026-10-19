@@ -6,6 +6,7 @@
 
     let {
         books = [],
+        coverOnly = '',
         currentUserId = null,
         showActions = false,
         selectedBookId = $bindable(''),
@@ -37,7 +38,7 @@
     } = $props();
 
     let displayBooks = $derived([
-        ...books,
+        ...books.filter((book: any) => !coverOnly || book.id === coverOnly),
         ...(showMoreBtn ? [{ id: 'more-btn-virtual', isMoreBtn: true, title: 'more…' }] : [])
     ]);
 
@@ -110,6 +111,7 @@
     }
 
     function handleBookClick(book: any) {
+        if (coverOnly) return;
         const isCard = book.isCard;
         const bookId = book.id;
 
@@ -124,6 +126,7 @@
     }
 
     async function handleItemClick(book: any) {
+        if (coverOnly) return;
         if (isStackSelection) {
             onToggleSelection?.(book);
             return;
@@ -275,7 +278,7 @@
 </script>
 
 
-<div class="shelf-container" id="shelfContainer">
+<div class="shelf-container" id="shelfContainer" class:cover-only={Boolean(coverOnly)}>
     {#if showHyperRoboBtn || showStackBtn || showHyperCardTvBtn}
         <div class="top-shelf-actions">
             {#if showHyperCardTvBtn}
@@ -395,7 +398,7 @@
                                 class:selected-in-selection={(isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
                                 class:unselectable-in-selection={isHyperRoboSelection && (book.isStack || book.playMode === 'hyperrobo')}
                                 onclick={() => handleItemClick(book)}
-                                oncontextmenu={(e) => handleContextMenu(e, book)}
+                                oncontextmenu={(e) => { if (coverOnly) e.preventDefault(); else handleContextMenu(e, book); }}
                                 onkeydown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
                                         handleItemClick(book);
@@ -1939,4 +1942,13 @@
         width: 100%;
         height: 38px;
     }
+
+    /* Embedded chat covers use this exact shelf renderer, without shelf furniture or actions. */
+    .shelf-container.cover-only { margin: 0; width: 130px; max-width: none; gap: 0; perspective: none; }
+    .cover-only .shelf-books-area { display: flex; justify-content: center; align-items: flex-start; padding: 8px 10px; min-height: 0; background: transparent; box-shadow: none; border: 0; }
+    .cover-only .book-item-wrapper { width: 110px; max-width: none; }
+    .cover-only .book-item { width: 110px; height: 160px; max-width: none; aspect-ratio: auto; cursor: default; }
+    .cover-only .book-item.is-phone { width: 75px !important; height: 160px !important; margin: 0 auto; }
+    .cover-only .shelf-board, .cover-only .measure-container, .cover-only .book-tooltip { display: none; }
+    .cover-only .book-item:hover { transform: none !important; }
 </style>

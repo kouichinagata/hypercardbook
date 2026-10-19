@@ -9,6 +9,8 @@
     import { DEFAULT_ACTIVE_PLUGIN_IDS } from '$lib/plugins';
     import PublicSearchMenu from '$lib/components/PublicSearchMenu.svelte';
     import { MAX_MINI_APPS } from '$lib/mini-app';
+    import { dev } from '$app/environment';
+    import { CONTENT_KINDS, DOCUMENT_SELECTION_RESULT, readDocumentSelection, matchesDocumentSelection, selectionPublicType, type DocumentSelection, type SelectionKind } from '$lib/paperobo-document-selection';
     import Book from '$lib/components/Book.svelte';
     import Card from '$lib/components/Card.svelte';
     import { LANGUAGES } from '$lib/languages';
@@ -319,7 +321,12 @@
         }
 
         // PapeRoboの「＋追加」から: ?mini_app_select=1 （MiniAppを本棚から選ぶ）
-        if (urlParams.get('mini_app_select') === '1') {
+        const documentRequest = readDocumentSelection(new URL(window.location.href), dev);
+        if (documentRequest) {
+            documentSelection = documentRequest;
+            documentSelectionKind = documentRequest.category === 'content' ? null : documentRequest.category;
+            void startMiniAppSelection();
+        } else if (urlParams.get('mini_app_select') === '1') {
             void startMiniAppSelection();
         }
 
@@ -716,6 +723,15 @@ ${n}「ありがとうございました。PapeRobo Liveでした。また次回
     let stackPublishedAt = $state<string | null>(null);
 
     // MiniApp selection (opened from PapeRobo with ?mini_app_select=1): pick MiniApps for the PapeRobo list
+    let documentSelection = $state<DocumentSelection | null>(null);
+    let documentSelectionKind = $state<SelectionKind | null>(null);
+    let selectionTitle = $derived(documentSelection ? documentSelection.category === 'card' ? 'HyperCard' : documentSelection.category === 'book' ? 'HyperBook' : 'HyperContent' : 'MiniApp');
+    let selectionLimit = $derived(documentSelection?.limit ?? MAX_MINI_APPS);
+    function matchesShelfSelection(book: any) { return documentSelection ? matchesDocumentSelection(book, documentSelectionKind) : book.isMiniApp; }
+    function changeDocumentKind(kind: SelectionKind) {
+        documentSelectionKind = kind; selectedMiniApps = []; pbTypeFilter = selectionPublicType(kind);
+        void refreshPublicBooks();
+    }
     let isMiniAppSelectionMode = $state(false);
     let showMiniAppModal = $state(false);
     let selectedMiniApps = $state<any[]>([]); // Array of { id, title }
@@ -749,13 +765,13 @@ ${n}「ありがとうございました。PapeRobo Liveでした。また次回
     // Items already inside a stack live in that stack's hierarchy, not on the top shelf
     let topBooksList = $derived(
         isMiniAppSelectionMode
-            ? myBooksList.filter((b: any) => b.isMiniApp)
+            ? myBooksList.filter((b: any) => matchesShelfSelection(b))
         : isStackSelectionMode || isHyperRoboSelectionMode
             ? myBooksList
             : myBooksList.filter((b: any) => !stackedItemIds.has(b.id) && !stackedItemIds.has(b.slug))
     );
-    let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample && (!isMiniAppSelectionMode || b.isMiniApp)));
-    let quarksChoiceList = $derived(data.books.filter((b: any) => b.isQuarkChoice && (!isMiniAppSelectionMode || b.isMiniApp)));
+    let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample && (!isMiniAppSelectionMode || matchesShelfSelection(b))));
+    let quarksChoiceList = $derived(data.books.filter((b: any) => b.isQuarkChoice && (!isMiniAppSelectionMode || matchesShelfSelection(b))));
 
     /* ===== Public Books 絞り込み ===== */
     let pbTypeFilter = $state('all');
@@ -777,7 +793,7 @@ ${n}「ありがとうございました。PapeRobo Liveでした。また次回
         { id: 'miniapp', label: 'MiniApp' }
     ];
 
-    let filteredPublicBooksList = $derived(publicBooksList);
+    let filteredPublicBooksList = $derived(documentSelection && isMiniAppSelectionMode ? publicBooksList.filter((b: any) => matchesShelfSelection(b)) : publicBooksList);
     let publicChunks = $derived.by(() => {
         const chunks: any[][] = [];
         for (let i = 0; i < filteredPublicBooksList.length; i += PUBLIC_CHUNK_SIZE) {
@@ -1129,11 +1145,11 @@ HyperBook: ${hyperBook.title}
     }
 
     function handleToggleMiniApp(book: any) {
-        if (!book.isMiniApp) return;
+        if (!matchesShelfSelection(book)) return;
         if (selectedMiniApps.some((b) => b.id === book.id)) {
             selectedMiniApps = selectedMiniApps.filter((b) => b.id !== book.id);
-        } else if (selectedMiniApps.length < MAX_MINI_APPS) {
-            selectedMiniApps = [...selectedMiniApps, { id: book.id, title: book.title }];
+        } else if (selectedMiniApps.length < selectionLimit) {
+            selectedMiniApps = [...selectedMiniApps, { id: book.id, title: book.title, playMode: book.playMode, sourceApp: book.sourceApp, isMiniApp: book.isMiniApp }];
         }
     }
 
@@ -1153,7 +1169,7 @@ HyperBook: ${hyperBook.title}
         }
         selectedMiniApps = [];
         miniAppSavedNotice = false;
-        try {
+        if (!documentSelection) try {
             const res = await fetch('/api/mini-apps');
             if (res.ok) {
                 const result = await res.json();
@@ -1168,14 +1184,15 @@ HyperBook: ${hyperBook.title}
         }
         isMiniAppSelectionMode = true;
         showMiniAppModal = true;
-        pbTypeFilter = 'miniapp';
-        void refreshPublicBooks();
+        pbTypeFilter = documentSelection ? selectionPublicType(documentSelectionKind) : 'miniapp';
+        if (!documentSelection || documentSelectionKind) void refreshPublicBooks();
     }
 
     function cancelMiniAppSelection() {
         isMiniAppSelectionMode = false;
         showMiniAppModal = false;
         selectedMiniApps = [];
+        documentSelection = null; documentSelectionKind = null;
         pbTypeFilter = 'all';
         showPublicSection = false;
         publicBooksList = [];
@@ -1186,6 +1203,17 @@ HyperBook: ${hyperBook.title}
         if (isSavingMiniApp) return;
         isSavingMiniApp = true;
         try {
+            if (documentSelection) {
+                if (!documentSelectionKind || !window.opener || window.opener.closed) {
+                    alert('PapeRoboの元のチャットから選択画面を開き直してください。');
+                    return;
+                }
+                window.opener.postMessage({ type: DOCUMENT_SELECTION_RESULT, requestId: documentSelection.requestId, kind: documentSelectionKind, refs: selectedMiniApps.map((b) => b.id) }, documentSelection.origin);
+                miniAppSavedNotice = true;
+                cancelMiniAppSelection();
+                window.close();
+                return;
+            }
             const res = await fetch('/api/mini-apps', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -2717,7 +2745,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             {/if}
 
             <PublicSearchMenu
-                typeFilters={PB_TYPE_FILTERS}
+                typeFilters={documentSelection ? PB_TYPE_FILTERS.filter(f => f.id === selectionPublicType(documentSelectionKind) || (documentSelectionKind === 'book' && f.id === 'graphic')) : PB_TYPE_FILTERS}
                 typeValue={pbTypeFilter}
                 onTypeChange={handlePublicTypeFilter}
                 ddcClasses={DDC_CLASSES}
@@ -2837,16 +2865,27 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     {#if showMiniAppModal}
         <div class="stack-popup-panel">
             <div class="stack-popup-header">
-                <h3>MiniApp</h3>
+                <h3>{selectionTitle}</h3>
                 <div class="stack-header-actions" style="display: flex; gap: 8px; align-items: center;">
                     <button class="close-popup-btn" onclick={cancelMiniAppSelection} disabled={isSavingMiniApp}>✕</button>
                 </div>
             </div>
             <div class="stack-popup-body">
-                <p class="select-hint">Select MiniApps to use in PapeRobo chats.</p>
-                <p class="select-hint">⚠ MiniApps made by others run scripts. Choose only ones you trust.</p>
+                {#if documentSelection}
+                    <p class="select-hint">本棚から資料を選択し、SaveでPapeRoboのチャットに添付します。</p>
+                    {#if documentSelection.category === 'content'}
+                        <label class="listbox-label" for="document-content-kind">HyperContent</label>
+                        <select id="document-content-kind" value={documentSelectionKind || ''} onchange={(event) => changeDocumentKind(event.currentTarget.value as SelectionKind)} disabled={isSavingMiniApp}>
+                            <option value="" disabled>種類を選択してください</option>
+                            {#each CONTENT_KINDS as item}<option value={item.kind}>{item.title}</option>{/each}
+                        </select>
+                    {/if}
+                {:else}
+                    <p class="select-hint">Select MiniApps to use in PapeRobo chats.</p>
+                    <p class="select-hint">⚠ MiniApps made by others run scripts. Choose only ones you trust.</p>
+                {/if}
                 <div class="stack-listbox-container">
-                    <label class="listbox-label">MiniApp ({selectedMiniApps.length}/{MAX_MINI_APPS})</label>
+                    <label class="listbox-label">{selectionTitle} ({selectedMiniApps.length}/{selectionLimit})</label>
                     <div class="stack-listbox">
                         {#if selectedMiniApps.length === 0}
                             <div class="empty-listbox">No items selected</div>
@@ -2855,11 +2894,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                 {#each selectedMiniApps as item, idx (item.id)}
                                     <div class="listbox-item">
                                         <span class="item-title" title={item.title}>{item.title}</span>
-                                        <span class="item-badge">MiniApp</span>
+                                        <span class="item-badge">{documentSelection ? documentSelectionKind : 'MiniApp'}</span>
                                         <div class="item-controls">
                                             <button type="button" class="control-arrow-btn" onclick={() => moveMiniApp(idx, -1)} disabled={idx === 0} title="Move Up">▲</button>
                                             <button type="button" class="control-arrow-btn" onclick={() => moveMiniApp(idx, 1)} disabled={idx === selectedMiniApps.length - 1} title="Move Down">▼</button>
-                                            <button type="button" class="control-remove-btn" onclick={() => handleToggleMiniApp({ id: item.id, isMiniApp: true })} title="Delete">✕</button>
+                                            <button type="button" class="control-remove-btn" onclick={() => handleToggleMiniApp(documentSelection ? item : { ...item, isMiniApp: true })} title="Delete">✕</button>
                                         </div>
                                     </div>
                                 {/each}
@@ -2870,7 +2909,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             </div>
             <div class="stack-popup-footer">
                 <button class="btn-popup btn-popup-secondary" onclick={cancelMiniAppSelection} disabled={isSavingMiniApp}>Cancel</button>
-                <button class="btn-popup btn-popup-primary" onclick={() => saveMiniApps()} disabled={isSavingMiniApp}>
+                <button class="btn-popup btn-popup-primary" onclick={() => saveMiniApps()} disabled={isSavingMiniApp || Boolean(documentSelection && (!documentSelectionKind || !selectedMiniApps.length))}>
                     {isSavingMiniApp ? 'Saving...' : 'Save'}
                 </button>
             </div>
