@@ -83,7 +83,10 @@ async function claudeRequest(apiKey: string, body: Record<string, unknown>, sign
 			maxTokens = Number(cap[1]);
 			continue;
 		}
-		throw new AiTextError(claudeErrorMessage(response.status), response.status);
+		console.error('Claude API error', response.status, detail.slice(0, 2000));
+		let reason = '';
+		try { reason = String(JSON.parse(detail)?.error?.message || ''); } catch {}
+		throw new AiTextError(claudeErrorMessage(response.status) + (response.status === 400 && reason ? ` ${reason.slice(0, 300)}` : ''), response.status);
 	}
 	throw new AiTextError('Claude APIでエラーが発生しました。', 400);
 }
@@ -270,7 +273,7 @@ export async function streamClaudeTurn(options: {
 	}
 
 	const content = blocks
-		.filter((block) => block && (block.type === 'tool_use' || (block.type === 'text' && block.text)))
+		.filter((block) => block && (block.type === 'tool_use' || (block.type === 'text' && block.text?.trim())))
 		.map((block) => block.type === 'tool_use'
 			? { type: 'tool_use', id: block.id, name: block.name, input: block.input ?? {} }
 			: { type: 'text', text: block.text });

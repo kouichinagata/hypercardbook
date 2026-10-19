@@ -860,13 +860,15 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                             controller.enqueue(encoder.encode(text));
                         };
 
+                        const WEB_SEARCH_INSTRUCTION = `You are a research assistant. Use Google Search to find accurate, up-to-date facts that answer the user's request. Reply with a concise factual summary in the user's language, as short bullet points. Do not write the book or card itself, do not call any tools, and do not mention skills.`;
+
                         const runGeminiTurn = async () => {
                             if (!gemini) throw new Error('GEMINI_API_KEY is not set.');
                             const responseStream = await gemini.models.generateContentStream({
                                 model: GEMINI_TEXT_MODEL,
                                 contents: localContents,
                                 config: {
-                                    systemInstruction: activeSystemInstruction,
+                                    systemInstruction: isWebSearchPhase ? WEB_SEARCH_INSTRUCTION : activeSystemInstruction,
                                     temperature: 0.7,
                                     maxOutputTokens: 65536,
                                     tools: tools
@@ -929,7 +931,22 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                 await runGeminiTurn();
                             }
                         } else {
-                            await runGeminiTurn();
+                            try {
+                                await runGeminiTurn();
+                            } catch (err) {
+                                if (!isWebSearchPhase) throw err;
+                                console.error('Web search turn failed, continuing without it:', (err as Error).message);
+                                controller.enqueue(encoder.encode(`⚠️ Web search failed, continuing without it. (${String((err as Error).message).slice(0, 200)})\n\n`));
+                                continue;
+                            }
+                            // 検索ターンは googleSearch だけを渡しているが、Gemini がほかのツールを呼ぶことがある。
+                            // Claude の履歴には対応する tool_use がないので、その呼び出しは捨てて次のターンの Claude に任せる。
+                            if (isWebSearchPhase && activeProvider === 'anthropic' && functionCalls.length > 0) {
+                                functionCalls = [];
+                                if (firstCandidate?.content?.parts) {
+                                    firstCandidate.content.parts = firstCandidate.content.parts.filter((p: any) => !p.functionCall);
+                                }
+                            }
                         }
 
                         if (functionCalls.length > 0) {
