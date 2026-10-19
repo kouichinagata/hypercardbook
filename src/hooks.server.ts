@@ -5,8 +5,8 @@ import { env as publicEnv } from '$env/dynamic/public';
 import { dev } from '$app/environment';
 import { contentOrigins, isMarkdownHost } from '$lib/content-origin';
 
-// Paths the markdown (content) domain serves: the viewers and the static files they read.
-const MARKDOWN_PATHS = /^\/(hypercard|hyperbook)\/[^/]+\/?$|^\/(samples|books|js)\//;
+// Paths the markdown (content) domain serves: the viewers, the signing endpoint of a card, and the static files they read.
+const MARKDOWN_PATHS = /^\/(hypercard|hyperbook)\/[^/]+\/?$|^\/hypercard\/[^/]+\/sign\/?$|^\/(samples|books|js)\//;
 
 export const handle: Handle = async ({ event, resolve }) => {
     // The content domain never signs anyone in: no session cookies are read or written there.

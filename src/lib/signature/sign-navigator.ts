@@ -2,16 +2,17 @@
 // Shared by the card page (?sign=1, opened from PapeRobo) and anything else that wants prev / next / done.
 const SIGNABLE = '.sign-pending[data-signable="true"]';
 
-export type SignProgress = { remaining: number; done: boolean };
+export type SignProgress = { remaining: number; done: boolean; others: number };
 
 export function signableSlots(root: ParentNode = document): HTMLElement[] {
     return Array.from(root.querySelectorAll<HTMLElement>(SIGNABLE));
 }
 
-/** `done` is true only when the card has signature slots and none is left to sign */
+/** `done`: the card has signature slots and none is left to sign. `others`: unsigned slots that belong to someone else. */
 export function signProgress(root: ParentNode = document): SignProgress {
     const remaining = signableSlots(root).length;
-    return { remaining, done: remaining === 0 && root.querySelector('.sign-signed') !== null };
+    const others = root.querySelectorAll('.sign-pending[data-signable="false"]').length;
+    return { remaining, others, done: remaining === 0 && others === 0 && root.querySelector('.sign-signed') !== null };
 }
 
 /** Index of the slot to go to from `current` (-1 = none yet), wrapping around; -1 when there is no slot */

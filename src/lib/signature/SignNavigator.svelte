@@ -3,7 +3,7 @@
     import { goToSlot, signProgress, type SignProgress } from './sign-navigator';
 
     // A bar at the bottom of the card page: how many slots are left, previous / next, and "all done"
-    let progress = $state<SignProgress>({ remaining: 0, done: false });
+    let progress = $state<SignProgress>({ remaining: 0, done: false, others: 0 });
     let current: HTMLElement | null = null;
     let started = false;
 
@@ -38,6 +38,8 @@
         <span>{progress.remaining} {progress.remaining === 1 ? 'signature' : 'signatures'} left</span>
         <button type="button" onclick={() => step(-1)}>Previous</button>
         <button type="button" class="primary" onclick={() => step(1)}>Next</button>
+    {:else if progress.others > 0}
+        <span>Nothing left for you to sign.</span>
     {:else}
         <span>Nothing to sign here.</span>
     {/if}
