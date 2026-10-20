@@ -39,11 +39,46 @@ test('the prompt goes only to PapeRobo and the Markdown answer resolves', async 
     assert.equal(app.listeners.size, 0);
 });
 
-test('one call per launch', async () => {
+test('ask can be called repeatedly', async () => {
     const app = miniApp();
-    void app.w.paperobo.ask('a');
-    await assert.rejects(app.w.paperobo.ask('b'), { code: 'LIMIT_EXCEEDED' });
-    assert.equal(app.posted.length, 1);
+    const first = app.w.paperobo.ask('a');
+    const second = app.w.paperobo.ask('b');
+    assert.equal(app.posted.length, 2);
+    app.reply({ type: 'paperobo:ask:result', id: app.posted[1].message.id, markdown: 'B' });
+    app.reply({ type: 'paperobo:ask:result', id: app.posted[0].message.id, markdown: 'A' });
+    assert.equal(await first, 'A');
+    assert.equal(await second, 'B');
+});
+
+test('a plan restriction from PapeRobo rejects ask with its code', async () => {
+    const app = miniApp();
+    const answer = app.w.paperobo.ask('a');
+    app.reply({ type: 'paperobo:ask:result', id: app.posted[0].message.id, error: { code: 'PLAN_REQUIRED', message: 'Pro plan required' } });
+    await assert.rejects(answer, { code: 'PLAN_REQUIRED', message: 'Pro plan required' });
+});
+
+test('say posts text only to PapeRobo and resolves on ok', async () => {
+    const app = miniApp();
+    const done = app.w.paperobo.say('Hello');
+    assert.deepEqual(app.posted.map((p) => p.origin), ['https://paperobo.hypercardbook.org']);
+    const { id, type, text } = app.posted[0].message;
+    assert.equal(type, 'paperobo:say');
+    assert.equal(text, 'Hello');
+    app.reply({ type: 'paperobo:say:result', id, ok: true }, 'https://evil.example');
+    app.reply({ type: 'paperobo:say:result', id: 'other', ok: true });
+    app.reply({ type: 'paperobo:say:result', id, ok: true });
+    assert.equal(await done, undefined);
+    assert.equal(app.listeners.size, 0);
+});
+
+test('say rejects invalid text, outside PapeRobo and plan errors', async () => {
+    await assert.rejects(miniApp({ framed: false }).w.paperobo.say('a'), { code: 'NOT_IN_PAPEROBO' });
+    const app = miniApp();
+    for (const bad of ['', '  ', 'x'.repeat(8001), 42]) await assert.rejects(app.w.paperobo.say(bad), { code: 'INVALID_TEXT' });
+    assert.equal(app.posted.length, 0);
+    const done = app.w.paperobo.say('ok');
+    app.reply({ type: 'paperobo:say:result', id: app.posted[0].message.id, error: { code: 'PLAN_REQUIRED', message: 'Pro plan required' } });
+    await assert.rejects(done, { code: 'PLAN_REQUIRED' });
 });
 
 test('outside PapeRobo, invalid prompts and PapeRobo errors reject with a code', async () => {
@@ -51,7 +86,6 @@ test('outside PapeRobo, invalid prompts and PapeRobo errors reject with a code',
     await assert.rejects(miniApp({ ancestors: ['https://www.hypercardbook.org'] }).w.paperobo.ask('a'), { code: 'NOT_IN_PAPEROBO' });
     const app = miniApp();
     for (const bad of ['', '   ', 'x'.repeat(8001), 42]) await assert.rejects(app.w.paperobo.ask(bad), { code: 'INVALID_PROMPT' });
-    // Invalid prompts do not use up the launch
     const answer = app.w.paperobo.ask('ok');
     app.reply({ type: 'paperobo:ask:result', id: app.posted[0].message.id, error: { code: 'RATE_LIMITED', message: 'slow down' } });
     await assert.rejects(answer, { code: 'RATE_LIMITED', message: 'slow down' });
