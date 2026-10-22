@@ -5,6 +5,7 @@ import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { guestMaySign, signSlotInMarkdown, signSlotKinds, type SignKind } from '../signature/markers.ts';
 import { isValidSignatureSvg } from '../signature/signature-svg.ts';
+import { recordCompletion } from './markdown-verify.ts';
 
 // Signing is done here, in one place: the owner (logged in), a guest with a sign link, and PapeRobo all go through applySignature.
 const BUCKET = 'HyperCardBookBucket';
@@ -107,6 +108,7 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
             .select('version')
             .maybeSingle();
         if (writeError || !saved) throw new Error(writeError?.message || 'conflict');
+        await recordCompletion(admin, book.id, after);
         return { ok: true, markdown: after, version: saved.version };
     } catch (err) {
         console.error('[signature] failed, rolling back:', err);
