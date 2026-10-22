@@ -56,8 +56,9 @@ export function verifyHash(r: VerifyRecord): string {
     );
 }
 
-/** Same Complete (same book, same final Markdown) gives the same key, so it can be stored only once. */
-export const completeKey = (bookId: string, markdown: string) => sha256(`markdown-verify-v1:${bookId}:${sha256(markdown)}`);
+/** Same Complete (same book, same final Markdown, same signatures in slot order) gives the same key, so it is stored only once. A fresh signature has a new id, hence a new key. */
+export const completeKey = (bookId: string, markdown: string, signatureIds: string[]) =>
+    sha256(`markdown-verify-v2:${bookId}:${sha256(markdown)}:${signatureIds.join(',')}`);
 
 /** The document is complete when it has signatures and no unsigned slot is left. */
 export const isComplete = (markdown: string) => signSlotKinds(markdown).length === 0 && replaceSignedImages(markdown, () => '\0').includes('\0');
@@ -92,7 +93,7 @@ export async function recordCompletion(admin: SupabaseClient, bookId: string, ma
         };
         const { error: insertError } = await admin
             .from('markdown_verify')
-            .insert({ ...record, sha256: verifyHash(record), complete_key: completeKey(bookId, markdown) });
+            .insert({ ...record, sha256: verifyHash(record), complete_key: completeKey(bookId, markdown, signatures.map((s) => s.signature_id)) });
         // 23505: this Complete is already recorded
         if (insertError && insertError.code !== '23505') throw insertError;
     } catch (err) {

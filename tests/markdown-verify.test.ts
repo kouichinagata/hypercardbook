@@ -29,7 +29,10 @@ test('the hash is stable and changes with any part of the record', () => {
     assert.notEqual(verifyHash(record), verifyHash({ ...record, signatures: [{ ...record.signatures[0], svg: '<svg />' }] }));
 });
 
-test('the same Complete gives the same key', () => {
-    assert.equal(completeKey('b', 'm'), completeKey('b', 'm'));
-    assert.notEqual(completeKey('b', 'm'), completeKey('b', 'n'));
+test('the same Complete gives the same key, and a new signature gives a new one', () => {
+    assert.equal(completeKey('b', 'm', ['s1', 's2']), completeKey('b', 'm', ['s1', 's2']));
+    assert.notEqual(completeKey('b', 'm', ['s1']), completeKey('b', 'n', ['s1']));
+    // Same book and Markdown, but re-signed: different signature ids
+    assert.notEqual(completeKey('b', 'm', ['s1', 's2']), completeKey('b', 'm', ['s1', 's3']));
+    assert.notEqual(completeKey('b', 'm', ['s1', 's2']), completeKey('b', 'm', ['s2', 's1']));
 });
