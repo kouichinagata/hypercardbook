@@ -58,7 +58,7 @@ export function verifyHash(r: VerifyRecord): string {
 
 /** Same Complete (same book, same final Markdown, same signatures in slot order) gives the same key, so it is stored only once. A fresh signature has a new id, hence a new key. */
 export const completeKey = (bookId: string, markdown: string, signatureIds: string[]) =>
-    sha256(`markdown-verify-v2:${bookId}:${sha256(markdown)}:${signatureIds.join(',')}`);
+    sha256(`markdown-verify:${bookId}:${sha256(markdown)}:${signatureIds.join(',')}`);
 
 /** The document is complete when it has signatures and no unsigned slot is left. */
 export const isComplete = (markdown: string) => signSlotKinds(markdown).length === 0 && replaceSignedImages(markdown, () => '\0').includes('\0');
