@@ -3,7 +3,7 @@
     import { onDestroy, onMount } from 'svelte';
     import { browser } from '$app/environment';
     import SignaturePad from '$lib/signature/SignaturePad.svelte';
-    import { replaceSignedImages, signSlotKinds, replaceSignMarkers, type SignKind } from '$lib/signature/markers';
+    import { replaceSignedImages, replaceStampImages, signSlotKinds, replaceSignMarkers, type SignKind } from '$lib/signature/markers';
 
     let {
         markdown = '',
@@ -293,6 +293,8 @@
         if (!markdown) return '';
         let cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
         cleanMd = cleanMd.replace(new RegExp(styleBlockPattern), '');
+        // Seals pressed before the signature sit left-aligned in a row of inline boxes, so many of them wrap onto new lines
+        cleanMd = replaceStampImages(cleanMd, (url) => `<span class="sign-slot sign-stamp"><img src="${url}" alt="seal"></span>`);
         cleanMd = replaceSignedImages(cleanMd, (url) => `<span class="sign-slot sign-signed"><img src="${url}" alt="signature"></span>`);
         cleanMd = replaceSignMarkers(cleanMd, renderSignSlot);
 
@@ -477,6 +479,18 @@
         background: #dbeafe;
     }
     :global(.card-webview-body .sign-signed img) {
+        display: block;
+        height: 3.5em;
+        width: auto;
+        margin: 0;
+    }
+    :global(.card-webview-body .sign-stamp) {
+        min-width: 0;
+        padding: 0;
+        margin: 0 0.25em 0.25em 0;
+        background: transparent;
+    }
+    :global(.card-webview-body .sign-stamp img) {
         display: block;
         height: 3.5em;
         width: auto;

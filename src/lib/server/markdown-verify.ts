@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomBytes } from 'node:crypto';
-import { replaceSignedImages, signSlotKinds } from '../signature/markers.ts';
+import { replaceSignedImages, signatureImageUrls, signSlotKinds } from '../signature/markers.ts';
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
@@ -25,6 +25,8 @@ export type VerifySignature = {
     signer_name: string | null;
     svg: string;
     signed_at: string;
+    /** Set only for a seal (stamp); a handwritten signature has no method, so records made before seals existed hash the same */
+    method?: 'stamp';
 };
 
 export type VerifyRecord = {
@@ -49,7 +51,8 @@ export function verifyHash(r: VerifyRecord): string {
                 signer_id: s.signer_id,
                 signer_name: s.signer_name,
                 svg: s.svg,
-                signed_at: s.signed_at
+                signed_at: s.signed_at,
+                ...(s.method ? { method: s.method } : {})
             })),
             completed_at: r.completed_at
         })
@@ -67,11 +70,11 @@ export const isComplete = (markdown: string) => signSlotKinds(markdown).length =
 export async function recordCompletion(admin: SupabaseClient, bookId: string, markdown: string): Promise<void> {
     try {
         if (!isComplete(markdown)) return;
-        const urls: string[] = [];
-        replaceSignedImages(markdown, (url) => (urls.push(url), ''));
+        // Seals pressed before the signature (stamp + sign mode) are part of the sealed record too
+        const urls = signatureImageUrls(markdown);
         const { data, error } = await admin
             .from('markdown_signatures')
-            .select('id, kind, signer_id, signer_name, svg, webp_url, signed_at')
+            .select('id, kind, signer_id, signer_name, svg, webp_url, signed_at, method')
             .eq('book_id', bookId)
             .in('webp_url', urls);
         if (error) throw error;
@@ -79,7 +82,7 @@ export async function recordCompletion(admin: SupabaseClient, bookId: string, ma
         const signatures: VerifySignature[] = [];
         urls.forEach((url, slot) => {
             const row = rows.get(url);
-            if (row) signatures.push({ signature_id: row.id, slot, kind: row.kind, signer_id: row.signer_id, signer_name: row.signer_name, svg: row.svg, signed_at: new Date(row.signed_at).toISOString() });
+            if (row) signatures.push({ signature_id: row.id, slot, kind: row.kind, signer_id: row.signer_id, signer_name: row.signer_name, svg: row.svg, signed_at: new Date(row.signed_at).toISOString(), ...(row.method === 'stamp' ? { method: 'stamp' as const } : {}) });
         });
         if (signatures.length !== urls.length) throw new Error('signature record missing for a signed slot');
 

@@ -36,3 +36,9 @@ test('the same Complete gives the same key, and a new signature gives a new one'
     assert.notEqual(completeKey('b', 'm', ['s1', 's2']), completeKey('b', 'm', ['s1', 's3']));
     assert.notEqual(completeKey('b', 'm', ['s1', 's2']), completeKey('b', 'm', ['s2', 's1']));
 });
+
+test('a hash ignores method on handwritten signatures but covers it on seals', () => {
+    const base: VerifyRecord = { verify_id: 'v', book_id: 'b', markdown: 'm', completed_at: '2026-01-01T00:00:00.000Z', signatures: [{ signature_id: 's', slot: 0, kind: 'my', signer_id: null, signer_name: null, svg: '<svg/>', signed_at: '2026-01-01T00:00:00.000Z' }] };
+    const sealed: VerifyRecord = { ...base, signatures: [{ ...base.signatures[0], method: 'stamp' }] };
+    assert.notEqual(verifyHash(base), verifyHash(sealed));
+});

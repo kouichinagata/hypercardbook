@@ -2,6 +2,7 @@ import { hasSignMarkers } from '$lib/signature/markers';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { adminClient, applyStamp } from '$lib/server/signatures';
 import { documentSecret, documentClient, accessibleDocument, documentKind, documentLinks } from '$lib/server/paperoboDocuments';
 export const POST: RequestHandler = async ({ request, url }) => {
     const expected = Buffer.from(documentSecret());
@@ -30,7 +31,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
     }
     if (typeof body.id !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(body.id)) throw error(400, 'Invalid id');
     // selectedBy is supplied only by PapeRobo after it verifies the saved attachment and chat membership.
-    const selectedBy = body.action === 'open' ? body.selectedBy : body.userId;
+    const selectedBy = body.action === 'open' || body.action === 'stamp' ? body.selectedBy : body.userId;
     if (typeof selectedBy !== 'string' || !/^[0-9a-f-]{36}$/i.test(selectedBy)) throw error(400, 'Invalid sharing user');
     const row = await accessibleDocument(body.id, selectedBy);
     if (body.action === 'read') {
@@ -38,6 +39,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
         return json({ ok: true, document: { id: row.id, title: row.title, kind: documentKind(row.markdown_content), source: row.markdown_content, isPublic: row.is_public === true } });
     }
     if (body.action === 'open') return json({ ok: true, ...documentLinks(row,selectedBy,url,true), isPublic: row.is_public === true, hasSignMarkers: documentKind(row.markdown_content) === 'card' && hasSignMarkers(row.markdown_content) });
+    if (body.action === 'stamp') {
+        // PapeRobo has already checked that body.userId may see this document (a chat participant); the seal is pressed as that user
+        if (documentKind(row.markdown_content) !== 'card') throw error(400, 'Only cards can be stamped.');
+        const outcome = await applyStamp(adminClient(), { bookId: row.id, svg: body.svg, mode: body.mode, userId: body.userId });
+        if (!outcome.ok) throw error(outcome.status, outcome.error);
+        const { ok, markdown: _markdown, ...result } = outcome;
+        return json({ ok, ...result });
+    }
     if (body.action === 'download' || body.action === 'add') {
         if (row.is_public !== true) throw error(403, '公開資料のみ保存できます。');
         if (body.action === 'download') return json({ ok: true, source: row.markdown_content, title: row.title });

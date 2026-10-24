@@ -28,3 +28,6 @@ create index if not exists markdown_signatures_book_idx on markdown_signatures (
 
 alter table markdown_sign_links enable row level security;
 alter table markdown_signatures enable row level security;
+
+-- Seals (stamps) pressed through PapeRobo. A handwritten signature keeps the default 'sign'.
+alter table markdown_signatures add column if not exists method text not null default 'sign' check (method in ('sign', 'stamp'));

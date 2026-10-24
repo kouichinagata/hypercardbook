@@ -3,9 +3,10 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
-import { guestMaySign, signSlotInMarkdown, signSlotKinds, type SignKind } from '../signature/markers.ts';
+import { guestMaySign, nextStampSlot, signSlotInMarkdown, signSlotKinds, stampSlotInMarkdown, type SignKind } from '../signature/markers.ts';
 import { isValidSignatureSvg } from '../signature/signature-svg.ts';
-import { recordCompletion } from './markdown-verify.ts';
+import { isValidStampSvg } from '../signature/stamp-svg.ts';
+import { isComplete, recordCompletion } from './markdown-verify.ts';
 
 // Signing is done here, in one place: the owner (logged in), a guest with a sign link, and PapeRobo all go through applySignature.
 const BUCKET = 'HyperCardBookBucket';
@@ -115,5 +116,75 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
         await admin.storage.from(BUCKET).remove([path]);
         if (signatureId) await admin.from('markdown_signatures').delete().eq('id', signatureId);
         return { ok: false, status: 409, error: 'The document has changed. Reload and try again.' };
+    }
+}
+
+export type StampMode = 'stamp' | 'both';
+export type StampOutcome =
+    | { ok: true; markdown: string; version: number; slot: number; mode: StampMode; complete: boolean; remaining: number }
+    | { ok: false; status: number; error: string };
+
+/**
+ * Press a seal on the next open slot (top to bottom, one slot at a time).
+ * - 'stamp': the seal fills the slot, like a signature; the document is Complete when no slot is left.
+ * - 'both': the seal is added before the slot's marker and the slot stays open until it is signed,
+ *   so any number of seals can be pressed and no markdown_verify record exists before the signature.
+ * `userId` is the PapeRobo / HyperCardBook user pressing it; the owner may fill `my` slots, anyone else only `your` / `any`.
+ */
+export async function applyStamp(admin: SupabaseClient, input: { bookId: string; svg: unknown; mode: StampMode; userId: string }): Promise<StampOutcome> {
+    const { bookId, svg, mode, userId } = input;
+    if (!isValidStampSvg(svg)) return { ok: false, status: 400, error: 'Invalid seal.' };
+    if (mode !== 'stamp' && mode !== 'both') return { ok: false, status: 400, error: 'Invalid request.' };
+
+    const { data: book } = await admin.from('books').select('id, user_id, markdown_content, version').eq('id', bookId).maybeSingle();
+    if (!book) return { ok: false, status: 404, error: 'Document not found.' };
+    const isOwner = userId === book.user_id;
+    const before: string = book.markdown_content || '';
+    const target = nextStampSlot(before, (kind) => isOwner || guestMaySign(kind));
+    if (!target) return { ok: false, status: 409, error: 'There is no slot left for you to stamp.' };
+
+    let bytes: Buffer;
+    try {
+        bytes = await sharp(Buffer.from(svg), { density: 144 }).webp({ quality: 90 }).toBuffer();
+    } catch (err) {
+        console.error('[stamp] render failed:', err);
+        return { ok: false, status: 500, error: 'Could not render the seal image.' };
+    }
+    const path = `${book.user_id}/signatures/${randomUUID()}.webp`;
+    const { error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, { contentType: 'image/webp', cacheControl: '31536000', upsert: false });
+    if (uploadError) return { ok: false, status: 500, error: 'Could not store the seal image.' };
+    const url = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+
+    const after = (mode === 'stamp' ? signSlotInMarkdown(before, target.slot, target.kind, url) : stampSlotInMarkdown(before, target.slot, url))!;
+    let signatureId: string | null = null;
+    try {
+        signatureId = await storeSignature(admin, {
+            book_id: book.id,
+            kind: target.kind,
+            signer_type: isOwner ? 'owner' : 'guest',
+            signer_id: userId,
+            signer_name: null,
+            method: 'stamp',
+            svg,
+            webp_url: url,
+            svg_sha256: sha256(svg),
+            webp_sha256: sha256(bytes),
+            markdown_sha256: sha256(after)
+        });
+        const { data: saved, error: writeError } = await admin
+            .from('books')
+            .update({ markdown_content: after, version: book.version + 1 })
+            .eq('id', book.id)
+            .eq('version', book.version)
+            .select('version')
+            .maybeSingle();
+        if (writeError || !saved) throw new Error(writeError?.message || 'conflict');
+        await recordCompletion(admin, book.id, after);
+        return { ok: true, markdown: after, version: saved.version, slot: target.slot, mode, complete: isComplete(after), remaining: signSlotKinds(after).length };
+    } catch (err) {
+        console.error('[stamp] failed, rolling back:', err);
+        await admin.storage.from(BUCKET).remove([path]);
+        if (signatureId) await admin.from('markdown_signatures').delete().eq('id', signatureId);
+        return { ok: false, status: 409, error: 'The document has changed. Try again.' };
     }
 }

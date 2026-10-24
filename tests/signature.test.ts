@@ -43,3 +43,28 @@ test('stepIndex moves through the slots and wraps around', async () => {
     assert.equal(stepIndex(3, 0, -1), 2);
     assert.equal(stepIndex(1, 0, 1), 0);
 });
+
+test('seals are added before their slot, left to right, and never close the slot', async () => {
+    const { stampSlotInMarkdown, replaceStampImages, signatureImageUrls, nextStampSlot, isComplete } = await import('../src/lib/signature/markers.ts').then(async (m) => ({ ...m, ...(await import('../src/lib/server/markdown-verify.ts')) }));
+    const md = 'A {{your MarkdownAIVerify}}\nB {{myMarkdownAIVerify}}';
+    const one = stampSlotInMarkdown(md, 0, 'https://x.test/1.webp')!;
+    const two = stampSlotInMarkdown(one, 0, 'https://x.test/2.webp')!;
+    assert.equal(two, 'A ![MarkdownAIVerify:stamp](https://x.test/1.webp) ![MarkdownAIVerify:stamp](https://x.test/2.webp) {{your MarkdownAIVerify}}\nB {{myMarkdownAIVerify}}');
+    assert.deepEqual(signSlotKinds(two), ['your', 'my']);
+    assert.equal(stampSlotInMarkdown(md, 5, 'https://x.test/1.webp'), null);
+    assert.deepEqual(replaceStampImages(two, (u) => `<${u}>`).split('\n')[0], 'A <https://x.test/1.webp> <https://x.test/2.webp> {{your MarkdownAIVerify}}');
+    assert.deepEqual(signatureImageUrls(two), ['https://x.test/1.webp', 'https://x.test/2.webp']);
+    assert.ok(!isComplete(two));
+    // a guest skips `my` and takes the next slot they may fill
+    assert.deepEqual(nextStampSlot('{{myMarkdownAIVerify}} {{MarkdownAIVerify}}', (k) => k !== 'my'), { slot: 1, kind: 'any' });
+    assert.equal(nextStampSlot('{{myMarkdownAIVerify}}', (k) => k !== 'my'), null);
+});
+
+test('only the seal SVG dialect is accepted', async () => {
+    const { isValidStampSvg } = await import('../src/lib/signature/stamp-svg.ts');
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320"><circle cx="160" cy="160" r="100" fill="none" stroke="#c00" stroke-width="8"/><text x="160" y="170" text-anchor="middle" fill="#c00">OK</text></svg>';
+    assert.ok(isValidStampSvg(svg));
+    assert.ok(!isValidStampSvg(svg.replace('</svg>', '<script>x</script></svg>')));
+    assert.ok(!isValidStampSvg(svg.replace('<circle ', '<circle onload="x" ')));
+    assert.ok(!isValidStampSvg(svg.replace('0 0 320 320', '0 0 100 100')));
+});
