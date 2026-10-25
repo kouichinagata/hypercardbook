@@ -117,14 +117,12 @@ function formatPublicBook(book: any) {
 function matchesPublicBookType(book: ReturnType<typeof formatPublicBook>, type: string) {
     if (type === 'book') {
         return !book.isCard && book.playMode !== 'paperobo' && book.playMode !== 'hyperrobo' &&
-            book.playMode !== 'stack' && book.sourceApp !== 'hypertv' &&
-            book.sourceApp !== 'scriptbook';
+            book.playMode !== 'stack' && book.sourceApp !== 'hypertv';
     }
     if (type === 'graphic') return book.isGraphicBook;
     if (type === 'paperobo') return book.playMode === 'paperobo';
     if (type === 'hyperrobo') return book.playMode === 'hyperrobo';
     if (type === 'hypertv') return book.sourceApp === 'hypertv';
-    if (type === 'scriptbook') return book.sourceApp === 'scriptbook';
     if (type === 'card') return book.playMode === 'card';
     if (type === 'miniapp') return book.isMiniApp;
     return true;

@@ -159,8 +159,6 @@
             } else {
                 window.open(book.launchUrl, '_blank');
             }
-        } else if (book.sourceApp === 'scriptbook') {
-            launchScriptBook(book);
         } else if (book.sourceApp === 'hypertv' || book.source_app === 'hypertv') {
             const session = page.data.session;
             const isLocal = typeof window !== 'undefined' &&
@@ -181,40 +179,6 @@
         } else {
             handleBookClick(book);
         }
-    }
-
-    // ScriptBook: 登録キャラのLiveモードでPapeRoboを起動し、台本Markdownをpostmessageで渡す
-    // （台本は長くなるためURLには載せない）
-    function launchScriptBook(book: any) {
-        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const origin = isLocal ? 'http://localhost:5180' : 'https://paperobo.hypercardbook.org';
-        const params = new URLSearchParams();
-        if (book.paperoboPublicId) params.set('public', book.paperoboPublicId);
-        else if (book.paperoboAgentId) params.set('agent', book.paperoboAgentId);
-        else {
-            alert('この台本にはPapeRoboのキャラが登録されていません（paperobo_agent_id / paperobo_public_id）。');
-            return;
-        }
-        params.set('autostart', '1');
-        params.set('scriptbook', '1');
-        const session = page.data.session;
-        const hash = session
-            ? `#access_token=${encodeURIComponent(session.access_token)}&refresh_token=${encodeURIComponent(session.refresh_token)}`
-            : '';
-        const win = window.open(`${origin}/?${params.toString()}${hash}`, '_blank');
-        if (!win) return;
-        const onMessage = (event: MessageEvent) => {
-            if (event.origin !== origin || event.source !== win) return;
-            if (event.data?.type !== 'HCB_SCRIPT_READY') return;
-            win.postMessage(
-                { type: 'HCB_SCRIPT', payload: { title: book.title, markdown: book.markdownContent || '' } },
-                origin
-            );
-            window.removeEventListener('message', onMessage);
-            clearTimeout(timer);
-        };
-        const timer = setTimeout(() => window.removeEventListener('message', onMessage), 120000);
-        window.addEventListener('message', onMessage);
     }
 
     // Context Menu States
@@ -521,7 +485,7 @@
                                             </div>
                                         {/if}
                                     </div>
-                                {:else if book.sourceApp === 'hypertv' || book.source_app === 'hypertv' || book.sourceApp === 'scriptbook'}
+                                {:else if book.sourceApp === 'hypertv' || book.source_app === 'hypertv'}
                                     {@const isPreset = ['white', 'black', 'blue', 'pink', 'gold'].includes(book.themeColor)}
                                     <div 
                                         class="book-cover hypertv-book-cover" 

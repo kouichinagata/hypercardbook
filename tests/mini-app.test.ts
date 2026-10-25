@@ -10,7 +10,7 @@ test('slug is URL-safe and unique per call', () => {
 
 test('Hello World Card is an unlisted (not public) miniapp card', () => {
     const md = helloWorldMiniAppMarkdown('miniapp-abc');
-    for (const line of ['id: miniapp-abc', 'title: Hello World', 'play_mode: miniapp', 'is_public: false']) assert.ok(md.includes(line), line);
+    for (const line of ['id: miniapp-abc', 'title: Hello World', 'play_mode: miniapp', 'theme_color: #F8C8DC', 'is_public: false']) assert.ok(md.includes(line), line);
     assert.ok(md.includes('# Hello World'));
 });
 

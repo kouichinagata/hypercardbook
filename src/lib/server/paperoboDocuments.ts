@@ -16,7 +16,6 @@ export type DocumentRow = { id: string; user_id: string; title: string; markdown
 export function documentKind(markdown: string) {
     const fm = parseBookFrontmatter(markdown);
     const source = markdown.match(/^---\s*([\s\S]*?)\s*---/)?.[1].match(/^source_app:\s*(.+)$/m)?.[1]?.trim();
-    if (source === 'scriptbook') return 'scriptbook';
     if (source === 'hypertv') return 'scenariobook';
     if (['card', 'miniapp', 'hyperrobo', 'paperobo'].includes(fm.playMode)) return fm.playMode;
     if (fm.playMode === 'stack') return null;

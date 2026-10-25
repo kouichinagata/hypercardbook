@@ -9,9 +9,9 @@ test('selection handoff accepts only PapeRobo origins, bounded limits and a requ
     assert.equal(readDocumentSelection(url({paperobo_origin:'http://localhost:5180'})),null);
     assert.ok(readDocumentSelection(url({paperobo_origin:'http://localhost:5180'}),true));
 });
-test('the existing shelf filters Card/MiniApp and the five content types; ordinary and graphic books remain books',()=>{
+test('the existing shelf filters Card/MiniApp and the four content types; ordinary and graphic books remain books',()=>{
     const rows=[{playMode:'card'},{playMode:'miniapp'},{playMode:'book'},{playMode:'book',isGraphicBook:true},{playMode:'hyperrobo'},{playMode:'paperobo'},{playMode:'book',sourceApp:'hypertv'},{playMode:'book',sourceApp:'scriptbook'},{playMode:'stack'}];
-    for(const [kind,indices] of [['card',[0]],['miniapp',[1]],['book',[2,3]],['hyperrobo',[4]],['paperobo',[5]],['scenariobook',[6]],['scriptbook',[7]]])assert.deepEqual(rows.flatMap((row,index)=>matchesDocumentSelection(row,kind as any)?[index]:[]),indices);
+    for(const [kind,indices] of [['card',[0]],['miniapp',[1]],['book',[2,3,7]],['hyperrobo',[4]],['paperobo',[5]],['scenariobook',[6]]])assert.deepEqual(rows.flatMap((row,index)=>matchesDocumentSelection(row,kind as any)?[index]:[]),indices);
     assert.ok(rows.every(row=>!matchesDocumentSelection(row,null)));
     assert.equal(selectionPublicType('scenariobook'),'hypertv');
     assert.equal(selectionPublicType('book'),'book');

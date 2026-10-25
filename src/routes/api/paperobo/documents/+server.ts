@@ -14,7 +14,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
     if (!body || typeof body.userId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.userId)) throw error(400, 'Invalid user');
     const client = documentClient();
     if (body.action === 'list') {
-        if (!['card','book','miniapp','hyperrobo','paperobo','scenariobook','scriptbook'].includes(body.kind)) throw error(400, 'Invalid kind');
+        if (!['card','book','miniapp','hyperrobo','paperobo','scenariobook'].includes(body.kind)) throw error(400, 'Invalid kind');
         const offset = Number.isSafeInteger(body.offset) && body.offset >= 0 ? body.offset : 0;
         // Filter before paginating so other document kinds never hide a matching item.
         const items: any[] = []; let matching = 0; let more = false;

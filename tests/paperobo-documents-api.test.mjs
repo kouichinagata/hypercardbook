@@ -43,10 +43,10 @@ async function harness(t) {
     const api=(body,secret='test-only-key')=>handler({request:new Request('https://www.hypercardbook.org/api/paperobo/documents',{method:'POST',headers:{authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify(body)}),url:new URL('https://www.hypercardbook.org/api/paperobo/documents')});
     return {state,api,documents:await import(pathToFileURL(module).href)};
 }
-test('integration authenticates; selection separates all seven types and includes graphic books with books',async t=>{
+test('integration authenticates; selection separates all six types and includes graphic books with books',async t=>{
     const h=await harness(t);
     await assert.rejects(h.api({action:'list',kind:'card',userId:owner},'invalid'),e=>e.status===401);
-    for(const [kind,ids] of [['card',['card']],['book',['book','graphic','public']],['miniapp',['miniapp']],['hyperrobo',['hyperrobo']],['paperobo',['paperobo']],['scenariobook',['scenario']],['scriptbook',['script']]]){
+    for(const [kind,ids] of [['card',['card']],['book',['book','graphic','script','public']],['miniapp',['miniapp']],['hyperrobo',['hyperrobo']],['paperobo',['paperobo']],['scenariobook',['scenario']]]){
         const body=await(await h.api({action:'list',kind,userId:owner})).json();
         assert.deepEqual(body.items.map(i=>i.id),ids);
         assert.ok(body.items.every(i=>i.coverUrl.startsWith('https://markdown.hypercardbook.org/paperobo/cover?ticket=')));

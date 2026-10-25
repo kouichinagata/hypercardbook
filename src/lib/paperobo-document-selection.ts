@@ -1,8 +1,7 @@
 export const DOCUMENT_SELECTION_RESULT = 'paperobo:document-selection';
 export const CONTENT_KINDS = [
     { kind: 'miniapp', title: 'miniApp' }, { kind: 'hyperrobo', title: 'HyperRobo' },
-    { kind: 'paperobo', title: 'PapeRobo' }, { kind: 'scenariobook', title: 'ScenarioBook' },
-    { kind: 'scriptbook', title: 'ScriptBook' }
+    { kind: 'paperobo', title: 'PapeRobo' }, { kind: 'scenariobook', title: 'ScenarioBook' }
 ] as const;
 export type SelectionKind = 'card' | 'book' | typeof CONTENT_KINDS[number]['kind'];
 export type DocumentSelection = { category: 'card' | 'book' | 'content'; requestId: string; origin: string; limit: number };
@@ -19,7 +18,7 @@ export function readDocumentSelection(url: URL, dev = false): DocumentSelection 
 export function matchesDocumentSelection(book: { playMode?: string; sourceApp?: string; source_app?: string; isStack?: boolean }, kind: SelectionKind | null): boolean {
     if (!kind || book.isStack || book.playMode === 'stack') return false;
     const source = book.sourceApp || book.source_app;
-    const actual = source === 'scriptbook' ? 'scriptbook' : source === 'hypertv' ? 'scenariobook' : ['card','miniapp','hyperrobo','paperobo'].includes(book.playMode || '') ? book.playMode : 'book';
+    const actual = source === 'hypertv' ? 'scenariobook' : ['card','miniapp','hyperrobo','paperobo'].includes(book.playMode || '') ? book.playMode : 'book';
     return actual === kind;
 }
 export const selectionPublicType = (kind: SelectionKind | null) => kind === 'scenariobook' ? 'hypertv' : kind || 'all';

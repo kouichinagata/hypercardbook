@@ -53,7 +53,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
                 title: MINI_APP_TITLE,
                 author: null,
                 cover_image: null,
-                theme_color: 'white',
+                theme_color: '#F8C8DC',
                 markdown_content: helloWorldMiniAppMarkdown(slug),
                 is_public: false,
                 published_at: null

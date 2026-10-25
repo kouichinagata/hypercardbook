@@ -311,15 +311,6 @@
             }
         }
 
-        // PapeRoboの連絡先メニューから: ?script_template=1&agent=ID&name=名前[&public=ID]
-        if (urlParams.get('script_template') === '1') {
-            void createScriptBookFromTemplate(
-                urlParams.get('agent') || '',
-                urlParams.get('public') || '',
-                urlParams.get('name') || 'AI'
-            );
-        }
-
         // PapeRoboの「＋追加」から: ?mini_app_select=1 （MiniAppを本棚から選ぶ）
         const documentRequest = readDocumentSelection(new URL(window.location.href), dev);
         if (documentRequest) {
@@ -355,126 +346,6 @@
             window.removeEventListener('keydown', closeCreateMenuOnEscape);
         };
     });
-
-    function buildScriptBookTemplate(agentId: string, publicId: string, name: string) {
-        const slug = `script-${Date.now().toString(36)}`;
-        const n = name.replace(/[\r\n]/g, ' ').trim() || 'AI';
-        const idLines = [
-            agentId ? `paperobo_agent_id: ${agentId}` : '',
-            publicId ? `paperobo_public_id: ${publicId}` : ''
-        ].filter(Boolean).join('\n');
-        return `---
-id: ${slug}
-title: Script: 【サンプル台本】これからのAIチャット
-sub_title: この台本をMarkdownで自由に書き換えてください、本棚の表紙をクリックすると、ライブが開始します。 *** が改ページです。
-play_mode: book
-source_app: scriptbook
-${idLines}
-paperobo_agent_name: ${n}
-author: PapeRobo
-cover_image: https://images.unsplash.com/photo-1677442136019-21780ecad995
-theme_color: #F8C8DC
-description: PapeRoboの案内役${n}が、AIキャラのプログラマ「Quark」とこれからのAIチャットを語る、スタジオ対談風の台本。
----
-
-# これからのAIチャット
-
-PapeRobo Live 対談台本
-
-${n} × Quark
-
-***
-
-## 【オープニング】
-
-場所：PapeRoboスタジオ
-（スマホ型のモニターが並ぶ、落ち着いた照明のスタジオ）
-
-出演：
-${n}（PapeRoboの案内役）
-Quark（AIキャラのプログラマ）
-
-${n}「PapeRobo Liveへようこそ。案内役の${n}です。今日のゲストは、PapeRoboを作ったプログラマ、Quarkさんです」
-
-Quark「どうも。コードの中から来ました」
-
-***
-
-## 【画像】ここで表示
-
-（カット：スタジオ全景。向かい合って座る${n}とQuark。背景のスマホ型モニターには、PapeRoboの通話画面が映っている。）
-
-※ここで画像を表示
-
-![スタジオで対談するイメージ](https://images.unsplash.com/photo-1478737270239-2f02b77fc618)
-
-***
-
-## 【パート1】PapeRoboとは
-
-${n}「PapeRoboは、スマホのUIにとことんこだわったAIチャットアプリですよね」
-
-Quark「ええ。チャットなのに、電話する感覚でAIと話せます」
-
-${n}「文字を打たなくていいのが大きいですね」
-
-Quark「話しかけるだけです。指先の手間がなくなります」
-
-${n}「なぜUIにそこまで？」
-
-Quark「AIの賢さの前に、触れた瞬間の心地よさが大事だと思うんです」
-
-***
-
-## 【パート2】これからのAIチャット
-
-${n}「これからのAIチャットは、どう変わりますか？」
-
-Quark「画面の中の道具から、隣にいる相手へ。声で話すのが当たり前になります」
-
-${n}「私のようなAIキャラも増えそうですね」
-
-Quark「ええ。性格や得意分野で、相手を選べるようになります」
-
-${n}「電話帳にAIが並ぶ感じですね」
-
-Quark「それが理想です」
-
-***
-
-## 【クロージング】
-
-${n}「最後に、視聴者へひとことお願いします」
-
-Quark「難しく考えず、まずは話しかけてみてください。使えば分かります」
-
-${n}「ありがとうございました。PapeRobo Liveでした。また次回」
-
-（スタジオの照明がゆっくり落ちる）
-
-―― 終 ――
-`;
-    }
-
-    async function createScriptBookFromTemplate(agentId: string, publicId: string, name: string) {
-        if (!agentId && !publicId) return;
-        if (!data.currentUserId) {
-            alert('ScriptBookを作成するには、HyperCardBookにログインしてから、もう一度PapeRoboのメニューを実行してください。');
-            return;
-        }
-        try {
-            const res = await fetch('/api/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ markdown: buildScriptBookTemplate(agentId, publicId, name) })
-            });
-            const result = await res.json();
-            if (!res.ok || !result.id) throw new Error(result.error || 'save failed');
-            await goto(`/workspace?id=${result.id}`);
-        } catch (e) {
-            alert('ScriptBookの作成に失敗しました: ' + (e instanceof Error ? e.message : e));
-        }
-    }
 
     async function saveOnboarding() {
         if (!onboardingNickname.trim()) {
@@ -788,7 +659,6 @@ ${n}「ありがとうございました。PapeRobo Liveでした。また次回
         { id: 'hyperrobo', label: 'HyperRobo' },
         { id: 'paperobo', label: 'PapeRobo' },
         { id: 'hypertv', label: 'Scenario Books' },
-        { id: 'scriptbook', label: 'Script Books' },
         { id: 'card', label: 'Card' },
         { id: 'miniapp', label: 'MiniApp' }
     ];

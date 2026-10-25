@@ -18,7 +18,7 @@ export function helloWorldMiniAppMarkdown(slug: string): string {
 id: ${slug}
 title: ${MINI_APP_TITLE}
 play_mode: miniapp
-theme_color: white
+theme_color: #F8C8DC
 is_public: false
 ---
 # Hello World
