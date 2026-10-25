@@ -42,3 +42,9 @@ test('a hash ignores method on handwritten signatures but covers it on seals', (
     const sealed: VerifyRecord = { ...base, signatures: [{ ...base.signatures[0], method: 'stamp' }] };
     assert.notEqual(verifyHash(base), verifyHash(sealed));
 });
+
+
+test('database timestamptz offsets preserve the canonical hash', () => {
+    const record: VerifyRecord = { verify_id: 'v', book_id: 'b', markdown: 'm', signatures: [], completed_at: '2026-10-24T05:00:00.123Z' };
+    assert.equal(verifyHash(record), verifyHash({ ...record, completed_at: '2026-10-24T05:00:00.123+00:00' }));
+});

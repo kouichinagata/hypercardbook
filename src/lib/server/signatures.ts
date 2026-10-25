@@ -1,3 +1,4 @@
+import { certificateIssuance, certificateState } from './certificates.ts';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
@@ -42,7 +43,7 @@ export async function resolveSignLink(admin: SupabaseClient, token: string): Pro
     return linkIsUsable(data) ? { bookId: data!.book_id, expiresAt: data!.expires_at } : null;
 }
 
-export type SignActor = { type: 'owner'; userId: string } | { type: 'guest'; name: string | null };
+export type SignActor = { type: 'owner'; userId: string } | { type: 'guest'; name: string | null; userId?: string };
 export type SignInput = { bookId: string; slot: number; kind: SignKind; baseVersion: number; svg: unknown; actor: SignActor };
 export type SignOutcome = { ok: true; markdown: string; version: number } | { ok: false; status: number; error: string };
 
@@ -61,10 +62,17 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
     if (!isValidSignatureSvg(svg)) return { ok: false, status: 400, error: 'Invalid signature.' };
     if (!Number.isInteger(slot) || !['my', 'your', 'any'].includes(kind) || !Number.isInteger(baseVersion)) return { ok: false, status: 400, error: 'Invalid request.' };
 
-    const { data: book } = await admin.from('books').select('id, user_id, markdown_content, version').eq('id', bookId).maybeSingle();
+    const { data: book } = await admin.from('books').select('id, user_id, markdown_content, version, slug').eq('id', bookId).maybeSingle();
     if (!book) return { ok: false, status: 404, error: 'Document not found.' };
     if (actor.type === 'owner' && actor.userId !== book.user_id) return { ok: false, status: 403, error: 'Not your document.' };
     if (actor.type === 'guest' && !guestMaySign(kind)) return { ok: false, status: 403, error: 'This slot is for the owner.' };
+    const issuance = book.slug?.startsWith('certificate-') ? await certificateIssuance(admin, bookId) : null;
+    if (issuance) {
+        if (actor.type === 'guest' && !actor.userId) return { ok: false, status: 403, error: 'Sign this certificate in the chat where you received it.' };
+        const state = await certificateState(admin, bookId, book.markdown_content || '', issuance.verify_id);
+        if (state.status === 'complete') return { ok: false, status: 409, error: 'This certificate is already complete.' };
+        if (actor.type === 'owner' && kind === 'your') return { ok: false, status: 403, error: 'This field must be signed by the recipient.' };
+    }
     // The page the signer saw is out of date (someone signed or edited meanwhile): slot numbers may have moved
     if (book.version !== baseVersion) return { ok: false, status: 409, error: 'The document has changed. Reload and try again.' };
 
@@ -92,7 +100,7 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
             book_id: book.id,
             kind,
             signer_type: actor.type,
-            signer_id: actor.type === 'owner' ? actor.userId : null,
+            signer_id: actor.type === 'owner' ? actor.userId : actor.userId || null,
             signer_name: actor.type === 'guest' ? actor.name : null,
             svg,
             webp_url: url,
@@ -136,11 +144,13 @@ export async function applyStamp(admin: SupabaseClient, input: { bookId: string;
     if (!isValidStampSvg(svg)) return { ok: false, status: 400, error: 'Invalid seal.' };
     if (mode !== 'stamp' && mode !== 'both') return { ok: false, status: 400, error: 'Invalid request.' };
 
-    const { data: book } = await admin.from('books').select('id, user_id, markdown_content, version').eq('id', bookId).maybeSingle();
+    const { data: book } = await admin.from('books').select('id, user_id, markdown_content, version, slug').eq('id', bookId).maybeSingle();
     if (!book) return { ok: false, status: 404, error: 'Document not found.' };
     const isOwner = userId === book.user_id;
     const before: string = book.markdown_content || '';
-    const target = nextStampSlot(before, (kind) => isOwner || guestMaySign(kind));
+    const issuance = book.slug?.startsWith('certificate-') ? await certificateIssuance(admin, bookId) : null;
+    if (issuance && (await certificateState(admin, bookId, before, issuance.verify_id)).status === 'complete') return { ok: false, status: 409, error: 'This certificate is already complete.' };
+    const target = nextStampSlot(before, (kind) => isOwner ? (!issuance || kind !== 'your') : guestMaySign(kind));
     if (!target) return { ok: false, status: 409, error: 'There is no slot left for you to stamp.' };
 
     let bytes: Buffer;

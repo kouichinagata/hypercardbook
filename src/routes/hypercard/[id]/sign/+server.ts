@@ -1,3 +1,4 @@
+import { certificateIssuance } from '$lib/server/certificates';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { adminClient, applySignature } from '$lib/server/signatures';
@@ -6,16 +7,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function findBook(id: string) {
     const admin = adminClient();
-    const query = admin.from('books').select('id, user_id, version');
+    const query = admin.from('books').select('id, user_id, version, slug');
     const { data } = await (UUID.test(id) ? query.eq('id', id) : query.eq('slug', id)).maybeSingle();
-    return { admin, book: data as { id: string; user_id: string; version: number } | null };
+    return { admin, book: data as { id: string; user_id: string; version: number; slug?: string } | null };
 }
 
 // Whoever has the card's link can sign its your / MarkdownAIVerify slots, logged in or not. `my` is the owner's.
 export const GET: RequestHandler = async ({ params, locals }) => {
-    const { book } = await findBook(params.id);
+    const { admin, book } = await findBook(params.id);
     if (!book) return json({ error: 'Not found' }, { status: 404 });
-    return json({ bookId: book.id, version: book.version, isOwner: locals.session?.user.id === book.user_id });
+    const certificate = book.slug?.startsWith('certificate-') ? Boolean(await certificateIssuance(admin, book.id)) : false;
+    return json({ certificate, bookId: book.id, version: book.version, isOwner: locals.session?.user.id === book.user_id });
 };
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {

@@ -1,3 +1,4 @@
+import { effectivePlanFromUser, isPaidPlan } from '../plan.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomBytes } from 'node:crypto';
 import { replaceSignedImages, signatureImageUrls, signSlotKinds } from '../signature/markers.ts';
@@ -54,7 +55,7 @@ export function verifyHash(r: VerifyRecord): string {
                 signed_at: s.signed_at,
                 ...(s.method ? { method: s.method } : {})
             })),
-            completed_at: r.completed_at
+            completed_at: new Date(r.completed_at).toISOString()
         })
     );
 }
@@ -66,10 +67,24 @@ export const completeKey = (bookId: string, markdown: string, signatureIds: stri
 /** The document is complete when it has signatures and no unsigned slot is left. */
 export const isComplete = (markdown: string) => signSlotKinds(markdown).length === 0 && replaceSignedImages(markdown, () => '\0').includes('\0');
 
+/** Recording follows the document owner, never the last signer's plan or editable frontmatter. */
+export async function mayRecordCompletion(admin: SupabaseClient, bookId: string): Promise<boolean> {
+    // A recorded issuance keeps its entitlement if the issuer later changes plans.
+    const { data: issuance, error: issuanceError } = await admin.from('markdown_verify').select('*').eq('book_id', bookId).eq('complete_key', `certificate-issued:${bookId}`).maybeSingle();
+    if (issuanceError) throw issuanceError;
+    if (issuance && verifyHash(issuance) === issuance.sha256) return true;
+    const { data: book, error: bookError } = await admin.from('books').select('user_id').eq('id', bookId).maybeSingle();
+    if (bookError) throw bookError;
+    if (!book?.user_id) return false;
+    const { data, error: userError } = await admin.auth.admin.getUserById(book.user_id);
+    if (userError) throw userError;
+    return isPaidPlan(effectivePlanFromUser(data.user));
+}
+
 /** Called right after the last slot is saved. Failures are logged only: signing itself must never fail because of this. */
-export async function recordCompletion(admin: SupabaseClient, bookId: string, markdown: string): Promise<void> {
+export async function recordCompletion(admin: SupabaseClient, bookId: string, markdown: string): Promise<VerifyRecord | null> {
     try {
-        if (!isComplete(markdown)) return;
+        if (!isComplete(markdown) || !await mayRecordCompletion(admin, bookId)) return null;
         // Seals pressed before the signature (stamp + sign mode) are part of the sealed record too
         const urls = signatureImageUrls(markdown);
         const { data, error } = await admin
@@ -99,7 +114,14 @@ export async function recordCompletion(admin: SupabaseClient, bookId: string, ma
             .insert({ ...record, sha256: verifyHash(record), complete_key: completeKey(bookId, markdown, signatures.map((s) => s.signature_id)) });
         // 23505: this Complete is already recorded
         if (insertError && insertError.code !== '23505') throw insertError;
+        if (insertError) {
+            const { data: existing, error: readError } = await admin.from('markdown_verify').select('*').eq('complete_key', completeKey(bookId, markdown, signatures.map((s) => s.signature_id))).single();
+            if (readError || !existing) throw readError || new Error('Completion record missing.');
+            return existing as VerifyRecord;
+        }
+        return record;
     } catch (err) {
         console.error('[markdown-verify] could not record completion:', err);
+        return null;
     }
 }
