@@ -13,7 +13,7 @@ export function buildInitialBiographyMarkdown(authorName: string) {
     return `---
 title: Biography
 author: HyperCardBook
-theme_color: purple
+theme_color: red
 play_mode: book
 special_book_key: ${BIOGRAPHY_SPECIAL_KEY}
 source_app: hypercardbook
@@ -63,7 +63,7 @@ export async function ensureBiographyBook(
         title: 'Biography',
         author: 'HyperCardBook',
         cover_image: null,
-        theme_color: 'purple',
+        theme_color: 'red',
         markdown_content: buildInitialBiographyMarkdown(authorName),
         is_public: false,
         published_at: null
