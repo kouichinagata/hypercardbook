@@ -1,6 +1,7 @@
 import { effectivePlanFromUser, isPaidPlan, isProPlan } from '$lib/plan';
 import { issueCertificate, certificateState } from '$lib/server/certificates';
 import { hasSignMarkers, signSlotKinds } from '$lib/signature/markers';
+import { isComplete } from '$lib/server/markdown-verify';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
@@ -60,7 +61,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
         if (!certificate || certificate.status === 'complete') throw error(409, 'No certificate field is left to sign.');
         const outcome = await applySignature(adminClient(), { bookId: row.id, slot: body.slot, kind: body.kind, baseVersion: body.baseVersion, svg: body.svg, actor: body.userId === row.user_id ? { type: 'owner', userId: body.userId } : { type: 'guest', name: null, userId: body.userId } });
         if (!outcome.ok) throw error(outcome.status, outcome.error);
-        return json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
+        return json({ ok: true, complete: isComplete(outcome.markdown) }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (body.action === 'open') {
         const progress = certificate ? {
