@@ -1,4 +1,4 @@
--- Sign request links and the originals of handwritten signatures ({{MarkdownAIVerify}} slots).
+-- Sign request links and the originals of handwritten signatures ({{MarkdownAIverify}} slots).
 -- RLS is on with no policies: only the server (service role) can read or write these tables.
 create table if not exists markdown_sign_links (
     token_hash text primary key,

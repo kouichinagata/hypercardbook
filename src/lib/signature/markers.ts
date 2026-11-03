@@ -1,7 +1,7 @@
-// {{MarkdownAIVerify}} / {{myMarkdownAIVerify}} / {{your MarkdownAIVerify}} signature slots in Markdown
+// {{MarkdownAIverify}} / {{myMarkdownAIverify}} / {{your MarkdownAIverify}} signature slots in Markdown
 export type SignKind = 'any' | 'my' | 'your';
 
-const MARKER = /\{\{\s*(myMarkdownAIVerify|your\s*MarkdownAIVerify|MarkdownAIVerify)\s*\}\}/g;
+const MARKER = /\{\{\s*(myMarkdownAIverify|your\s*MarkdownAIverify|MarkdownAIverify)\s*\}\}/g;
 // Fenced code blocks and inline code are never slots
 const CODE = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/g;
 
@@ -20,11 +20,11 @@ export function replaceSignMarkers(markdown: string, render: (slot: number, kind
         .join('');
 }
 
-// A signed slot is a plain Markdown image: ![MarkdownAIVerify:my](https://…/signature.webp)
-const SIGNED = /!\[MarkdownAIVerify:(?:my|your|any)\]\((https?:\/\/[^\s()]+)\)/g;
+// A signed slot is a plain Markdown image: ![MarkdownAIverify:my](https://…/signature.webp)
+const SIGNED = /!\[MarkdownAIverify:(?:my|your|any)\]\((https?:\/\/[^\s()]+)\)/g;
 
 export function signedImageMarkdown(kind: SignKind, url: string): string {
-    return `![MarkdownAIVerify:${kind}](${url})`;
+    return `![MarkdownAIverify:${kind}](${url})`;
 }
 
 /** Replace each signed slot with the text returned by `render(url)`. */
@@ -34,6 +34,9 @@ export function replaceSignedImages(markdown: string, render: (url: string) => s
         .map((part, i) => (i % 2 === 1 ? part : part.replace(SIGNED, (_m, url: string) => render(url))))
         .join('');
 }
+
+/** The document is complete when it has signatures and no unsigned slot is left. */
+export const isComplete = (markdown: string) => signSlotKinds(markdown).length === 0 && replaceSignedImages(markdown, () => '\0').includes('\0');
 
 /** Kinds of the slots in order of appearance */
 export function signSlotKinds(markdown: string): SignKind[] {
@@ -63,12 +66,12 @@ export function guestMaySign(kind: SignKind): boolean {
 }
 
 // A stamp pressed before the signature (stamp + sign mode) is a plain Markdown image placed just before its slot's marker:
-//   ![MarkdownAIVerify:stamp](https://…/stamp.webp) {{MarkdownAIVerify}}
+//   ![MarkdownAIverify:stamp](https://…/stamp.webp) {{MarkdownAIverify}}
 // It is not a signed slot: the slot stays open until it is signed (or, in stamp-only mode, it is stamped as a whole).
-const STAMPED = /!\[MarkdownAIVerify:stamp\]\((https?:\/\/[^\s()]+)\)/g;
+const STAMPED = /!\[MarkdownAIverify:stamp\]\((https?:\/\/[^\s()]+)\)/g;
 
 export function stampImageMarkdown(url: string): string {
-    return `![MarkdownAIVerify:stamp](${url})`;
+    return `![MarkdownAIverify:stamp](${url})`;
 }
 
 /** Replace each stamp image with the text returned by `render(url)`. */
@@ -90,7 +93,7 @@ export function stampSlotInMarkdown(markdown: string, slot: number, url: string)
     return done ? next : null;
 }
 
-const ANY_IMAGE = /!\[MarkdownAIVerify:(?:my|your|any|stamp)\]\((https?:\/\/[^\s()]+)\)/g;
+const ANY_IMAGE = /!\[MarkdownAIverify:(?:my|your|any|stamp)\]\((https?:\/\/[^\s()]+)\)/g;
 
 /** URLs of every signed or stamped image, in order of appearance */
 export function signatureImageUrls(markdown: string): string[] {

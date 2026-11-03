@@ -5,6 +5,7 @@ import sharp from 'sharp';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { guestMaySign, nextStampSlot, signSlotInMarkdown, signSlotKinds, stampSlotInMarkdown, type SignKind } from '../signature/markers.ts';
+import { setFieldInMarkdown } from '../signature/fields.ts';
 import { isValidSignatureSvg } from '../signature/signature-svg.ts';
 import { isValidStampSvg } from '../signature/stamp-svg.ts';
 import { isComplete, recordCompletion } from './markdown-verify.ts';
@@ -125,6 +126,36 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
         if (signatureId) await admin.from('markdown_signatures').delete().eq('id', signatureId);
         return { ok: false, status: 409, error: 'The document has changed. Reload and try again.' };
     }
+}
+
+/**
+ * Fill a form field ({{MarkdownAIinput}} / check / radio) of a document. Not once the document is complete:
+ * a completed document (every slot signed) is never changed. `actor` is the owner, or a guest holding a sign link.
+ */
+export async function applyField(
+    admin: SupabaseClient,
+    input: { bookId: string; index: unknown; value: unknown; actor: SignActor }
+): Promise<SignOutcome> {
+    const { bookId, index, value, actor } = input;
+    if (!Number.isInteger(index) || (typeof value !== 'string' && typeof value !== 'boolean')) return { ok: false, status: 400, error: 'Invalid request.' };
+
+    const { data: book } = await admin.from('books').select('id, user_id, markdown_content, version').eq('id', bookId).maybeSingle();
+    if (!book) return { ok: false, status: 404, error: 'Document not found.' };
+    if (actor.type === 'owner' && actor.userId !== book.user_id) return { ok: false, status: 403, error: 'Not your document.' };
+
+    const before: string = book.markdown_content || '';
+    if (isComplete(before)) return { ok: false, status: 409, error: 'A completed document cannot be changed.' };
+    const after = setFieldInMarkdown(before, index as number, value);
+    if (after === null) return { ok: false, status: 400, error: 'That value does not fit the field.' };
+
+    const { data: saved } = await admin
+        .from('books')
+        .update({ markdown_content: after, version: book.version + 1 })
+        .eq('id', book.id)
+        .select('version')
+        .maybeSingle();
+    if (!saved) return { ok: false, status: 404, error: 'Document not found.' };
+    return { ok: true, markdown: after, version: saved.version };
 }
 
 export type StampMode = 'stamp' | 'both';

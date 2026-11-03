@@ -498,6 +498,19 @@
             if (!res.ok) throw new Error(out.error || 'sign failed');
             bookVersion = out.version;
             return out.markdown as string;
+        },
+        canFill: () => !!data.session?.user && !!bookUuid,
+        fill: async (index: number, value: string | boolean) => {
+            await flushAutoSave();
+            const res = await fetch('/api/sign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ field: true, bookId: bookUuid, index, value })
+            });
+            const out = await res.json();
+            if (!res.ok) throw new Error(out.error || 'save failed');
+            bookVersion = out.version;
+            return out.markdown as string;
         }
     };
 
@@ -505,7 +518,7 @@
         markdown = next;
     }
 
-    // Copy the sign link: whoever has it can sign the "your" / "MarkdownAIVerify" slots without logging in
+    // Copy the sign link: whoever has it can sign the "your" / "MarkdownAIverify" slots without logging in
     async function copySignLink() {
         if (!bookUuid) return;
         const res = await fetch('/api/sign/links', {

@@ -12,8 +12,8 @@ test('verify ids are UUID v7 and sort by time', () => {
 
 test('a document is complete only when it has signatures and no open slot', () => {
     assert.ok(!isComplete('no slots at all'));
-    assert.ok(!isComplete('![MarkdownAIVerify:my](https://x.test/a.webp)\n{{your MarkdownAIVerify}}'));
-    assert.ok(isComplete('![MarkdownAIVerify:my](https://x.test/a.webp)\n![MarkdownAIVerify:your](https://x.test/b.webp)'));
+    assert.ok(!isComplete('![MarkdownAIverify:my](https://x.test/a.webp)\n{{your MarkdownAIverify}}'));
+    assert.ok(isComplete('![MarkdownAIverify:my](https://x.test/a.webp)\n![MarkdownAIverify:your](https://x.test/b.webp)'));
 });
 
 test('the hash is stable and changes with any part of the record', () => {

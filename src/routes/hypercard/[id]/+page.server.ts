@@ -3,6 +3,8 @@ import { isCardMarkdown, isMiniApp } from '$lib/play-mode';
 import { dev } from '$app/environment';
 import { servedOnMarkdown, viewerRedirect, type ContentRow } from '$lib/content-origin';
 import { parseBookFrontmatter } from '$lib/book-frontmatter';
+import { isTemplate } from '$lib/signature/contract';
+import { createContract } from '$lib/server/contracts';
 import { loadUnlistedMiniApp } from '$lib/server/unlisted-mini-app';
 import type { PageServerLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
@@ -105,6 +107,13 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch, setHead
         if (!isCard) {
             const redirectParams = new URLSearchParams(url.searchParams);
             throw redirect(302, `/hyperbook/${id}?${redirectParams.toString()}`);
+        }
+
+        // The owner opening their own template here (not in the workspace) gets a contract; a contract with variables left is opened as it is
+        const ownerUserId = locals.session?.user.id;
+        if (row && !shareToken && ownerUserId && (row as ContentRow & { user_id?: string }).user_id === ownerUserId && isTemplate(markdownContent)) {
+            const contractId = await createContract(supabase, ownerUserId, row.id);
+            if (contractId) throw redirect(302, `/hypercard/${contractId}${url.search}`);
         }
 
         // Compute back URL with query parameters

@@ -3,7 +3,8 @@
     import { onDestroy, onMount } from 'svelte';
     import { browser } from '$app/environment';
     import SignaturePad from '$lib/signature/SignaturePad.svelte';
-    import { replaceSignedImages, replaceStampImages, signSlotKinds, replaceSignMarkers, type SignKind } from '$lib/signature/markers';
+    import { replaceSignedImages, replaceStampImages, isComplete, signSlotKinds, replaceSignMarkers, type SignKind } from '$lib/signature/markers';
+    import { replaceFieldMarkers, validateInput, scanFields, type FieldMarker } from '$lib/signature/fields';
 
     let {
         markdown = '',
@@ -20,7 +21,13 @@
         activePluginIds?: string[]; currentUserId?: string;
         onMarkdownChange?: (markdown: string) => void;
         // Who may sign which slot, and how: sign() returns the new Markdown (the server has already saved it)
-        signer?: { canSign: (kind: SignKind) => boolean; sign: (slot: number, kind: SignKind, result: { svg: string }) => Promise<string> };
+        // canFill / fill do the same for form fields ({{MarkdownAIinput}} / check / radio): text for an input, a boolean for check / radio
+        signer?: {
+            canSign: (kind: SignKind) => boolean;
+            sign: (slot: number, kind: SignKind, result: { svg: string }) => Promise<string>;
+            canFill?: () => boolean;
+            fill?: (index: number, value: string | boolean) => Promise<string>;
+        };
     } = $props();
 
     // Iframe postMessage connection states
@@ -255,7 +262,7 @@
         return 'white';
     });
 
-    // {{MarkdownAIVerify}} signature slots: pending (yellow) -> signed (blue, a plain Markdown image link) / error (red).
+    // {{MarkdownAIverify}} signature slots: pending (yellow) -> signed (blue, a plain Markdown image link) / error (red).
     // Signing needs the host to provide both callbacks (the workspace of the user's own bookshelf); other views only show colors.
     let signingSlot = $state<number | null>(null);
     let signErrorSlots = $state<number[]>([]);
@@ -275,7 +282,70 @@
         return !!signer && !!signKinds[slot] && signer.canSign(signKinds[slot]);
     }
 
+    // Form fields are live until the document is complete (every slot signed); a field is gone once confirmed
+    let fieldsLive = $derived(!!signer?.fill && !!signer.canFill?.() && !isComplete(markdown));
+
+    async function saveField(index: number, value: string | boolean) {
+        try {
+            onMarkdownChange?.(await signer!.fill!(index, value));
+        } catch (err) {
+            console.error('Saving the field failed:', err);
+            alert(err instanceof Error ? err.message : 'Could not save.');
+        }
+    }
+
+    function commitField(slotEl: HTMLElement) {
+        const index = Number(slotEl.dataset.field);
+        const field = scanFields(markdown)[index];
+        if (!field) return;
+        if (field.kind === 'check') {
+            saveField(index, (slotEl.querySelector('input') as HTMLInputElement).checked);
+        } else if (field.kind === 'radio') {
+            // The Confirm button sits on the last option; the selected one is whichever radio of the group is on
+            const picked = slotEl.closest('.card-webview-body')?.querySelector(`input[name="${(slotEl.querySelector('input') as HTMLInputElement).name}"]:checked`) as HTMLInputElement | null;
+            if (!picked) {
+                alert('Select an option.');
+                return;
+            }
+            saveField(Number(picked.dataset.field), true);
+        } else {
+            const box = slotEl.querySelector('input, textarea') as HTMLInputElement | HTMLTextAreaElement;
+            const problem = validateInput(field.input!, box.value);
+            if (problem) {
+                alert(problem);
+                return;
+            }
+            saveField(index, box.value);
+        }
+    }
+
+    function renderField(field: FieldMarker): string {
+        const off = fieldsLive ? '' : ' disabled';
+        const n = field.index;
+        if (field.kind === 'check') {
+            return `<span class="field-slot" data-field="${n}"><input class="field-toggle" type="checkbox"${field.checked ? ' checked' : ''}${off}><button type="button" class="field-ok"${off}>Confirm</button></span>`;
+        }
+        if (field.kind === 'radio') {
+            const button = field.lastInGroup ? `<button type="button" class="field-ok"${off}>Confirm</button>` : '';
+            return `<span class="field-slot" data-field="${n}"><input class="field-toggle" type="radio" name="field-group-${field.group}" data-field="${n}"${field.checked ? ' checked' : ''}${off}>${button}</span>`;
+        }
+        const spec = field.input!;
+        let box: string;
+        if (spec.type === 'date') box = `<input class="field-input" type="date"${off}>`;
+        else if (spec.type === 'textarea') box = `<textarea class="field-input" rows="4"${off}></textarea>`;
+        else {
+            const maxlength = spec.length === null ? '' : ` maxlength="${spec.length}"`;
+            box = `<input class="field-input" type="text"${maxlength}${spec.type === 'digits' ? ' inputmode="numeric" pattern="[0-9]*"' : ''}${off}>`;
+        }
+        return `<span class="field-slot" data-field="${n}">${box}<button type="button" class="field-ok"${off}>Confirm</button></span>`;
+    }
+
     function handleBodyClick(e: MouseEvent) {
+        const ok = (e.target as HTMLElement | null)?.closest?.('.field-ok') as HTMLElement | null;
+        if (ok && fieldsLive) {
+            commitField(ok.closest('.field-slot') as HTMLElement);
+            return;
+        }
         const el = (e.target as HTMLElement | null)?.closest?.('.sign-pending') as HTMLElement | null;
         if (el && slotIsSignable(Number(el.dataset.slot))) signingSlot = Number(el.dataset.slot);
     }
@@ -291,7 +361,8 @@
 
     let cardBodyHtml = $derived.by(() => {
         if (!markdown) return '';
-        let cleanMd = markdown.replace(/^---\s*[\s\S]*?\s*---/, '').trim();
+        // Fields are numbered on the whole Markdown, as the server does
+        let cleanMd = replaceFieldMarkers(markdown, renderField).replace(/^---\s*[\s\S]*?\s*---/, '').trim();
         cleanMd = cleanMd.replace(new RegExp(styleBlockPattern), '');
         // Seals pressed before the signature sit left-aligned in a row of inline boxes, so many of them wrap onto new lines
         cleanMd = replaceStampImages(cleanMd, (url) => `<span class="sign-slot sign-stamp"><img src="${url}" alt="seal"></span>`);
@@ -459,6 +530,40 @@
 {/if}
 
 <style>
+    :global(.card-webview-body .field-slot) {
+        display: inline-flex;
+        gap: 6px;
+        align-items: flex-start;
+        vertical-align: middle;
+    }
+    :global(.card-webview-body .field-input) {
+        padding: 4px 8px;
+        border: 1px solid #bbb;
+        border-radius: 6px;
+        font: inherit;
+        background: #fffbe0;
+        color: #222;
+    }
+    :global(.card-webview-body textarea.field-input) {
+        min-width: 16em;
+    }
+    :global(.card-webview-body .field-ok) {
+        padding: 4px 10px;
+        border: 1px solid #888;
+        border-radius: 6px;
+        background: #f3f3f3;
+        color: #222;
+        cursor: pointer;
+    }
+    :global(.card-webview-body .field-ok:disabled) {
+        opacity: 0.5;
+        cursor: default;
+    }
+    :global(.card-webview-body .field-toggle) {
+        transform: scale(1.2);
+        margin-right: 4px;
+        vertical-align: middle;
+    }
     :global(.card-webview-body .sign-slot) {
         display: inline-block;
         min-width: 8em;

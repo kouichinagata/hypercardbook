@@ -7,7 +7,7 @@
     let version = $state(data.version);
     let name = $state('');
 
-    // Without login only your / MarkdownAIVerify slots can be signed (my is the owner's)
+    // Without login only your / MarkdownAIverify slots can be signed (my is the owner's)
     const signer = {
         canSign: guestMaySign,
         sign: async (slot: number, kind: string, result: { svg: string }) => {
@@ -18,6 +18,18 @@
             });
             const out = await res.json();
             if (!res.ok) throw new Error(out.error || 'sign failed');
+            version = out.version;
+            return out.markdown as string;
+        },
+        canFill: () => true,
+        fill: async (index: number, value: string | boolean) => {
+            const res = await fetch(location.pathname, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ field: true, index, value })
+            });
+            const out = await res.json();
+            if (!res.ok) throw new Error(out.error || 'save failed');
             version = out.version;
             return out.markdown as string;
         }

@@ -1,4 +1,4 @@
--- Sealed originals of completed documents ({{MarkdownAIVerify}} slots all signed), for later verification.
+-- Sealed originals of completed documents ({{MarkdownAIverify}} slots all signed), for later verification.
 -- Insert-only: UPDATE, DELETE and TRUNCATE are rejected by triggers, even for the service role.
 -- RLS is on with no policies: only the server (service role) can read or insert.
 create table if not exists markdown_verify (

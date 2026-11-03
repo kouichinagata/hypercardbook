@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
         const plan = effectivePlanFromUser(data.user);
         if (body.action === 'issue-certificate' ? !isProPlan(plan) : !isPaidPlan(plan)) throw error(403, body.action === 'issue-certificate' ? 'Certificate issuance requires Pro or above.' : 'Contract issuance requires Standard or above.');
         if (documentKind(row.markdown_content) !== 'card') throw error(400, 'Only HyperCards can be used.');
-        if (!signSlotKinds(row.markdown_content).length) throw error(400, 'This card has no MarkdownAIVerify fields.');
+        if (!signSlotKinds(row.markdown_content).length) throw error(400, 'This card has no MarkdownAIverify fields.');
     }
     if (body.action === 'issue-certificate') {
         if (documentKind(row.markdown_content) !== 'card') throw error(400, 'Only HyperCards can be used as certificate templates.');

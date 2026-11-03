@@ -1,7 +1,9 @@
 import { effectivePlanFromUser, isPaidPlan } from '../plan.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomBytes } from 'node:crypto';
-import { replaceSignedImages, signatureImageUrls, signSlotKinds } from '../signature/markers.ts';
+import { isComplete, signatureImageUrls } from '../signature/markers.ts';
+
+export { isComplete };
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
@@ -63,9 +65,6 @@ export function verifyHash(r: VerifyRecord): string {
 /** Same Complete (same book, same final Markdown, same signatures in slot order) gives the same key, so it is stored only once. A fresh signature has a new id, hence a new key. */
 export const completeKey = (bookId: string, markdown: string, signatureIds: string[]) =>
     sha256(`markdown-verify:${bookId}:${sha256(markdown)}:${signatureIds.join(',')}`);
-
-/** The document is complete when it has signatures and no unsigned slot is left. */
-export const isComplete = (markdown: string) => signSlotKinds(markdown).length === 0 && replaceSignedImages(markdown, () => '\0').includes('\0');
 
 /** Recording follows the document owner, never the last signer's plan or editable frontmatter. */
 export async function mayRecordCompletion(admin: SupabaseClient, bookId: string): Promise<boolean> {

@@ -77,17 +77,17 @@ test('open reports unsigned signature slots using the existing marker parser, on
     const card=h.state.rows.find(row=>row.id==='card');
     const open=async id=>(await h.api({action:'open',id,userId:other,selectedBy:owner})).json();
     assert.equal((await open('card')).hasSignMarkers,false);
-    for(const marker of ['{{MarkdownAIVerify}}','{{myMarkdownAIVerify}}','{{yourMarkdownAIVerify}}','{{your MarkdownAIVerify}}']) {
+    for(const marker of ['{{MarkdownAIverify}}','{{myMarkdownAIverify}}','{{yourMarkdownAIverify}}','{{your MarkdownAIverify}}']) {
         card.markdown_content=`---\nplay_mode: card\n---\n${marker}`;
         assert.equal((await open('card')).hasSignMarkers,true);
     }
-    for(const body of ['`{{MarkdownAIVerify}}`','```\n{{myMarkdownAIVerify}}\n```','~~~\n{{yourMarkdownAIVerify}}\n~~~','![MarkdownAIVerify:your](https://example.test/signature.webp)']) {
+    for(const body of ['`{{MarkdownAIverify}}`','```\n{{myMarkdownAIverify}}\n```','~~~\n{{yourMarkdownAIverify}}\n~~~','![MarkdownAIverify:your](https://example.test/signature.webp)']) {
         card.markdown_content=`---\nplay_mode: card\n---\n${body}`;
         assert.equal((await open('card')).hasSignMarkers,false);
     }
     for(const id of ['book','miniapp']) {
         const row=h.state.rows.find(row=>row.id===id);
-        row.markdown_content+='\n{{MarkdownAIVerify}}';
+        row.markdown_content+='\n{{MarkdownAIverify}}';
         assert.equal((await open(id)).hasSignMarkers,false);
     }
 });

@@ -4,7 +4,7 @@ import { replaceSignMarkers, signSlotKinds } from '../src/lib/signature/markers.
 import { isValidSignatureSvg, strokesToSvg } from '../src/lib/signature/signature-svg.ts';
 
 test('slots are numbered in order, typed by name, and skip code', () => {
-    const md = 'A {{MarkdownAIVerify}}\n{{myMarkdownAIVerify}} {{your MarkdownAIVerify}} {{ yourMarkdownAIVerify }}\n`{{MarkdownAIVerify}}`\n```\n{{myMarkdownAIVerify}}\n```';
+    const md = 'A {{MarkdownAIverify}}\n{{myMarkdownAIverify}} {{your MarkdownAIverify}} {{ yourMarkdownAIverify }}\n`{{MarkdownAIverify}}`\n```\n{{myMarkdownAIverify}}\n```';
     assert.deepEqual(signSlotKinds(md), ['any', 'my', 'your', 'your']);
     assert.equal(replaceSignMarkers(md, (n) => `[${n}]`).split('\n')[0], 'A [0]');
 });
@@ -19,16 +19,16 @@ test('only SVG generated from strokes is accepted', () => {
 
 test('signed slots are plain Markdown image links and are not slots any more', async () => {
     const { replaceSignedImages, signedImageMarkdown } = await import('../src/lib/signature/markers.ts');
-    const md = `{{myMarkdownAIVerify}}\n${signedImageMarkdown('your', 'https://x.test/a.webp')}`;
+    const md = `{{myMarkdownAIverify}}\n${signedImageMarkdown('your', 'https://x.test/a.webp')}`;
     assert.deepEqual(signSlotKinds(md), ['my']);
     assert.equal(replaceSignedImages(md, (u) => `<${u}>`).split('\n')[1], '<https://x.test/a.webp>');
 });
 
 test('signing a slot rewrites only that slot, and guests never sign my', async () => {
     const { signSlotInMarkdown, guestMaySign } = await import('../src/lib/signature/markers.ts');
-    const md = '{{myMarkdownAIVerify}}\n{{your MarkdownAIVerify}}\n{{your MarkdownAIVerify}}';
+    const md = '{{myMarkdownAIverify}}\n{{your MarkdownAIverify}}\n{{your MarkdownAIverify}}';
     const next = signSlotInMarkdown(md, 2, 'your', 'https://x.test/b.webp')!;
-    assert.equal(next, '{{myMarkdownAIVerify}}\n{{your MarkdownAIVerify}}\n![MarkdownAIVerify:your](https://x.test/b.webp)');
+    assert.equal(next, '{{myMarkdownAIverify}}\n{{your MarkdownAIverify}}\n![MarkdownAIverify:your](https://x.test/b.webp)');
     assert.equal(signSlotInMarkdown(md, 0, 'your', 'https://x.test/b.webp'), null);
     assert.equal(signSlotInMarkdown(md, 9, 'your', 'https://x.test/b.webp'), null);
     assert.deepEqual(['my', 'your', 'any'].map((k) => guestMaySign(k as any)), [false, true, true]);
@@ -46,18 +46,18 @@ test('stepIndex moves through the slots and wraps around', async () => {
 
 test('seals are added before their slot, left to right, and never close the slot', async () => {
     const { stampSlotInMarkdown, replaceStampImages, signatureImageUrls, nextStampSlot, isComplete } = await import('../src/lib/signature/markers.ts').then(async (m) => ({ ...m, ...(await import('../src/lib/server/markdown-verify.ts')) }));
-    const md = 'A {{your MarkdownAIVerify}}\nB {{myMarkdownAIVerify}}';
+    const md = 'A {{your MarkdownAIverify}}\nB {{myMarkdownAIverify}}';
     const one = stampSlotInMarkdown(md, 0, 'https://x.test/1.webp')!;
     const two = stampSlotInMarkdown(one, 0, 'https://x.test/2.webp')!;
-    assert.equal(two, 'A ![MarkdownAIVerify:stamp](https://x.test/1.webp) ![MarkdownAIVerify:stamp](https://x.test/2.webp) {{your MarkdownAIVerify}}\nB {{myMarkdownAIVerify}}');
+    assert.equal(two, 'A ![MarkdownAIverify:stamp](https://x.test/1.webp) ![MarkdownAIverify:stamp](https://x.test/2.webp) {{your MarkdownAIverify}}\nB {{myMarkdownAIverify}}');
     assert.deepEqual(signSlotKinds(two), ['your', 'my']);
     assert.equal(stampSlotInMarkdown(md, 5, 'https://x.test/1.webp'), null);
-    assert.deepEqual(replaceStampImages(two, (u) => `<${u}>`).split('\n')[0], 'A <https://x.test/1.webp> <https://x.test/2.webp> {{your MarkdownAIVerify}}');
+    assert.deepEqual(replaceStampImages(two, (u) => `<${u}>`).split('\n')[0], 'A <https://x.test/1.webp> <https://x.test/2.webp> {{your MarkdownAIverify}}');
     assert.deepEqual(signatureImageUrls(two), ['https://x.test/1.webp', 'https://x.test/2.webp']);
     assert.ok(!isComplete(two));
     // a guest skips `my` and takes the next slot they may fill
-    assert.deepEqual(nextStampSlot('{{myMarkdownAIVerify}} {{MarkdownAIVerify}}', (k) => k !== 'my'), { slot: 1, kind: 'any' });
-    assert.equal(nextStampSlot('{{myMarkdownAIVerify}}', (k) => k !== 'my'), null);
+    assert.deepEqual(nextStampSlot('{{myMarkdownAIverify}} {{MarkdownAIverify}}', (k) => k !== 'my'), { slot: 1, kind: 'any' });
+    assert.equal(nextStampSlot('{{myMarkdownAIverify}}', (k) => k !== 'my'), null);
 });
 
 test('only the seal SVG dialect is accepted', async () => {

@@ -4,11 +4,12 @@
     import { onMount } from 'svelte';
     import { page } from '$app/state';
     import SignNavigator from '$lib/signature/SignNavigator.svelte';
+    import { hasFields } from '$lib/signature/fields';
 
     let { data } = $props();
     let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || DEFAULT_ACTIVE_PLUGIN_IDS);
 
-    // Signing: anyone with the link signs your / MarkdownAIVerify slots; `my` is the owner's (logged in)
+    // Signing: anyone with the link signs your / MarkdownAIverify slots; `my` is the owner's (logged in)
     let markdown = $state(data.markdown);
     $effect(() => { markdown = data.markdown; });
     let version = $state<number | null>(null);
@@ -17,7 +18,7 @@
     const signUrl = `/hypercard/${encodeURIComponent(data.id)}/sign`;
 
     onMount(async () => {
-        if (!/\{\{\s*(my|your\s*)?MarkdownAIVerify\s*\}\}/.test(markdown)) return;
+        if (!/\{\{\s*(my|your\s*)?MarkdownAIverify\s*\}\}/.test(markdown) && !hasFields(markdown)) return;
         try {
             const res = await fetch(signUrl);
             if (!res.ok) return;
@@ -38,6 +39,18 @@
             });
             const out = await res.json();
             if (!res.ok) throw new Error(out.error || 'sign failed');
+            version = out.version;
+            return out.markdown as string;
+        },
+        canFill: () => true,
+        fill: async (index: number, value: string | boolean) => {
+            const res = await fetch(signUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ field: true, index, value })
+            });
+            const out = await res.json();
+            if (!res.ok) throw new Error(out.error || 'save failed');
             version = out.version;
             return out.markdown as string;
         }
