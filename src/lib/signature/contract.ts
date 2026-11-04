@@ -10,6 +10,17 @@ function hasFrontmatterKey(markdown: string, key: string): boolean {
     return !!match && match[1].split('\n').some((line) => line.startsWith(`${key}:`));
 }
 
+/** Template, contract or certificate: only MarkdownAI markers, signed images or the contract / certificate frontmatter count, never an ordinary HTML form */
+export function isVerifyDocument(markdown: string): boolean {
+    return (
+        signSlotKinds(markdown).length > 0 ||
+        hasFields(markdown) ||
+        signatureImageUrls(markdown).length > 0 ||
+        hasFrontmatterKey(markdown, 'contract_source_id') ||
+        hasFrontmatterKey(markdown, 'certificate_issuance_id')
+    );
+}
+
 /** Has a variable, is not a contract or certificate, and has nothing signed yet */
 export function isTemplate(markdown: string): boolean {
     if (!signSlotKinds(markdown).length && !hasFields(markdown)) return false;

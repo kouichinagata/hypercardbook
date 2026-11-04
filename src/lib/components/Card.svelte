@@ -2,8 +2,10 @@
     import { marked } from 'marked';
     import { onDestroy, onMount } from 'svelte';
     import { browser } from '$app/environment';
+    import './markdown-verify.css';
     import SignaturePad from '$lib/signature/SignaturePad.svelte';
     import { replaceSignedImages, replaceStampImages, isComplete, signSlotKinds, replaceSignMarkers, type SignKind } from '$lib/signature/markers';
+    import { isVerifyDocument } from '$lib/signature/contract';
     import { replaceFieldMarkers, validateInput, scanFields, type FieldMarker } from '$lib/signature/fields';
 
     let {
@@ -359,6 +361,9 @@
         return `<span class="sign-slot sign-pending" data-slot="${slot}" data-signable="${signable}" title="${title}">✍ sign here</span>`;
     }
 
+    // Templates, contracts and certificates get the business-document theme; an ordinary card (even with its own HTML form) does not
+    let verifyDoc = $derived(isVerifyDocument(markdown));
+
     let cardBodyHtml = $derived.by(() => {
         if (!markdown) return '';
         // Fields are numbered on the whole Markdown, as the server does
@@ -379,7 +384,8 @@
             return line;
         }).join('\n');
 
-        processed = processed.replace(/\n{2,}/g, (match: string, offset: number, string: string) => {
+        // A Verify document spaces its blocks with CSS margins, not with injected <br>
+        if (!verifyDoc) processed = processed.replace(/\n{2,}/g, (match: string, offset: number, string: string) => {
             const before = string.substring(0, offset).trimEnd();
             const after = string.substring(offset + match.length).trimStart();
             if (before.endsWith('>') || after.startsWith('<') || after === '') {
@@ -516,7 +522,11 @@
         <div class="card-webview-frame" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} style={!['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? `background-color: ${cardThemeColor};` : ''} class:embed-mode={isEmbed}>
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <div class="card-webview-body markdown-body" onclick={handleBodyClick}>
-                {@html cardBodyHtml}
+                {#if verifyDoc}
+                    <div class="markdown-verify">{@html cardBodyHtml}</div>
+                {:else}
+                    {@html cardBodyHtml}
+                {/if}
             </div>
         </div>
     </div>

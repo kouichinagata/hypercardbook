@@ -1,0 +1,178 @@
+/* MarkdownAI Verify — Business Document Theme
+   Scope: .markdown-verify wraps the Marked output of a template, contract or certificate (see Card.svelte).
+   No document-specific markup is required. */
+
+.markdown-verify {
+  --mv-ink: #17263d;
+  --mv-text: #273346;
+  --mv-muted: #637186;
+  --mv-accent: #ae8749;
+  --mv-line: #dce3ec;
+  --mv-soft: #f3f6fa;
+  --mv-paper: #fff;
+  box-sizing: border-box;
+  width: min(100%, 860px);
+  margin: 24px auto;
+  padding: clamp(24px, 5vw, 60px);
+  color: var(--mv-text);
+  background: var(--mv-paper);
+  border: 1px solid var(--mv-line);
+  border-top: 5px solid var(--mv-ink);
+  border-radius: 5px;
+  box-shadow: 0 12px 36px rgba(23,38,61,.09);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.markdown-verify *, .markdown-verify *::before, .markdown-verify *::after { box-sizing: border-box; }
+.markdown-verify > :first-child { margin-top: 0; }
+.markdown-verify > :last-child { margin-bottom: 0; }
+.markdown-verify h1, .markdown-verify h2, .markdown-verify h3,
+.markdown-verify h4, .markdown-verify h5, .markdown-verify h6 {
+  color: var(--mv-ink);
+  line-height: 1.5;
+  font-weight: 700;
+  break-after: avoid;
+}
+.markdown-verify h1 {
+  margin: 0 0 34px;
+  padding: 0 0 19px;
+  border-bottom: 2px solid var(--mv-accent);
+  text-align: center;
+  font-size: clamp(23px, 3vw, 29px);
+  letter-spacing: .12em;
+}
+.markdown-verify h2 {
+  margin: 38px 0 14px;
+  padding: 0 0 8px 12px;
+  border-left: 4px solid var(--mv-accent);
+  border-bottom: 1px solid var(--mv-line);
+  font-size: 18px;
+  letter-spacing: .035em;
+}
+.markdown-verify h3 { margin: 26px 0 9px; font-size: 15.5px; }
+.markdown-verify h4, .markdown-verify h5, .markdown-verify h6 { margin: 20px 0 8px; font-size: 14px; }
+.markdown-verify p { margin: 0 0 14px; }
+.markdown-verify strong { color: var(--mv-ink); font-weight: 750; }
+.markdown-verify em { font-style: italic; }
+.markdown-verify small { color: var(--mv-muted); }
+.markdown-verify a { color: #285784; text-decoration: underline; text-underline-offset: 3px; }
+.markdown-verify ul, .markdown-verify ol { margin: 10px 0 18px; padding-left: 1.8em; }
+.markdown-verify li { padding-left: .15em; margin: 4px 0; }
+.markdown-verify li > ul, .markdown-verify li > ol { margin: 4px 0 8px; }
+.markdown-verify blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  color: var(--mv-text);
+  background: var(--mv-soft);
+  border-left: 3px solid var(--mv-accent);
+}
+.markdown-verify blockquote > :last-child { margin-bottom: 0; }
+.markdown-verify hr { border: 0; border-top: 1px solid var(--mv-line); margin: 30px 0; }
+.markdown-verify table {
+  width: 100%;
+  margin: 18px 0 26px;
+  border-collapse: collapse;
+  border-spacing: 0;
+  font-size: .94em;
+  line-height: 1.65;
+  font-variant-numeric: tabular-nums;
+}
+.markdown-verify thead { background: var(--mv-ink); color: #fff; }
+.markdown-verify th, .markdown-verify td {
+  padding: 11px 13px;
+  border: 1px solid var(--mv-line);
+  text-align: left;
+  vertical-align: top;
+}
+.markdown-verify thead th { color: #fff; font-weight: 650; border-color: #46556a; }
+.markdown-verify tbody tr:nth-child(even) { background: #f8fafc; }
+.markdown-verify tbody tr:last-child { border-bottom: 2px solid var(--mv-line); }
+.markdown-verify td strong { font-size: 1.08em; }
+.markdown-verify code {
+  padding: .12em .3em;
+  background: var(--mv-soft);
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: .92em;
+}
+.markdown-verify pre {
+  margin: 16px 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  background: var(--mv-soft);
+  border: 1px solid var(--mv-line);
+  border-radius: 4px;
+}
+.markdown-verify pre code { padding: 0; background: transparent; }
+.markdown-verify img, .markdown-verify svg { max-width: 100%; height: auto; }
+/* Optional semantic hooks for Verify UI; no changes required in Markdown templates. */
+.markdown-verify .verify-signature,
+.markdown-verify .verify-seal,
+.markdown-verify [data-verify-signature],
+.markdown-verify [data-verify-seal] { display: inline-block; max-width: 100%; margin: 12px 0; break-inside: avoid; }
+.markdown-verify .verify-signature img,
+.markdown-verify .verify-seal img { object-fit: contain; }
+.markdown-verify .verify-total,
+.markdown-verify [data-verify-total] {
+  color: var(--mv-ink);
+  font-size: 1.45em;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+}
+
+/* The app's own markup: signed slots, seals and form fields (Card.svelte).
+   Prefixed with .card-webview-body so they win over the card's generic img / slot rules. */
+.card-webview-body .markdown-verify .sign-signed,
+.card-webview-body .markdown-verify .sign-stamp { max-width: 100%; margin-top: 12px; margin-bottom: 12px; background: transparent; break-inside: avoid; }
+.card-webview-body .markdown-verify .sign-slot img { display: block; margin: 0; border-radius: 0; box-shadow: none; object-fit: contain; }
+.card-webview-body .markdown-verify .field-slot { vertical-align: baseline; }
+
+@media screen and (max-width: 600px) {
+  .markdown-verify { margin: 0 auto; padding: 22px 17px; border-left: 0; border-right: 0; box-shadow: none; font-size: 13px; }
+  .markdown-verify h1 { margin-bottom: 24px; font-size: 22px; }
+  .markdown-verify h2 { margin-top: 28px; font-size: 16px; }
+  .markdown-verify th, .markdown-verify td { padding: 7px 6px; }
+  .markdown-verify table { font-size: 11px; }
+}
+@page { size: A4; margin: 15mm; }
+@media print {
+  .markdown-verify {
+    width: 100%; max-width: none; margin: 0; padding: 0;
+    border: 0; border-radius: 0; box-shadow: none;
+    font-size: 10pt; line-height: 1.65;
+  }
+  .markdown-verify h1 { font-size: 18pt; margin-bottom: 22px; }
+  .markdown-verify h2 { font-size: 13pt; margin-top: 24px; }
+  .markdown-verify h3 { font-size: 11pt; }
+  .markdown-verify table { font-size: 9pt; }
+  .markdown-verify thead { display: table-header-group; }
+  .markdown-verify tr, .markdown-verify img, .markdown-verify svg,
+  .markdown-verify blockquote, .markdown-verify .verify-signature,
+  .markdown-verify .verify-seal { break-inside: avoid; }
+  .markdown-verify h1, .markdown-verify h2, .markdown-verify h3 { break-after: avoid; }
+  .markdown-verify a { color: inherit; text-decoration: none; }
+  .markdown-verify button, .markdown-verify [data-verify-action] { display: none !important; }
+
+  /* Operation UI only: Confirm buttons and the "sign here" placeholder go (the placeholder keeps its space).
+     Entered values stay: inputs, text areas, check boxes and radios are printed as they are. */
+  .card-webview-body .markdown-verify .field-ok { display: none !important; }
+  .card-webview-body .markdown-verify .sign-pending { visibility: hidden; }
+  .card-webview-body .markdown-verify .field-input { background: transparent; color: #000; -webkit-text-fill-color: #000; opacity: 1; border: 0; border-bottom: 1px solid #000; border-radius: 0; padding: 0 2px; }
+  .card-webview-body .markdown-verify .field-toggle { opacity: 1; }
+
+  /* The card's frame is a screen layout (full viewport, clipped, themed): let the document flow across pages */
+  .card-reader-container:has(.markdown-verify),
+  .card-webview-frame-wrapper:has(.markdown-verify),
+  .card-webview-frame:has(.markdown-verify) {
+    display: block !important; width: auto !important; height: auto !important; min-height: 0 !important;
+    overflow: visible !important; padding: 0 !important; margin: 0 !important; background: #fff !important; box-shadow: none !important;
+  }
+  .card-reader-container:has(.markdown-verify) .reader-header-bar,
+  .card-reader-container:has(.markdown-verify) .card-action-container { display: none !important; }
+}

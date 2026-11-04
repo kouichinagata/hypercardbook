@@ -64,6 +64,18 @@ test('a template has variables and is not a contract, a certificate, or signed',
     assert.equal(isTemplate(md), false);
 });
 
+test('only MarkdownAI documents are Verify documents, never an ordinary HTML form card', async () => {
+    const { isVerifyDocument } = await import('../src/lib/signature/contract.ts');
+    assert.equal(isVerifyDocument('<form><input type="text" name="a"><input type="checkbox"><button>Send</button></form>'), false);
+    assert.equal(isVerifyDocument('---\nplay_mode: card\n---\n# Survey\n<input type="radio"> a\n`{{MarkdownAIinput}}`\n```\n{{MarkdownAIverify}}\n```'), false);
+    assert.equal(isVerifyDocument('plain text'), false);
+    assert.equal(isVerifyDocument('{{MarkdownAIinput:xxxx}}'), true);
+    assert.equal(isVerifyDocument('{{your MarkdownAIverify}}'), true);
+    assert.equal(isVerifyDocument('![MarkdownAIverify:my](https://x.test/a.webp)'), true);
+    assert.equal(isVerifyDocument('---\ncontract_source_id: t\n---\nAll fields are confirmed'), true);
+    assert.equal(isVerifyDocument('---\ncertificate_issuance_id: c\n---\nx'), true);
+});
+
 test('a contract stamp is the Japan time to the minute', async () => {
     const { contractStamp } = await import('../src/lib/signature/contract.ts');
     assert.equal(contractStamp(new Date('2026-11-03T06:20:30Z')), '2026-11-03 15:20');
