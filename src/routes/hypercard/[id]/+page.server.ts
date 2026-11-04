@@ -5,7 +5,6 @@ import { servedOnMarkdown, viewerRedirect, type ContentRow } from '$lib/content-
 import { parseBookFrontmatter } from '$lib/book-frontmatter';
 import { isTemplate } from '$lib/signature/contract';
 import { createContract } from '$lib/server/contracts';
-import { loadUnlistedMiniApp } from '$lib/server/unlisted-mini-app';
 import type { PageServerLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
 import fs from 'fs';
@@ -85,9 +84,8 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch, setHead
             query.eq('slug', id);
         }
 
-        const { data: found, error: dbError } = await query.single();
-        // A non-public MiniApp is still served to anyone who knows its UUID link (it just is not listed publicly).
-        const data = found ?? (isUuid ? await loadUnlistedMiniApp(id) : null);
+        // A non-public document is for its owner only (PapeRobo opens it with a ticket, see sharedDocument)
+        const { data, error: dbError } = await query.single();
 
         if (!data) {
             console.error(`Book not found in DB for ID/slug "${id}":`, dbError);
@@ -135,6 +133,8 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch, setHead
             isEmbed,
             // Only MiniApps get the PapeRobo Ask API (paperobo.ask)
             isMiniApp: isMiniApp(parseBookFrontmatter(markdownContent).playMode),
-            currentUserId: ownerId
+            currentUserId: ownerId,
+            // Sent back with signatures so the signer is known (see ticketViewer in sign/+server.ts)
+            shareTicket: shareToken || ''
         };
 };

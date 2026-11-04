@@ -9,6 +9,7 @@ import { setFieldInMarkdown } from '../signature/fields.ts';
 import { isValidSignatureSvg } from '../signature/signature-svg.ts';
 import { isValidStampSvg } from '../signature/stamp-svg.ts';
 import { isComplete, recordCompletion } from './markdown-verify.ts';
+import { copySignedContractToSigners } from './contracts.ts';
 
 // Signing is done here, in one place: the owner (logged in), a guest with a sign link, and PapeRobo all go through applySignature.
 const BUCKET = 'HyperCardBookBucket';
@@ -119,6 +120,7 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
             .maybeSingle();
         if (writeError || !saved) throw new Error(writeError?.message || 'conflict');
         await recordCompletion(admin, book.id, after);
+        await copySignedContractToSigners(admin, book.id, after);
         return { ok: true, markdown: after, version: saved.version };
     } catch (err) {
         console.error('[signature] failed, rolling back:', err);
@@ -221,6 +223,7 @@ export async function applyStamp(admin: SupabaseClient, input: { bookId: string;
             .maybeSingle();
         if (writeError || !saved) throw new Error(writeError?.message || 'conflict');
         await recordCompletion(admin, book.id, after);
+        await copySignedContractToSigners(admin, book.id, after);
         return { ok: true, markdown: after, version: saved.version, slot: target.slot, mode, complete: isComplete(after), remaining: signSlotKinds(after).length };
     } catch (err) {
         console.error('[stamp] failed, rolling back:', err);

@@ -26,6 +26,8 @@ async function harness(t) {
         export function adminClient(){return createClient()}
         export function certificateState(){throw new Error('Unexpected certificate in ordinary document test')}
         export function issueCertificate(){throw new Error('Unexpected certificate issuance in ordinary document test')}
+        export function isComplete(){return false}
+        export function createContract(){throw new Error('Unexpected contract in ordinary document test')}
         export function applyStamp(){throw new Error('Unexpected stamp in ordinary document test')}
         export function applySignature(){throw new Error('Unexpected signature in ordinary document test')}
 
@@ -38,7 +40,7 @@ async function harness(t) {
         return path.join(dir,destination);
     }
     const module=await compile('src/lib/server/paperoboDocuments.ts','documents.mjs',{'./certificates.ts':fixture,'$env/dynamic/private':fixture,'$env/dynamic/public':fixture,'@supabase/supabase-js':fixture,'$app/environment':fixture,'$lib/content-origin':path.join(root,'src/lib/content-origin.ts'),'$lib/book-frontmatter':path.join(root,'src/lib/book-frontmatter.ts'),'./paperoboDocumentTicket':path.join(root,'src/lib/server/paperoboDocumentTicket.ts')});
-    const route=await compile('src/routes/api/paperobo/documents/+server.ts','route.mjs',{'$lib/plan':path.join(root,'src/lib/plan.ts'),'$lib/server/certificates':fixture,'$lib/server/signatures':fixture,'$lib/server/paperoboDocuments':module,'$lib/signature/markers':path.join(root,'src/lib/signature/markers.ts')});
+    const route=await compile('src/routes/api/paperobo/documents/+server.ts','route.mjs',{'$lib/plan':path.join(root,'src/lib/plan.ts'),'$lib/server/certificates':fixture,'$lib/server/signatures':fixture,'$lib/server/contracts':fixture,'$lib/server/markdown-verify':fixture,'$lib/signature/contract':path.join(root,'src/lib/signature/contract.ts'),'$lib/server/paperoboDocuments':module,'$lib/signature/markers':path.join(root,'src/lib/signature/markers.ts')});
     const handler=(await import(pathToFileURL(route).href)).POST;
     const api=(body,secret='test-only-key')=>handler({request:new Request('https://www.hypercardbook.org/api/paperobo/documents',{method:'POST',headers:{authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify(body)}),url:new URL('https://www.hypercardbook.org/api/paperobo/documents')});
     return {state,api,documents:await import(pathToFileURL(module).href)};
@@ -70,6 +72,19 @@ test('private previews use expiring grants; download/add require current publica
     const copy=h.state.inserts[0];assert.equal(copy.user_id,owner);assert.equal(copy.is_public,false);assert.equal(copy.published_at,null);assert.match(copy.markdown_content,/is_public: false/);assert.doesNotMatch(copy.markdown_content,/id: public/);
     h.state.rows.find(r=>r.id==='public').is_public=false;
     await assert.rejects(h.api({action:'download',id:'public',userId:owner}),e=>e.status===404);
+});
+
+test('add saves the copy that was sent, even when the original is private or gone',async t=>{
+    const h=await harness(t);
+    // "book" is the owner's private book; "gone" does not exist any more. The recipient adds the source that came with the attachment.
+    for(const id of ['book','gone']){
+        const before=h.state.inserts.length;
+        const result=await(await h.api({action:'add',id,userId:other,source:'---\nid: '+id+'\nplay_mode: book\nis_public: true\n---\nSent body',title:'Sent title'})).json();
+        assert.equal(result.ok,true);
+        const copy=h.state.inserts[before];assert.equal(copy.user_id,other);assert.equal(copy.title,'Sent title');assert.equal(copy.is_public,false);assert.match(copy.markdown_content,/Sent body/);assert.match(copy.markdown_content,/is_public: false/);assert.doesNotMatch(copy.markdown_content,new RegExp('id: '+id+'\\n'));
+    }
+    await assert.rejects(h.api({action:'add',id:'book',userId:other,source:'x'.repeat(1_000_001)}),e=>e.status===400);
+    await assert.rejects(h.api({action:'add',id:'book',userId:other,source:'---\nplay_mode: stack\n---\nx'}),e=>e.status===400);
 });
 
 test('open reports unsigned signature slots using the existing marker parser, only for ordinary Cards',async t=>{

@@ -6,7 +6,19 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { adminClient, applyStamp, applySignature } from '$lib/server/signatures';
+import { createContract } from '$lib/server/contracts';
+import { isContract } from '$lib/signature/contract';
 import { documentSecret, documentClient, accessibleDocument, documentKind, documentLinks } from '$lib/server/paperoboDocuments';
+/** A private copy of a document on the user's shelf; the copy has its own id, so editing it never changes the original */
+async function addToShelf(client: ReturnType<typeof documentClient>, userId: string, doc: { title: string; markdown_content: string; author?: string; cover_image?: string; theme_color?: string }): Promise<string> {
+    const slug = `chat-${randomUUID()}`;
+    let markdown = doc.markdown_content;
+    if (/^---\s*\n/.test(markdown)) markdown = markdown.replace(/^---\s*\n([\s\S]*?)\n---/, (_, fm: string) => `---\nid: ${slug}\nis_public: false\n${fm.split('\n').filter(line => !/^(id|is_public|published_at):/.test(line)).join('\n')}\n---`);
+    else markdown = `---\nid: ${slug}\nplay_mode: book\nis_public: false\n---\n${markdown}`;
+    const { data, error: dbError } = await client.from('books').insert({ user_id: userId, slug, title: doc.title, author: doc.author || null, cover_image: doc.cover_image || null, theme_color: doc.theme_color || null, markdown_content: markdown, is_public: false, published_at: null }).select('id').single();
+    if (dbError || !data) throw error(502, 'HyperCardBookに追加できませんでした。');
+    return data.id;
+}
 export const POST: RequestHandler = async ({ request, url }) => {
     const expected = Buffer.from(documentSecret());
     const received = Buffer.from((request.headers.get('authorization') || '').replace(/^Bearer\s+/i, ''));
@@ -36,6 +48,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
     // selectedBy is supplied only by PapeRobo after it verifies the saved attachment and chat membership.
     const selectedBy = ['open', 'stamp', 'download', 'sign-certificate'].includes(body.action) ? (body.selectedBy || body.userId) : body.userId;
     if (typeof selectedBy !== 'string' || !/^[0-9a-f-]{36}$/i.test(selectedBy)) throw error(400, 'Invalid sharing user');
+    // "Add" saves the copy that was sent. PapeRobo checked the attachment and the chat membership, so the original is not read:
+    // it may have changed or be gone, and it may be private
+    if (body.action === 'add' && typeof body.source === 'string') {
+        if (body.source.length > 1_000_000 || body.source.includes('\0') || !documentKind(body.source)) throw error(400, 'Invalid document.');
+        const title = typeof body.title === 'string' ? body.title.trim().slice(0, 255) : '';
+        return json({ ok: true, id: await addToShelf(client, body.userId, { title: title || 'Untitled', markdown_content: body.source }) });
+    }
     const row = await accessibleDocument(body.id, selectedBy);
     if (body.action === 'issue-certificate' || body.action === 'read-contract') {
         const { data, error: userError } = await adminClient().auth.admin.getUserById(body.userId);
@@ -51,7 +70,16 @@ export const POST: RequestHandler = async ({ request, url }) => {
         return json({ ok: true, document: await issueCertificate(adminClient(), row, body.userId) }, { headers: { 'Cache-Control': 'no-store' } });
     }
     const certificate = body.certificateId ? await certificateState(adminClient(), row.id, row.markdown_content, body.certificateId) : null;
-    if (body.action === 'read' || body.action === 'read-contract') {
+    if (body.action === 'read-contract') {
+        // The template is never sent: the sender's own contract is made from it, and that is what the recipient signs
+        if (row.markdown_content.length > 1_000_000) throw error(413, '資料の本文は100万文字以内にしてください。');
+        if (isContract(row.markdown_content)) return json({ ok: true, document: { id: row.id, title: row.title, kind: 'card', source: row.markdown_content, isPublic: false } });
+        const contractId = await createContract(adminClient(), body.userId, row.id);
+        const { data: contract } = contractId ? await client.from('books').select('id, title, markdown_content').eq('id', contractId).single() : { data: null };
+        if (!contract) throw error(503, 'Could not create the contract.');
+        return json({ ok: true, document: { id: contract.id, title: contract.title, kind: 'card', source: contract.markdown_content, isPublic: false } });
+    }
+    if (body.action === 'read') {
         if (row.markdown_content.length > 1_000_000) throw error(413, '資料の本文は100万文字以内にしてください。');
         return json({ ok: true, document: { id: row.id, title: row.title, kind: documentKind(row.markdown_content), source: row.markdown_content, isPublic: row.is_public === true } });
     }
@@ -73,7 +101,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
         return json({
             ok: true,
             ...(progress ? { certificate: progress } : {}),
-            ...documentLinks(row, selectedBy, url, true, body.certificateId),
+            ...documentLinks(row, selectedBy, url, true, body.certificateId, body.userId),
             isPublic: row.is_public === true,
             hasSignMarkers: documentKind(row.markdown_content) === 'card' && hasSignMarkers(row.markdown_content)
         }, { headers: { 'Cache-Control': 'no-store' } });
@@ -94,13 +122,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
         }
         if (row.is_public !== true) throw error(403, '公開資料のみ保存できます。');
         if (body.action === 'download') return json({ ok: true, source: row.markdown_content, title: row.title });
-        const slug = `chat-${randomUUID()}`;
-        let markdown = row.markdown_content;
-        if (/^---\s*\n/.test(markdown)) markdown = markdown.replace(/^---\s*\n([\s\S]*?)\n---/, (_, fm: string) => `---\nid: ${slug}\nis_public: false\n${fm.split('\n').filter(line => !/^(id|is_public|published_at):/.test(line)).join('\n')}\n---`);
-        else markdown = `---\nid: ${slug}\nplay_mode: book\nis_public: false\n---\n${markdown}`;
-        const { data, error: dbError } = await client.from('books').insert({ user_id: body.userId, slug, title: row.title, author: row.author || null, cover_image: row.cover_image || null, theme_color: row.theme_color || null, markdown_content: markdown, is_public: false, published_at: null }).select('id').single();
-        if (dbError || !data) throw error(502, 'HyperCardBookに追加できませんでした。');
-        return json({ ok: true, id: data.id });
+        return json({ ok: true, id: await addToShelf(client, body.userId, row) });
     }
     throw error(400, 'Invalid action');
 };

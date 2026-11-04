@@ -34,7 +34,7 @@
         sign: async (slot: number, kind: string, result: { svg: string }) => {
             const res = await fetch(signUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...(data.shareTicket ? { 'x-paperobo-share': data.shareTicket } : {}) },
                 body: JSON.stringify({ slot, kind, baseVersion: version, ...result })
             });
             const out = await res.json();
@@ -46,7 +46,7 @@
         fill: async (index: number, value: string | boolean) => {
             const res = await fetch(signUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...(data.shareTicket ? { 'x-paperobo-share': data.shareTicket } : {}) },
                 body: JSON.stringify({ field: true, index, value })
             });
             const out = await res.json();

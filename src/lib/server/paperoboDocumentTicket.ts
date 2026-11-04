@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-export type DocumentTicket = { id: string; selectedBy: string; purpose: 'cover' | 'preview'; expires: number; certificateId?: string };
+export type DocumentTicket = { id: string; selectedBy: string; purpose: 'cover' | 'preview'; expires: number; certificateId?: string; viewer?: string };
 const mac = (value: string, secret: string) => createHmac('sha256', secret).update('paperobo-preview-v1:' + value).digest('base64url');
 export function signDocumentTicket(value: DocumentTicket, secret: string) {
     if (!secret) throw new Error('Integration is not configured.');
@@ -14,6 +14,6 @@ export function verifyDocumentTicket(token: string, secret: string, purpose: Doc
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
     try {
         const value = JSON.parse(Buffer.from(payload, 'base64url').toString());
-        return typeof value.id === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value.id) && typeof value.selectedBy === 'string' && value.purpose === purpose && Number.isFinite(value.expires) && value.expires > now ? value : null;
+        return typeof value.id === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value.id) && typeof value.selectedBy === 'string' && value.purpose === purpose && (value.viewer === undefined || (typeof value.viewer === 'string' && /^[0-9a-f-]{36}$/i.test(value.viewer))) && Number.isFinite(value.expires) && value.expires > now ? value : null;
     } catch { return null; }
 }

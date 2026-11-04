@@ -76,6 +76,14 @@ test('only MarkdownAI documents are Verify documents, never an ordinary HTML for
     assert.equal(isVerifyDocument('---\ncertificate_issuance_id: c\n---\nx'), true);
 });
 
+test('a completed contract becomes the signer\'s private copy, keeping its signatures', async () => {
+    const { signedCopyMarkdown, isContract } = await import('../src/lib/signature/contract.ts');
+    const md = '---\nid: contract-1\nis_public: true\npublished_at: 2026-01-01\ncontract_source_id: T1\ntitle: T\n---\n![MarkdownAIverify:my](https://x.test/a.webp)';
+    assert.equal(signedCopyMarkdown(md, 'signed-1'), '---\nid: signed-1\nis_public: false\ncontract_source_id: T1\ntitle: T\n---\n![MarkdownAIverify:my](https://x.test/a.webp)');
+    assert.equal(isContract(md), true);
+    assert.equal(isContract('{{MarkdownAIverify}}'), false);
+});
+
 test('a contract stamp is the Japan time to the minute', async () => {
     const { contractStamp } = await import('../src/lib/signature/contract.ts');
     assert.equal(contractStamp(new Date('2026-11-03T06:20:30Z')), '2026-11-03 15:20');

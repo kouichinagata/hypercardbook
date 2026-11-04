@@ -39,12 +39,9 @@ test('urls can be built for a local origin', () => {
     assert.equal(absoluteCoverImage('/a.png', 'http://localhost:5173'), 'http://localhost:5173/a.png');
 });
 
-import { servesUnlistedMiniApp, isBookUuid } from '../src/lib/unlisted-mini-app.ts';
+import { isBookUuid } from '../src/lib/unlisted-mini-app.ts';
 
-test('unlisted MiniApps are served only by UUID', () => {
+test('a book id is a UUID, anything else is a slug', () => {
     const uuid = '0b6f5c1e-1111-4222-8333-444455556666';
     assert.ok(isBookUuid(uuid) && !isBookUuid('minutes') && !isBookUuid(''));
-    assert.ok(servesUnlistedMiniApp(uuid, 'miniapp'));
-    assert.ok(!servesUnlistedMiniApp('minutes', 'miniapp'));
-    assert.ok(!servesUnlistedMiniApp(uuid, 'card') && !servesUnlistedMiniApp(uuid, 'book') && !servesUnlistedMiniApp(uuid, undefined));
 });

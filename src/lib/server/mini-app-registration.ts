@@ -2,18 +2,18 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { MAX_MINI_APPS, validMiniAppRef } from '../mini-app.ts';
 import { parseBookFrontmatter } from '../book-frontmatter.ts';
 import { isMiniApp } from '../play-mode.ts';
-import { isBookUuid, servesUnlistedMiniApp } from '../unlisted-mini-app.ts';
+import { isBookUuid } from '../unlisted-mini-app.ts';
 
 export type MiniAppBook = {
     id: string; slug: string | null; title: string | null; user_id: string | null;
     is_public: boolean | null; is_quark_choice: boolean | null; markdown_content: string | null;
 };
 
-// Shared by the shelf selection and URL registration. Only the URL flow accepts unlisted UUID links.
-export function miniAppRegistrationError(book: MiniAppBook | null, ref: string, userId: string, byUrl = false): string | undefined {
+// Shared by the shelf selection and URL registration. A non-public MiniApp is only its owner's.
+export function miniAppRegistrationError(book: MiniAppBook | null, ref: string, userId: string): string | undefined {
     const mode = parseBookFrontmatter(book?.markdown_content || '').playMode;
     if (!book || !isMiniApp(mode)) return `MiniApp not found: ${ref}`;
-    if (book.user_id !== userId && !book.is_public && !book.is_quark_choice && !(byUrl && servesUnlistedMiniApp(ref, mode))) {
+    if (book.user_id !== userId && !book.is_public && !book.is_quark_choice) {
         return `MiniApp is not available: ${ref}`;
     }
 }
@@ -29,7 +29,7 @@ export async function addMiniAppByRef(supabase: SupabaseClient, userId: string, 
         .select('id, slug, title, user_id, is_public, is_quark_choice, markdown_content')
         .eq(isBookUuid(ref) ? 'id' : 'slug', ref).maybeSingle();
     if (bookError) return { status: 500, error: bookError.message };
-    const invalid = miniAppRegistrationError(book, ref, userId, true);
+    const invalid = miniAppRegistrationError(book, ref, userId);
     if (invalid || !book) return { status: 400, error: invalid || 'MiniApp not found.' };
 
     const { data: rows, error: listError } = await supabase.from('mini_apps')

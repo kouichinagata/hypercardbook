@@ -6,17 +6,15 @@ import { addMiniAppByRef, miniAppRegistrationError, type MiniAppBook } from '../
 const id = '0b6f5c1e-1111-4222-8333-444455556666';
 const book: MiniAppBook = { id, slug: 'hello', title: 'Hello', user_id: 'owner', is_public: true, is_quark_choice: false, markdown_content: '---\nplay_mode: miniapp\n---\nHello' };
 
-test('shelf and URL additions share validation; only known UUID links grant unlisted access', () => {
+test('a non-public MiniApp belongs to its owner alone, even by UUID link', () => {
     assert.equal(miniAppRegistrationError(book, 'hello', 'viewer'), undefined);
     const privateBook = { ...book, is_public: false };
     assert.equal(miniAppRegistrationError(privateBook, 'hello', 'owner'), undefined);
     assert.match(miniAppRegistrationError(privateBook, 'hello', 'viewer')!, /not available/);
     assert.match(miniAppRegistrationError(privateBook, id, 'viewer')!, /not available/);
-    assert.match(miniAppRegistrationError(privateBook, 'hello', 'viewer', true)!, /not available/);
-    assert.equal(miniAppRegistrationError(privateBook, id, 'viewer', true), undefined);
     assert.equal(miniAppRegistrationError({ ...privateBook, is_quark_choice: true }, 'hello', 'viewer'), undefined);
     for (const candidate of [null, { ...book, markdown_content: '---\nplay_mode: card\n---' }]) {
-        assert.match(miniAppRegistrationError(candidate, id, 'viewer', true)!, /not found/);
+        assert.match(miniAppRegistrationError(candidate, id, 'viewer')!, /not found/);
     }
 });
 

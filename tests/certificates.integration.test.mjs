@@ -37,12 +37,12 @@ async function harness(t) {
  else if(op==='delete'){state.tables[table]=state.tables[table].filter(r=>!rows.includes(r));}
  return{data:structuredClone(rows),error:null};
  };
- const q={select(){return q},eq(k,v){filters.push(r=>r[k]===v);return q},neq(k,v){filters.push(r=>r[k]!==v);return q},in(k,vs){filters.push(r=>vs.includes(r[k]));return q},order(k){sort=k;return q},limit(n){count=n;return q},insert(v){op='insert';value=v;return q},update(v){op='update';value=v;return q},delete(){op='delete';return q},single(){const r=execute();return Promise.resolve({...r,data:r.data?.[0]||null})},maybeSingle(){return q.single()},then(resolve,reject){return Promise.resolve(execute()).then(resolve,reject)}};return q;
+ const q={select(){return q},eq(k,v){filters.push(r=>r[k]===v);return q},not(k,op,v){filters.push(r=>op==='is'?r[k]!==v:true);return q},neq(k,v){filters.push(r=>r[k]!==v);return q},in(k,vs){filters.push(r=>vs.includes(r[k]));return q},order(k){sort=k;return q},limit(n){count=n;return q},insert(v){op='insert';value=v;return q},update(v){op='update';value=v;return q},delete(){op='delete';return q},single(){const r=execute();return Promise.resolve({...r,data:r.data?.[0]||null})},maybeSingle(){return q.single()},then(resolve,reject){return Promise.resolve(execute()).then(resolve,reject)}};return q;
  }};
  `);
- const sources={certificates:'src/lib/server/certificates.ts',verify:'src/lib/server/markdown-verify.ts',signatures:'src/lib/server/signatures.ts',documents:'src/lib/server/paperoboDocuments.ts',route:'src/routes/api/paperobo/documents/+server.ts'};
+ const sources={certificates:'src/lib/server/certificates.ts',verify:'src/lib/server/markdown-verify.ts',signatures:'src/lib/server/signatures.ts',contracts:'src/lib/server/contracts.ts',documents:'src/lib/server/paperoboDocuments.ts',route:'src/routes/api/paperobo/documents/+server.ts'};
  const files=Object.fromEntries(Object.keys(sources).map(k=>[k,path.join(dir,k+'.mjs')]));
- const replacements={'../plan.ts':path.join(root,'src/lib/plan.ts'),'$lib/plan':path.join(root,'src/lib/plan.ts'),'$env/dynamic/private':fixture,'$env/dynamic/public':fixture,'@supabase/supabase-js':fixture,'$app/environment':fixture,'./certificates.ts':files.certificates,'./markdown-verify.ts':files.verify,'$lib/server/certificates':files.certificates,'$lib/server/signatures':files.signatures,'$lib/server/paperoboDocuments':files.documents,'$lib/signature/markers':path.join(root,'src/lib/signature/markers.ts'),'$lib/content-origin':path.join(root,'src/lib/content-origin.ts'),'$lib/book-frontmatter':path.join(root,'src/lib/book-frontmatter.ts'),'./paperoboDocumentTicket':path.join(root,'src/lib/server/paperoboDocumentTicket.ts'),'../signature/markers.ts':path.join(root,'src/lib/signature/markers.ts'),'../signature/signature-svg.ts':path.join(root,'src/lib/signature/signature-svg.ts'),'../signature/stamp-svg.ts':path.join(root,'src/lib/signature/stamp-svg.ts')};
+ const replacements={'../plan.ts':path.join(root,'src/lib/plan.ts'),'$lib/plan':path.join(root,'src/lib/plan.ts'),'$env/dynamic/private':fixture,'$env/dynamic/public':fixture,'@supabase/supabase-js':fixture,'$app/environment':fixture,'./certificates.ts':files.certificates,'./markdown-verify.ts':files.verify,'$lib/server/markdown-verify':files.verify,'$lib/server/certificates':files.certificates,'$lib/server/signatures':files.signatures,'$lib/server/contracts':files.contracts,'./contracts.ts':files.contracts,'$lib/signature/contract':path.join(root,'src/lib/signature/contract.ts'),'../signature/contract.ts':path.join(root,'src/lib/signature/contract.ts'),'$lib/server/paperoboDocuments':files.documents,'$lib/signature/markers':path.join(root,'src/lib/signature/markers.ts'),'$lib/content-origin':path.join(root,'src/lib/content-origin.ts'),'$lib/book-frontmatter':path.join(root,'src/lib/book-frontmatter.ts'),'./paperoboDocumentTicket':path.join(root,'src/lib/server/paperoboDocumentTicket.ts'),'../signature/fields.ts':path.join(root,'src/lib/signature/fields.ts'),'../signature/markers.ts':path.join(root,'src/lib/signature/markers.ts'),'../signature/signature-svg.ts':path.join(root,'src/lib/signature/signature-svg.ts'),'../signature/stamp-svg.ts':path.join(root,'src/lib/signature/stamp-svg.ts')};
  for(const [key,file]of Object.entries(sources)){
  let source=await fs.readFile(path.join(root,file),'utf8');
  for(const[from,to]of Object.entries(replacements))source=source.replaceAll("'"+from+"'",JSON.stringify(pathToFileURL(to).href));
@@ -50,7 +50,7 @@ async function harness(t) {
  }
  const route=(await import(pathToFileURL(files.route))).POST;
  const api=async body=>(await route({request:new Request('https://www.hypercardbook.org/api/paperobo/documents',{method:'POST',headers:{Authorization:'Bearer test-only-key'},body:JSON.stringify(body)}),url:new URL('https://www.hypercardbook.org/api/paperobo/documents')})).json();
- return{state,template,api,documents:await import(pathToFileURL(files.documents)),certificates:await import(pathToFileURL(files.certificates)),signatures:await import(pathToFileURL(files.signatures))};
+ return{state,template,api,documents:await import(pathToFileURL(files.documents)),certificates:await import(pathToFileURL(files.certificates)),signatures:await import(pathToFileURL(files.signatures)),contracts:await import(pathToFileURL(files.contracts))};
 }
 const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 240" width="600" height="240"><g fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1L20 20"/></g></svg>';
 const seal='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320"><circle cx="50" cy="50" r="40" fill="none" stroke="red"/></svg>';
@@ -113,8 +113,13 @@ test('contracts use ordinary attachment semantics and require real fields and a 
  h.state.users[owner].app_metadata.plan='standard';
  const before=structuredClone(h.template);
  const result=await h.api({action:'read-contract',id:'template',userId:owner});
- assert.equal(result.document.id,'template');assert.equal(result.document.certificateId,undefined);
- assert.deepEqual(h.template,before);assert.equal(h.state.tables.books.length,1);assert.equal(h.state.tables.markdown_verify.length,0);
+ // The template itself is never sent: the sender's own contract is made from it
+ assert.notEqual(result.document.id,'template');assert.equal(result.document.certificateId,undefined);assert.equal(result.document.isPublic,false);
+ assert.match(result.document.source,/contract_source_id: template/);
+ assert.deepEqual(h.template,before);assert.equal(h.state.tables.books.length,2);assert.equal(h.state.tables.markdown_verify.length,0);
+ const contract=h.state.tables.books.find(b=>b.id===result.document.id);assert.equal(contract.user_id,owner);assert.equal(contract.is_public,false);
+ // Sending an existing contract again sends that contract, not another copy
+ assert.equal((await h.api({action:'read-contract',id:contract.id,userId:owner})).document.id,contract.id);assert.equal(h.state.tables.books.length,2);
  await assert.rejects(h.api({action:'issue-certificate',id:'template',userId:owner}),e=>e.status===403);
  for(const source of ['No fields','`{{MarkdownAIverify}}`','```\n{{MarkdownAIverify}}\n```']) {
   h.template.markdown_content='---\nplay_mode: card\n---\n'+source;
@@ -124,6 +129,22 @@ test('contracts use ordinary attachment semantics and require real fields and a 
  h.state.users[owner].app_metadata.plan='free';
  for(const action of ['read-contract','issue-certificate'])await assert.rejects(h.api({action,id:'template',userId:owner,plan:'pro'}),e=>e.status===403);
  assert.equal((await h.api({action:'read',id:'template',userId:owner})).document.id,'template');
+});
+
+test('a completed contract is copied once to each other signer, privately, with the signatures',async t=>{
+ const h=await harness(t);
+ const {document:d}=await h.api({action:'read-contract',id:'template',userId:owner});
+ const client=h.signatures.adminClient();
+ const mine=await h.signatures.applySignature(client,{bookId:d.id,slot:0,kind:'my',baseVersion:1,svg,actor:{type:'owner',userId:owner}});
+ assert.equal(mine.ok,true);assert.equal(h.state.tables.books.length,2);
+ const yours=await h.signatures.applySignature(client,{bookId:d.id,slot:0,kind:'your',baseVersion:mine.version,svg,actor:{type:'guest',name:null,userId:peer}});
+ assert.equal(yours.ok,true);
+ const copies=h.state.tables.books.filter(b=>b.user_id===peer);
+ assert.equal(copies.length,1);assert.equal(copies[0].slug,`signed-${d.id}-${peer}`);assert.equal(copies[0].is_public,false);
+ assert.match(copies[0].markdown_content,/id: signed-/);assert.equal((copies[0].markdown_content.match(/MarkdownAIverify:/g)||[]).length,2);
+ assert.equal(h.state.tables.books.filter(b=>b.user_id===owner&&b.slug.startsWith('signed-')).length,0);
+ await h.contracts.copySignedContractToSigners(client,d.id,yours.markdown);
+ assert.equal(h.state.tables.books.filter(b=>b.user_id===peer).length,1);
 });
 
 test('Free hosts can sign and invite recipients without a verification record; recording follows the owner, including promotions', async t => {
