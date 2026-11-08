@@ -49,6 +49,34 @@
             }
             return sounds[i];
         }
+        // 全コマの音声を先に読み込む。初回再生で読み込み待ちが入り、音声が遅れて末尾が切れるのを防ぐ
+        function preloadAll() {
+            var waits = [];
+            data.panels.forEach(function (p, i) {
+                var a = soundAt(i);
+                if (!a || a.readyState >= 4) return;
+                waits.push(new Promise(function (resolve) {
+                    function done() {
+                        a.removeEventListener('canplaythrough', done);
+                        a.removeEventListener('error', done);
+                        resolve();
+                    }
+                    a.addEventListener('canplaythrough', done);
+                    a.addEventListener('error', done);
+                    a.load();
+                }));
+            });
+            if (!waits.length) return Promise.resolve();
+            // 読み込めない音声があっても、一定時間で再生を始める
+            return Promise.race([Promise.all(waits), new Promise(function (r) { setTimeout(r, 20000); })]);
+        }
+        var preloaded = null;
+        function ensurePreloaded() {
+            if (!preloaded) preloaded = preloadAll();
+            return preloaded;
+        }
+        ensurePreloaded();
+
         function stopSound(i) {
             var a = sounds[i];
             if (a) { a.pause(); a.currentTime = 0; }
@@ -149,17 +177,31 @@
             requestAnimationFrame(tick);
         }
 
+        var loadingAudio = false;
+        function startPlaying() {
+            playing = true;
+            playBtn.textContent = '❚❚';
+            last = performance.now();
+            syncSound(locate().idx, false);
+            requestAnimationFrame(tick);
+        }
         playBtn.addEventListener('click', function () {
-            playing = !playing;
-            playBtn.textContent = playing ? '❚❚' : '▶';
+            if (loadingAudio) return;
             if (playing) {
-                last = performance.now();
-                // 再生ボタンのクリック中に鳴らし始める（スマホは操作と同時でないと音を出せない）
-                syncSound(locate().idx, false);
-                requestAnimationFrame(tick);
-            } else {
+                playing = false;
+                playBtn.textContent = '▶';
                 pauseSound();
+                return;
             }
+            // 音声の読み込みが終わってから始める（終わっていれば、クリック中にそのまま始める）
+            var ready = hasAudio && sounds.some(function (a) { return a && a.readyState < 4; });
+            if (!ready) { startPlaying(); return; }
+            loadingAudio = true;
+            playBtn.textContent = 'Loading…';
+            ensurePreloaded().then(function () {
+                loadingAudio = false;
+                startPlaying();
+            });
         });
         var muteBtn = bar.querySelector('.sp-mute');
         if (muteBtn) {
