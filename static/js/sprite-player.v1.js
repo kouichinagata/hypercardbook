@@ -38,64 +38,76 @@
             return img;
         });
 
-        // 音声はコマごとに作り、初めて再生するときに読み込む（再生中のコマだけ鳴らす）
-        var sounds = [], curIdx = -1, muted = false;
-        function soundAt(i) {
-            var url = data.panels[i] && data.panels[i].audio;
-            if (!url) return null;
-            if (!sounds[i]) {
-                sounds[i] = new Audio(url);
-                sounds[i].preload = 'auto';
-            }
-            return sounds[i];
+        // 音声は1つの Audio 要素を使い回し、コマが替わるたびに src を差し替える。
+        // iOS は、ユーザー操作で再生を許可された要素でないと play() できないため、コマごとに別の要素を作ると途中で鳴らなくなる。
+        // 全コマの音声は先に Blob として取得しておくので、差し替えても読み込み待ちが入らない（末尾が切れない）。
+        var audio = new Audio();
+        var blobUrls = [], curIdx = -1, muted = false, unlocked = false;
+        function soundSrc(i) {
+            var p = data.panels[i];
+            if (!p || !p.audio) return null;
+            return blobUrls[i] || p.audio;
         }
-        // 全コマの音声を先に読み込む。初回再生で読み込み待ちが入り、音声が遅れて末尾が切れるのを防ぐ
         function preloadAll() {
-            var waits = [];
-            data.panels.forEach(function (p, i) {
-                var a = soundAt(i);
-                if (!a || a.readyState >= 4) return;
-                waits.push(new Promise(function (resolve) {
-                    function done() {
-                        a.removeEventListener('canplaythrough', done);
-                        a.removeEventListener('error', done);
-                        resolve();
-                    }
-                    a.addEventListener('canplaythrough', done);
-                    a.addEventListener('error', done);
-                    a.load();
-                }));
+            var cache = {};
+            var jobs = data.panels.map(function (p, i) {
+                if (!p.audio) return Promise.resolve();
+                if (!cache[p.audio]) {
+                    cache[p.audio] = fetch(p.audio, { mode: 'cors' })
+                        .then(function (r) { if (!r.ok) throw new Error('audio'); return r.blob(); })
+                        .then(function (b) { return URL.createObjectURL(b); })
+                        .catch(function () { return null; });
+                }
+                return cache[p.audio].then(function (u) { if (u) blobUrls[i] = u; });
             });
-            if (!waits.length) return Promise.resolve();
             // 読み込めない音声があっても、一定時間で再生を始める
-            return Promise.race([Promise.all(waits), new Promise(function (r) { setTimeout(r, 20000); })]);
+            return Promise.race([Promise.all(jobs), new Promise(function (r) { setTimeout(r, 20000); })]);
         }
         var preloaded = null;
         function ensurePreloaded() {
             if (!preloaded) preloaded = preloadAll();
             return preloaded;
         }
-        ensurePreloaded();
+        var preloadDone = false;
+        ensurePreloaded().then(function () { preloadDone = true; });
 
-        function stopSound(i) {
-            var a = sounds[i];
-            if (a) { a.pause(); a.currentTime = 0; }
+        // 再生ボタンのクリック中に、無音を鳴らして Audio 要素の再生を許可してもらう（iOS 対策）
+        var SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+        function unlockAudio() {
+            if (unlocked) return;
+            unlocked = true;
+            try {
+                audio.src = SILENT;
+                var pr = audio.play();
+                if (pr && pr.catch) pr.catch(function (e) { if (e && e.name === 'NotAllowedError') unlocked = false; });
+            } catch (e) { unlocked = false; }
+            curIdx = -1;
+        }
+        function stopSound() {
+            audio.pause();
+            curIdx = -1;
         }
         function syncSound(idx, restart) {
+            var src;
             if (idx !== curIdx) {
-                if (curIdx >= 0) stopSound(curIdx);
                 curIdx = idx;
                 restart = true;
+                audio.pause();
+                src = soundSrc(idx);
+                if (!src) return;
+                audio.src = src;
+            } else {
+                src = soundSrc(idx);
+                if (!src) return;
+                if (restart) audio.currentTime = 0;
             }
-            var a = soundAt(idx);
-            if (!a) return;
-            a.muted = muted;
-            a.playbackRate = speed;
-            if (restart) a.currentTime = 0;
-            if (a.paused && a.currentTime < (a.duration || Infinity)) a.play().catch(function () {});
+            audio.muted = muted;
+            audio.defaultPlaybackRate = speed;
+            audio.playbackRate = speed;
+            if (audio.paused && !audio.ended) audio.play().catch(function () {});
         }
         function pauseSound() {
-            if (curIdx >= 0 && sounds[curIdx]) sounds[curIdx].pause();
+            audio.pause();
         }
 
         // 動画の保存は PC のブラウザだけ（スマホは対象外）
@@ -167,8 +179,7 @@
                 t = 0;
                 playing = false;
                 playBtn.textContent = '▶';
-                if (curIdx >= 0) stopSound(curIdx);
-                curIdx = -1;
+                stopSound();
                 draw();
                 return;
             }
@@ -194,8 +205,8 @@
                 return;
             }
             // 音声の読み込みが終わってから始める（終わっていれば、クリック中にそのまま始める）
-            var ready = hasAudio && sounds.some(function (a) { return a && a.readyState < 4; });
-            if (!ready) { startPlaying(); return; }
+            if (hasAudio) unlockAudio();
+            if (preloadDone || !hasAudio) { startPlaying(); return; }
             loadingAudio = true;
             playBtn.textContent = 'Loading…';
             ensurePreloaded().then(function () {
@@ -208,12 +219,13 @@
             muteBtn.addEventListener('click', function () {
                 muted = !muted;
                 muteBtn.textContent = muted ? '🔇' : '🔊';
-                if (curIdx >= 0 && sounds[curIdx]) sounds[curIdx].muted = muted;
+                audio.muted = muted;
             });
         }
         bar.querySelector('.sp-speed').addEventListener('change', function (e) {
             speed = parseFloat(e.target.value) || 1;
-            if (curIdx >= 0 && sounds[curIdx]) sounds[curIdx].playbackRate = speed;
+            audio.defaultPlaybackRate = speed;
+            audio.playbackRate = speed;
         });
         fmtSel.addEventListener('change', function (e) {
             fmt = e.target.value === 'landscape' ? 'landscape' : 'portrait';
