@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { MAX_MINI_APPS, validMiniAppRef } from '$lib/mini-app';
 import { miniAppRegistrationError, miniAppRegistrationRow } from '$lib/server/mini-app-registration';
+import { addLinkShared } from '$lib/server/link-access';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,8 +26,11 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
     const uuids = (refs as string[]).filter((ref) => UUID.test(ref));
     const slugs = (refs as string[]).filter((ref) => !UUID.test(ref));
     const found: any[] = [];
-    if (uuids.length) found.push(...((await supabase.from('books').select('id, slug, title, user_id, is_public, is_quark_choice, markdown_content').in('id', uuids)).data || []));
-    if (slugs.length) found.push(...((await supabase.from('books').select('id, slug, title, user_id, is_public, is_quark_choice, markdown_content').in('slug', slugs)).data || []));
+    const columns = 'id, slug, title, user_id, is_public, link_access, is_quark_choice, markdown_content';
+    if (uuids.length) found.push(...((await supabase.from('books').select(columns).in('id', uuids)).data || []));
+    if (slugs.length) found.push(...((await supabase.from('books').select(columns).in('slug', slugs)).data || []));
+    // Link-shared MiniApps are hidden by RLS from everyone but their owners: read them by UUID with the server key
+    await addLinkShared(found, uuids, columns);
 
     const rows: { ref: string; book: any }[] = [];
     for (const ref of refs as string[]) {

@@ -1,4 +1,5 @@
 import { addMiniAppByRef } from '$lib/server/mini-app-registration';
+import { addLinkShared } from '$lib/server/link-access';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
@@ -80,8 +81,11 @@ export const POST: RequestHandler = async ({ request, url }) => {
             const uuids = refs.filter((ref) => UUID.test(ref));
             const slugs = refs.filter((ref) => !UUID.test(ref));
             const found: any[] = [];
-            if (uuids.length) found.push(...((await supabase.from('books').select('id, slug, title, cover_image, theme_color, created_at, is_public').in('id', uuids)).data || []));
-            if (slugs.length) found.push(...((await supabase.from('books').select('id, slug, title, cover_image, theme_color, created_at, is_public').in('slug', slugs)).data || []));
+            const columns = 'id, slug, title, cover_image, theme_color, created_at, is_public, link_access';
+            if (uuids.length) found.push(...((await supabase.from('books').select(columns).in('id', uuids)).data || []));
+            if (slugs.length) found.push(...((await supabase.from('books').select(columns).in('slug', slugs)).data || []));
+            // Link-shared MiniApps are hidden by RLS from everyone but their owners: read them by UUID with the server key
+            await addLinkShared(found, uuids, columns);
             const shown = new Set<string>();
             const apps = allRows.flatMap((row) => {
                 const book = found.find((b) => b.id === row.ref || b.slug === row.ref);

@@ -20,7 +20,7 @@ export async function certificateIssuance(admin: SupabaseClient, bookId: string,
 export function certificateMarkdown(markdown: string, input: { id: string; sourceId: string; issuer: string; certificateId: string; issuedAt: string }) {
     // Keep the template's presentation but give this private copy its own identity and provenance.
     const match = markdown.match(/^---\s*\n([\s\S]*?)\n---(?:\r?\n|$)/);
-    const fields = match ? match[1].split('\n').filter(line => !/^(id|is_public|published_at|certificate_[a-z_]+):/.test(line)).join('\n') : 'play_mode: card';
+    const fields = match ? match[1].split('\n').filter(line => !/^(id|is_public|link_access|published_at|certificate_[a-z_]+):/.test(line)).join('\n') : 'play_mode: card';
     const body = match ? markdown.slice(match[0].length) : markdown;
     return `---\nid: ${input.id}\nis_public: false\ncertificate_issuance_id: ${input.certificateId}\ncertificate_source_id: ${input.sourceId}\ncertificate_issuer: ${input.issuer}\ncertificate_issued_at: ${input.issuedAt}\n${fields}\n---\n${body}`;
 }

@@ -9,6 +9,7 @@ export interface BookFrontmatter {
     themeColor: string;
     playMode: string;
     isPublic?: boolean;
+    linkAccess?: boolean;
     publishedAt?: string;
     ddcCode: string;
     /** id と play_mode の両方が書かれている（本文として扱ってよい全文か） */
@@ -45,6 +46,7 @@ export function parseBookFrontmatter(markdown: string): BookFrontmatter {
                 if (k === 'theme_color') fm.themeColor = v;
                 if (k === 'play_mode') { fm.playMode = v; hasPlayMode = true; }
                 if (k === 'is_public') fm.isPublic = v === 'true';
+                if (k === 'link_access') fm.linkAccess = v === 'true';
                 if (k === 'published_at') fm.publishedAt = v;
                 if (k === 'ddc_code') fm.ddcCode = v;
             }

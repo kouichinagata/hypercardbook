@@ -1,6 +1,23 @@
 # PapeRobo での書類の送り方（仕様）
 
-非公開は非公開のまま。リンクを知っている人は誰でも読める、という例外は作らない。
+書類の公開状態は3つ。
+
+| 状態 | 誰が開けるか | 本棚・検索・一覧 |
+|---|---|---|
+| Private | 本人だけ | 出ない |
+| Anyone with the link | リンクを知っている全員 | 出ない |
+| Public | 全員 | 出る |
+
+- 非公開（Private）は非公開のまま。UUID の URL だけで開ける例外は作らない。
+- Link は `books.link_access` と front matter の `link_access: true` で表す。Public のときは `link_access` は false（Public はリンクでも開ける）。
+- Link の書類は **UUID の URL でだけ**開ける。slug では開けない（推測できるため）。
+- Link の書類は、サーバーがサービスロールキーで UUID を指定して1件だけ読む。RLS は広げない（広げると anon キーで全件を列挙できてしまう）。
+- Link の書類は、作成日に関係なく Cookie のない markdown ドメインで配信し、`noindex`・`no-referrer`・`no-store` を付ける。
+- 契約書・署名済みコピー・証明書は Link にできない（個人情報を含むため）。
+- コピー（添付の追加・テンプレートからの契約書・複製）は、共有状態を引き継がず Private から始まる。
+- スタックを Link にすると、中の Card・Book も Link になる（引き上げのみ。Public の子は Public のまま）。
+- MiniApp は、Link のものを URL で自分の一覧に追加できる。持ち主が Private に戻すと一覧から消える。
+- SQL は `supabase_migration_link_access.sql`。コードのデプロイより前に適用する。
 
 ## 1. 「Cardを追加」「Bookを追加」「HyperContentを追加」（添付）
 

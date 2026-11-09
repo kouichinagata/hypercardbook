@@ -13,6 +13,9 @@
     import { marked } from 'marked';
     import { effectivePlanFromUser } from '$lib/plan';
     import { DDC_CLASSES, getDdcFullLabel } from '$lib/ddc';
+    import { canShareByLink, shareModeOf, type ShareMode } from '$lib/link-access';
+    import { contentOrigins } from '$lib/content-origin';
+    import { dev } from '$app/environment';
 
     let { data } = $props();
 
@@ -662,7 +665,7 @@
             } else {
                 md = md.replace(/^---\s*\n/, `---\nid: ${slug}\n`);
             }
-            md = md.replace(/^(---[ \t]*\n(?:(?!---)[^\n]*\n)*?)(is_public|published_at):[^\n]*\n/g, '$1');
+            md = md.replace(/^(---[ \t]*\n(?:(?!---)[^\n]*\n)*?)(is_public|link_access|published_at):[^\n]*\n/g, '$1');
             const res = await fetch('/api/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -932,8 +935,8 @@ ${markdown}
     // Publishing & Unpublishing logic
     let confirmLegal = $state(false);
     let isPublishing = $state(false);
-    let showPublishModal = $state(false);
-    let showUnpublishModal = $state(false);
+    let showShareModal = $state(false);
+    let shareChoice = $state<ShareMode>('private');
 
     let isPublic = $derived.by(() => {
         const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
@@ -1040,41 +1043,41 @@ ${markdown}
         }
     }
 
+    // Sharing: Private, Anyone with the link (not listed), Public (listed on the bookshelf)
+    let linkAccess = $derived(/^link_access:\s*true\s*$/m.test(markdown.match(/^---\s*([\s\S]*?)\s*---/)?.[1] || ''));
+    let shareMode = $derived<ShareMode>(shareModeOf(isPublic, linkAccess));
+    let canLink = $derived(canShareByLink(markdown));
+    let shareUrl = $derived.by(() => {
+        const card = ['card', 'miniapp'].includes(parseBookFrontmatter(markdown).playMode);
+        const origin = typeof location === 'undefined' ? '' : contentOrigins(new URL(location.href), dev).markdown;
+        return `${origin}/${card ? 'hypercard' : 'hyperbook'}/${bookUuid}`;
+    });
+
+    function setFmKey(fm: string, key: string, value: string) {
+        const re = new RegExp(`^${key}:.*$`, 'm');
+        return re.test(fm) ? fm.replace(re, `${key}: ${value}`) : `${fm}\n${key}: ${value}`;
+    }
+
     function handlePublishBtnClick() {
-        if (isPublic) {
-            showUnpublishModal = true;
-        } else {
-            confirmLegal = false;
-            showPublishModal = true;
-        }
+        shareChoice = shareMode;
+        confirmLegal = false;
+        showShareModal = true;
     }
 
-    async function executePublish() {
-        if (!confirmLegal || isPublishing) return;
+    async function applyShareMode() {
+        const needsConfirm = shareChoice !== 'private' && shareChoice !== shareMode;
+        if (isPublishing || shareChoice === shareMode || (needsConfirm && !confirmLegal)) return;
         isPublishing = true;
-        
         try {
-            let updatedMarkdown = markdown;
             const nowIso = new Date().toISOString();
-            
-            const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
-            if (fmMatch) {
-                let fm = fmMatch[1];
-                
-                if (fm.includes('is_public:')) {
-                    fm = fm.replace(/is_public:\s*(true|false)/g, 'is_public: true');
-                } else {
-                    fm += '\nis_public: true';
-                }
-                
-                if (!fm.includes('published_at:')) {
-                    fm += `\npublished_at: ${nowIso}`;
-                }
-                
-                updatedMarkdown = updatedMarkdown.replace(/^---\s*[\s\S]*?\s*---/, `---\n${fm.trim()}\n---`);
-            } else {
-                updatedMarkdown = `---\nis_public: true\npublished_at: ${nowIso}\n---\n${markdown}`;
-            }
+            const m = markdown.match(/^---\s*([\s\S]*?)\s*---/);
+            let fm = m ? m[1] : '';
+            fm = setFmKey(fm, 'is_public', String(shareChoice === 'public'));
+            fm = setFmKey(fm, 'link_access', String(shareChoice === 'link'));
+            if (shareChoice === 'public' && !/^published_at:/m.test(fm)) fm += `\npublished_at: ${nowIso}`;
+            const updatedMarkdown = m
+                ? markdown.replace(/^---\s*[\s\S]*?\s*---/, `---\n${fm.trim()}\n---`)
+                : `---\n${fm.trim()}\n---\n${markdown}`;
 
             const response = await fetch('/api/save', {
                 method: 'POST',
@@ -1082,67 +1085,21 @@ ${markdown}
                 body: JSON.stringify({
                     markdown: updatedMarkdown,
                     id: bookUuid,
-                    is_public: true,
-                    published_at: nowIso
+                    is_public: shareChoice === 'public',
+                    link_access: shareChoice === 'link',
+                    ...(shareChoice === 'public' ? { published_at: nowIso } : {})
                 })
             });
 
             if (response.ok) {
                 markdown = updatedMarkdown;
-                showPublishModal = false;
+                showShareModal = false;
             } else {
                 const errData = await response.json();
-                alert(`Publish failed: ${errData.error}`);
+                alert(`Sharing failed: ${errData.error}`);
             }
         } catch (err: any) {
-            console.error('Publish error:', err);
-            alert(`Error occurred: ${err.message || err}`);
-        } finally {
-            isPublishing = false;
-        }
-    }
-
-    async function executeUnpublish() {
-        if (isPublishing) return;
-        isPublishing = true;
-        
-        try {
-            let updatedMarkdown = markdown;
-            
-            const fmMatch = markdown.match(/^---\s*([\s\S]*?)\s*---/);
-            if (fmMatch) {
-                let fm = fmMatch[1];
-                
-                if (fm.includes('is_public:')) {
-                    fm = fm.replace(/is_public:\s*(true|false)/g, 'is_public: false');
-                } else {
-                    fm += '\nis_public: false';
-                }
-                
-                updatedMarkdown = updatedMarkdown.replace(/^---\s*[\s\S]*?\s*---/, `---\n${fm.trim()}\n---`);
-            } else {
-                updatedMarkdown = `---\nis_public: false\n---\n${markdown}`;
-            }
-
-            const response = await fetch('/api/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    markdown: updatedMarkdown,
-                    id: bookUuid,
-                    is_public: false
-                })
-            });
-
-            if (response.ok) {
-                markdown = updatedMarkdown;
-                showUnpublishModal = false;
-            } else {
-                const errData = await response.json();
-                alert(`Operation failed: ${errData.error}`);
-            }
-        } catch (err: any) {
-            console.error('Unpublish error:', err);
+            console.error('Share error:', err);
             alert(`Error occurred: ${err.message || err}`);
         } finally {
             isPublishing = false;
@@ -2217,8 +2174,8 @@ ${markdown}
         <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; openDdcModal(); }} title={currentDdcCode ? `Classification: ${getDdcFullLabel(currentDdcCode)}` : 'Set Classification (DDC)'}>
             🏷️{#if labels}<span class="action-label">Classification</span>{/if}
         </button>
-        <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handlePublishBtnClick(); }} title={isPublic ? 'Unpublish' : 'Publish'}>
-            {isPublic ? '👤' : '👥'}{#if labels}<span class="action-label">{isPublic ? 'Unpublish' : 'Publish'}</span>{/if}
+        <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handlePublishBtnClick(); }} title="Share">
+            {shareMode === 'public' ? '🌐' : shareMode === 'link' ? '🔗' : '🔒'}{#if labels}<span class="action-label">Share</span>{/if}
         </button>
         <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handleDownloadHtml(); }} title="Download HTML">
             💾{#if labels}<span class="action-label">Download HTML</span>{/if}
@@ -2800,41 +2757,35 @@ ${markdown}
         </div>
     {/if}
 
-    <!-- Publish confirmation modal -->
-    {#if showPublishModal}
-        <div class="modal-overlay" onclick={() => showPublishModal = false} role="presentation">
+    <!-- Share modal -->
+    {#if showShareModal}
+        <div class="modal-overlay" onclick={() => showShareModal = false} role="presentation">
             <div class="publish-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
                 <div class="publish-modal-body">
-                    <p>Published content is visible to everyone.</p>
-                    <p>It may be searchable on Google.</p>
-                    <p>Other users can reuse and build upon your work.</p>
-                    
-                    <label class="publish-confirm-label">
-                        <input type="checkbox" bind:checked={confirmLegal} />
-                        <span>I confirm that my data is legal and follows the rules.</span>
-                    </label>
+                    <label><input type="radio" bind:group={shareChoice} value="private" /> Private — only you</label>
+                    <label><input type="radio" bind:group={shareChoice} value="link" disabled={!canLink} /> Anyone with the link — not listed on the bookshelf or in search</label>
+                    {#if !canLink}<p>Contracts and certificates cannot be shared by link.</p>{/if}
+                    <label><input type="radio" bind:group={shareChoice} value="public" /> Public — listed on the bookshelf</label>
+                    {#if shareChoice === 'public'}
+                        <p>Public content is visible to everyone and may be searchable on Google. Other users can reuse and build upon your work.</p>
+                    {:else if shareChoice === 'link'}
+                        <p>Anyone who has the link can open this. Do not post it where you do not want it to be seen.</p>
+                    {/if}
+                    {#if shareChoice !== 'private' && shareChoice !== shareMode}
+                        <label class="publish-confirm-label">
+                            <input type="checkbox" bind:checked={confirmLegal} />
+                            <span>I confirm that my data is legal and follows the rules.</span>
+                        </label>
+                    {/if}
+                    {#if shareMode !== 'private'}
+                        <input readonly value={shareUrl} />
+                        <button onclick={() => navigator.clipboard.writeText(shareUrl)}>Copy link</button>
+                    {/if}
                 </div>
                 <div class="publish-modal-footer">
-                    <button class="btn-cancel" onclick={() => showPublishModal = false}>Cancel</button>
-                    <button class="btn-publish" onclick={executePublish} disabled={!confirmLegal || isPublishing}>
-                        {isPublishing ? 'Publishing...' : 'Publish'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    {/if}
-
-    <!-- Unpublish confirmation modal -->
-    {#if showUnpublishModal}
-        <div class="modal-overlay" onclick={() => showUnpublishModal = false} role="presentation">
-            <div class="publish-modal-card" onclick={(e) => e.stopPropagation()} role="presentation">
-                <div class="publish-modal-body">
-                    <p>Make this private?</p>
-                </div>
-                <div class="publish-modal-footer">
-                    <button class="btn-cancel" onclick={() => showUnpublishModal = false}>Cancel</button>
-                    <button class="btn-publish" onclick={executeUnpublish} disabled={isPublishing}>
-                        {isPublishing ? 'Updating...' : 'Make Private'}
+                    <button class="btn-cancel" onclick={() => showShareModal = false}>Cancel</button>
+                    <button class="btn-publish" onclick={applyShareMode} disabled={isPublishing || shareChoice === shareMode || (shareChoice !== 'private' && shareChoice !== shareMode && !confirmLegal)}>
+                        {isPublishing ? 'Updating...' : 'Apply'}
                     </button>
                 </div>
             </div>

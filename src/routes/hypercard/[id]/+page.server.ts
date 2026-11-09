@@ -5,6 +5,8 @@ import { servedOnMarkdown, viewerRedirect, type ContentRow } from '$lib/content-
 import { parseBookFrontmatter } from '$lib/book-frontmatter';
 import { isTemplate } from '$lib/signature/contract';
 import { createContract } from '$lib/server/contracts';
+import { linkSharedBooks } from '$lib/server/link-access';
+import { isBookUuid } from '$lib/unlisted-mini-app';
 import type { PageServerLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
 import fs from 'fs';
@@ -77,7 +79,7 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch, setHead
     } else {
         // 2. Otherwise, query Supabase database as usual
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-        const query = supabase.from('books').select('id, markdown_content, user_id, created_at, is_public');
+        const query = supabase.from('books').select('id, markdown_content, user_id, created_at, is_public, link_access');
         if (isUuid) {
             query.eq('id', id);
         } else {
@@ -85,7 +87,9 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch, setHead
         }
 
         // A non-public document is for its owner only (PapeRobo opens it with a ticket, see sharedDocument)
-        const { data, error: dbError } = await query.single();
+        let { data, error: dbError } = await query.single();
+        // RLS hides a link-shared document from everyone but its owner: read it by UUID with the server key
+        if (!data && isUuid) data = (await linkSharedBooks([id], 'id, markdown_content, user_id, created_at, is_public, link_access'))[0] ?? null;
 
         if (!data) {
             console.error(`Book not found in DB for ID/slug "${id}":`, dbError);
@@ -97,7 +101,9 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch, setHead
     }
 
         // Public content created from the cutover (and the standard MiniApps) is served from the markdown domain
-        const target = viewerRedirect(url, shareToken ? true : row ? servedOnMarkdown(row) : false, dev);
+        // A link-shared document is not for search engines, caches or referrers
+        if (row?.link_access && !row.is_public) setHeaders({ 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'private, no-store' });
+        const target = viewerRedirect(url, shareToken ? true : row ? servedOnMarkdown(row, undefined, isBookUuid(id)) : false, dev);
         if (target) throw redirect(302, target);
 
         // Check if markdown is actually a "Book" instead of a "Card"

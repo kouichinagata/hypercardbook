@@ -40,3 +40,12 @@ test('viewers move to the right domain and drop the fragment (sign-in tokens)', 
     assert.equal(viewerRedirect(md, true), null);
     assert.equal(viewerRedirect(new URL('http://localhost:5173/hypercard/abc'), true, true), 'http://markdown.localhost:5173/hypercard/abc#');
 });
+
+test('link-shared content is on the markdown domain by UUID whatever its age, and on www by slug', () => {
+    const row = { id: 'a', created_at: before, is_public: false, link_access: true, markdown_content: card };
+    assert.ok(servedOnMarkdown(row));
+    assert.ok(!servedOnMarkdown(row, undefined, false));
+    assert.ok(!servedOnMarkdown({ ...row, link_access: false }));
+    // Public keeps its own rule (it is not "link only")
+    assert.ok(!servedOnMarkdown({ ...row, is_public: true }));
+});

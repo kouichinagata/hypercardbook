@@ -40,7 +40,7 @@ export function contractStamp(date: Date): string {
 /** The template's Markdown as a contract: its own id, private, the template it came from, and a title that tells it apart */
 export function contractMarkdown(markdown: string, input: { id: string; sourceId: string; title: string }): string {
     const match = markdown.match(FRONTMATTER);
-    const fields = match ? match[1].split('\n').filter((line) => !/^(id|is_public|published_at|contract_[a-z_]+):/.test(line)).map((line) => (line.startsWith('title:') ? `title: ${input.title}` : line)).join('\n') : 'play_mode: card';
+    const fields = match ? match[1].split('\n').filter((line) => !/^(id|is_public|link_access|published_at|contract_[a-z_]+):/.test(line)).map((line) => (line.startsWith('title:') ? `title: ${input.title}` : line)).join('\n') : 'play_mode: card';
     const body = match ? markdown.slice(match[0].length) : markdown;
     return `---\nid: ${input.id}\nis_public: false\ncontract_source_id: ${input.sourceId}\n${fields}\n---\n${body}`;
 }
@@ -49,6 +49,6 @@ export function contractMarkdown(markdown: string, input: { id: string; sourceId
 export function signedCopyMarkdown(markdown: string, slug: string): string {
     const match = markdown.match(FRONTMATTER);
     if (!match) return markdown;
-    const fields = match[1].split('\n').filter((line) => !/^(id|is_public|published_at):/.test(line)).join('\n');
+    const fields = match[1].split('\n').filter((line) => !/^(id|is_public|link_access|published_at):/.test(line)).join('\n');
     return `---\nid: ${slug}\nis_public: false\n${fields}\n---\n${markdown.slice(match[0].length)}`;
 }

@@ -14,7 +14,7 @@ export const MARKDOWN_CUTOVER = '2026-10-18T10:30:00Z';
 // Existing content moved to the markdown domain (books.id)
 export const MOVED_TO_MARKDOWN: readonly string[] = [...STANDARD_MINI_APP_REFS];
 
-export type ContentRow = { id: string; created_at?: string | null; is_public?: boolean | null; markdown_content?: string | null };
+export type ContentRow = { id: string; created_at?: string | null; is_public?: boolean | null; link_access?: boolean | null; markdown_content?: string | null };
 
 export function isMarkdownHost(hostname: string, dev = false): boolean {
     return hostname === (dev ? DEV_MARKDOWN_HOST : MARKDOWN_HOST);
@@ -31,8 +31,11 @@ export function contentOrigins(url: URL, dev = false): { www: string; markdown: 
  * Moved content, and content created from the cutover that can be opened without signing in
  * (public, or a MiniApp, which is served by its UUID link). Private content stays on www, where only its owner can open it.
  */
-export function servedOnMarkdown(row: ContentRow, miniApp?: boolean): boolean {
+export function servedOnMarkdown(row: ContentRow, miniApp?: boolean, byUuid = true): boolean {
     if (MOVED_TO_MARKDOWN.includes(row.id)) return true;
+    // Link-shared (not listed): on the markdown domain whatever its age, when opened by its UUID.
+    // Opened by slug it is the owner's own view and stays on www.
+    if (row.link_access && !row.is_public) return byUuid;
     const created = Date.parse(row.created_at || '');
     if (!Number.isFinite(created) || created < Date.parse(MARKDOWN_CUTOVER)) return false;
     return Boolean(row.is_public) || (miniApp ?? parseBookFrontmatter(row.markdown_content || '').playMode === 'miniapp');

@@ -2,12 +2,13 @@ import { isCardLike, isMiniApp } from '$lib/play-mode';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { isSameDocument, parseBookFrontmatter } from '$lib/book-frontmatter';
+import { canShareByLink } from '$lib/link-access';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     try {
         const payload = await request.json();
         const markdown = payload.markdown as string;
-        const { id, is_public, published_at } = payload;
+        const { id, is_public, published_at, link_access } = payload;
         const session = locals.session;
         const supabase = locals.supabase;
 
@@ -21,7 +22,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
         const isUuid = id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) : false;
         const fm = parseBookFrontmatter(markdown);
-        const { slug, title, author, coverImage, themeColor, playMode, isPublic: fmIsPublic, publishedAt: fmPublishedAt, ddcCode } = fm;
+        const { slug, title, author, coverImage, themeColor, playMode, isPublic: fmIsPublic, linkAccess: fmLinkAccess, publishedAt: fmPublishedAt, ddcCode } = fm;
 
         const isCard = isCardLike(playMode);
 
@@ -38,12 +39,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const resolvedIsPublic = is_public !== undefined ? is_public : (fmIsPublic !== undefined ? fmIsPublic : undefined);
         const resolvedPublishedAt = published_at !== undefined ? published_at : (fmPublishedAt !== undefined ? fmPublishedAt : undefined);
 
+        const resolvedLinkAccess = link_access !== undefined ? link_access : fmLinkAccess;
+        if (resolvedLinkAccess === true && !canShareByLink(markdown)) {
+            return json({ error: 'Contracts and certificates cannot be shared by link.' }, { status: 400 });
+        }
+        let existingLinkAccess: boolean | undefined;
+
         if (id && isUuid) {
             bookData.id = id;
             // Fetch existing fields to prevent overwriting with defaults
             const { data: existingBook } = await supabase
                 .from('books')
-                .select('slug, is_public, published_at, markdown_content')
+                .select('slug, is_public, link_access, published_at, markdown_content')
                 .eq('id', id)
                 .single();
 
@@ -54,6 +61,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                     console.warn('[save] rejected: a MiniApp must keep its id and play_mode', id);
                     return json({ error: 'Save rejected: a MiniApp must keep its id and play_mode.' }, { status: 409 });
                 }
+                existingLinkAccess = existingBook.link_access;
                 bookData.slug = slug || existingBook.slug;
                 bookData.is_public = resolvedIsPublic !== undefined ? resolvedIsPublic : existingBook.is_public;
                 bookData.published_at = resolvedPublishedAt !== undefined ? resolvedPublishedAt : existingBook.published_at;
@@ -68,6 +76,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             bookData.published_at = resolvedPublishedAt !== undefined ? resolvedPublishedAt : null;
         }
 
+        // Public already includes the link; Link is never listed
+        bookData.link_access = bookData.is_public === true ? false : (resolvedLinkAccess ?? existingLinkAccess ?? false);
+        // A contract or certificate that was already link-shared (not possible through this API) never keeps the flag
+        if (bookData.link_access && !canShareByLink(markdown)) bookData.link_access = false;
+
         const { data, error: dbError } = await supabase
             .from('books')
             .upsert(bookData)
@@ -80,7 +93,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         }
 
         // StackやHyperRoboが公開された場合、内包するコンテンツも自動的に公開する
-        if (resolvedIsPublic === true) {
+        // Link sharing cascades the same way (raise only, never lower)
+        const cascade = resolvedIsPublic === true ? 'public' : (resolvedLinkAccess === true && bookData.link_access === true ? 'link' : null);
+        if (cascade) {
             const idsToPublish = new Set<string>();
 
             // 再帰的に関係する本を収集する関数
@@ -139,11 +154,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             await collectAndPublish(markdown, playMode);
 
             if (idsToPublish.size > 0) {
-                const { error: updateError } = await supabase
+                const shared = cascade === 'public'
+                    ? { is_public: true, link_access: false, published_at: new Date().toISOString() }
+                    : { link_access: true };
+                let childUpdate = supabase
                     .from('books')
-                    .update({ is_public: true, published_at: new Date().toISOString() })
+                    .update(shared)
                     .in('id', Array.from(idsToPublish))
                     .eq('user_id', session.user.id);
+                // A child that is already public stays public (and satisfies the CHECK constraint)
+                if (cascade === 'link') childUpdate = childUpdate.eq('is_public', false);
+                const { error: updateError } = await childUpdate;
                 if (updateError) {
                     console.error('Failed to update stack items to public:', updateError);
                 }

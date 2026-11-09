@@ -13,7 +13,7 @@ import { documentSecret, documentClient, accessibleDocument, documentKind, docum
 async function addToShelf(client: ReturnType<typeof documentClient>, userId: string, doc: { title: string; markdown_content: string; author?: string; cover_image?: string; theme_color?: string }): Promise<string> {
     const slug = `chat-${randomUUID()}`;
     let markdown = doc.markdown_content;
-    if (/^---\s*\n/.test(markdown)) markdown = markdown.replace(/^---\s*\n([\s\S]*?)\n---/, (_, fm: string) => `---\nid: ${slug}\nis_public: false\n${fm.split('\n').filter(line => !/^(id|is_public|published_at):/.test(line)).join('\n')}\n---`);
+    if (/^---\s*\n/.test(markdown)) markdown = markdown.replace(/^---\s*\n([\s\S]*?)\n---/, (_, fm: string) => `---\nid: ${slug}\nis_public: false\n${fm.split('\n').filter(line => !/^(id|is_public|link_access|published_at):/.test(line)).join('\n')}\n---`);
     else markdown = `---\nid: ${slug}\nplay_mode: book\nis_public: false\n---\n${markdown}`;
     const { data, error: dbError } = await client.from('books').insert({ user_id: userId, slug, title: doc.title, author: doc.author || null, cover_image: doc.cover_image || null, theme_color: doc.theme_color || null, markdown_content: markdown, is_public: false, published_at: null }).select('id').single();
     if (dbError || !data) throw error(502, 'HyperCardBookに追加できませんでした。');
