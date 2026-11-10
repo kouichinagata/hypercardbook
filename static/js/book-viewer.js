@@ -336,6 +336,7 @@
             }).join('\n');
 
             processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+                if (((string.substring(0, offset).match(/^\s*(```|~~~)/gm) || []).length % 2) === 1 || /(```|~~~)$/.test(string.substring(0, offset).trimEnd())) return match;
                 const before = string.substring(0, offset).trimEnd();
                 const after = string.substring(offset + match.length).trimStart();
                 if (before.endsWith('>') || after.startsWith('<') || after === '') {

@@ -28,7 +28,7 @@
 
     // Text to Speech states & methods
     let isSpeaking = $state(false);
-    const mermaidScriptUrl = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+    const mermaidScriptUrl = 'https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js';
 
     function handleToggleSpeak() {
         if (!browser || !window.speechSynthesis) return;
@@ -835,6 +835,7 @@
         }).join('\n');
 
         processed = processed.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+            if (((string.substring(0, offset).match(/^\s*(```|~~~)/gm) || []).length % 2) === 1 || /(```|~~~)$/.test(string.substring(0, offset).trimEnd())) return match;
             const before = string.substring(0, offset).trimEnd();
             const after = string.substring(offset + match.length).trimStart();
             if (before.endsWith('>') || after.startsWith('<') || after === '') {

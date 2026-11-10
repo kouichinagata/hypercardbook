@@ -65,7 +65,7 @@ ${markdown}
     
     <!-- Marked and Mermaid load -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js"></script>
     <script src="${origin}/js/book-viewer.js"></script>
 </body>
 </html>`;
@@ -105,6 +105,7 @@ ${markdown}
             }).join('\n');
 
             processed = processed.replace(/(\n{2,})/g, (match: string, p1: string, offset: number, string: string) => {
+                if (((string.substring(0, offset).match(/^\s*(```|~~~)/gm) || []).length % 2) === 1 || /(```|~~~)$/.test(string.substring(0, offset).trimEnd())) return match;
                 const before = string.substring(0, offset).trimEnd();
                 const after = string.substring(offset + match.length).trimStart();
                 if (before.endsWith('>') || after.startsWith('<') || after === '') {

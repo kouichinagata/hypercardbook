@@ -82,10 +82,12 @@
         const _trigger2 = markdown;
         const _trigger3 = currentCardIndex;
         const _trigger4 = { ...chatMdMode };
+        const _trigger5 = activeTab; // re-run when the preview pane becomes visible
         tick().then(() => {
             if (typeof window !== 'undefined' && (window as any).mermaid) {
                 try {
-                    const mermaidDivs = document.querySelectorAll('.mermaid');
+                    // Mermaid measures the diagram while drawing: in a hidden pane it gets 0x0 and the SVG stays tiny
+                    const mermaidDivs = [...document.querySelectorAll('.mermaid:not([data-processed="true"])')].filter((el) => el.getClientRects().length > 0);
                     if (mermaidDivs.length > 0) {
                         (window as any).mermaid.init(undefined, mermaidDivs);
                     }
@@ -815,7 +817,7 @@ ${markdown}
     
     <!-- Marked and Mermaid load -->
     <${'script'} src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></${'script'}>
-    <${'script'} src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></${'script'}>
+    <${'script'} src="https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js"></${'script'}>
     <${'script'} src="${localOrigin}/js/book-viewer.js"></${'script'}>
 </body>
 </html>`;
@@ -847,6 +849,7 @@ ${markdown}
                     return line;
                 }).join('\n');
                 processed = processed.replace(/(\n{2,})/g, (match: string, p1: string, offset: number, string: string) => {
+                    if (((string.substring(0, offset).match(/^\s*(```|~~~)/gm) || []).length % 2) === 1 || /(```|~~~)$/.test(string.substring(0, offset).trimEnd())) return match;
                     const before = string.substring(0, offset).trimEnd();
                     const after = string.substring(offset + match.length).trimStart();
                     if (before.endsWith('>') || after.startsWith('<') || after === '') {
@@ -1550,6 +1553,7 @@ ${markdown}
     function parseMarkdownForChat(content: string): string {
         if (!content) return '';
         const processed = content.replace(/(\n{2,})/g, (match, p1, offset, string) => {
+            if (((string.substring(0, offset).match(/^\s*(```|~~~)/gm) || []).length % 2) === 1 || /(```|~~~)$/.test(string.substring(0, offset).trimEnd())) return match;
             const before = string.substring(0, offset).trimEnd();
             const after = string.substring(offset + match.length).trimStart();
             if (before.endsWith('>') || after.startsWith('<') || after === '') {

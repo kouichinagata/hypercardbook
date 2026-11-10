@@ -35,7 +35,7 @@
     // Iframe postMessage connection states
     let iframeSource: MessageEventSource | null = null;
     let iframeOrigin = '';
-    const mermaidScriptUrl = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+    const mermaidScriptUrl = 'https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js';
 
     // iframe や直接アクセス時は非表示にするための判定
     let showBackBtn = $derived(
@@ -132,6 +132,9 @@
                 startOnLoad: false,
                 theme: cardThemeColor === 'black' ? 'dark' : 'default',
             });
+            // The body may have rendered before the script arrived, so draw the diagrams now
+            const pending = [...document.querySelectorAll('.mermaid:not([data-processed="true"])')].filter((el) => el.getClientRects().length > 0);
+            if (pending.length > 0) (window as any).mermaid.init(undefined, pending);
         }).catch((error) => {
             console.error('Mermaid script could not be loaded:', error);
         });
@@ -368,7 +371,8 @@
         if (!markdown) return '';
         // Fields are numbered on the whole Markdown, as the server does
         let cleanMd = replaceFieldMarkers(markdown, renderField).replace(/^---\s*[\s\S]*?\s*---/, '').trim();
-        cleanMd = cleanMd.replace(new RegExp(styleBlockPattern), '');
+        // Remove the whole line of a <style> block so no blank line is left inside an HTML block (it would end the block)
+        cleanMd = cleanMd.replace(/^[ \t]*<style>[\s\S]*?<\/style>[ \t]*\r?\n?/gim, '').replace(new RegExp(styleBlockPattern), '');
         // Seals pressed before the signature sit left-aligned in a row of inline boxes, so many of them wrap onto new lines
         cleanMd = replaceStampImages(cleanMd, (url) => `<span class="sign-slot sign-stamp"><img src="${url}" alt="seal"></span>`);
         cleanMd = replaceSignedImages(cleanMd, (url) => `<span class="sign-slot sign-signed"><img src="${url}" alt="signature"></span>`);
@@ -386,6 +390,7 @@
 
         // A Verify document spaces its blocks with CSS margins, not with injected <br>
         if (!verifyDoc) processed = processed.replace(/\n{2,}/g, (match: string, offset: number, string: string) => {
+            if (((string.substring(0, offset).match(/^\s*(```|~~~)/gm) || []).length % 2) === 1 || /(```|~~~)$/.test(string.substring(0, offset).trimEnd())) return match;
             const before = string.substring(0, offset).trimEnd();
             const after = string.substring(offset + match.length).trimStart();
             if (before.endsWith('>') || after.startsWith('<') || after === '') {
@@ -417,7 +422,8 @@
             tick().then(() => {
                 if (browser && (window as any).mermaid) {
                     try {
-                        const mermaidDivs = document.querySelectorAll('.mermaid');
+                        // Skip diagrams inside a hidden pane (they would be measured as 0x0); the host re-renders when shown
+                        const mermaidDivs = [...document.querySelectorAll('.mermaid:not([data-processed="true"])')].filter((el) => el.getClientRects().length > 0);
                         if (mermaidDivs.length > 0) {
                             (window as any).mermaid.init(undefined, mermaidDivs);
                         }
