@@ -388,10 +388,12 @@ export function fillPictureUnits(markdown: string, units: PictureUnit[], urls: M
         for (const key of keys) {
             const url = urls.get(key);
             if (!url) continue;
-            const label = key.replace('_', ' ');
-            const escaped = label.replace(/ /g, '[ _]');
-            const pattern = new RegExp(`<span class="pb-missing"(?: data-unit="${key}")?>(?:[^<]*(?:illustration|Illustration) ${escaped}[^<]*)</span>`, 'g');
-            out = out.replace(pattern, `<img src="${url}" alt="">`);
+            // A frame with data-unit="N" is found by its number, whatever text is inside it
+            const byKey = new RegExp(`<span class="pb-missing"[^>]*\\bdata-unit="${key}"[^>]*>[^<]*</span>`, 'g');
+            // Old frames have no data-unit; "illustration 1" must not match "illustration 10"
+            const escaped = key.replace('_', '[ _]');
+            const legacy = new RegExp(`<span class="pb-missing">[^<]*[Ii]llustration ${escaped}(?![0-9A-Za-z])[^<]*</span>`, 'g');
+            out = out.replace(byKey, `<img src="${url}" alt="">`).replace(legacy, `<img src="${url}" alt="">`);
         }
     }
     return out;
@@ -417,13 +419,34 @@ const KIND_TEXT: Record<PictureFailureKind, string> = {
     other: 'Image generation failed.'
 };
 
-/** 結果の説明（チャットに表示し、AI にも見える） */
-export function describePictureResult(job: PictureJob, result: PictureResult): string {
+/**
+ * 結果の説明（チャットに表示し、AI にも見える）。
+ * 描けた絵は 1 枚ずつ、本に入ったかどうかを markdown で確かめ、URL も出す（入らなかった絵を AI が edit で枠に入れられるように）。
+ */
+export function describePictureResult(job: PictureJob, result: PictureResult, markdown: string, cancelled = false): string {
     const total = job.units.length;
     const failed = [...result.failures.entries()].filter(([unit]) => unit > 0);
-    const ok = total - failed.length;
-    const lines = [`🎨 Done: ${ok}/${total} illustrations drawn and saved in the book.`];
+    const drawn = job.units.filter((u) => [...result.urls.keys()].some((k) => k === String(u.unit) || k.startsWith(`${u.unit}_`)));
+    const lines: string[] = [];
+    const placedLines: string[] = [];
+    let placedUnits = 0;
+    for (const unit of drawn) {
+        const entries = [...result.urls.entries()].filter(([k]) => k === String(unit.unit) || k.startsWith(`${unit.unit}_`));
+        const missing = entries.filter(([, url]) => !markdown.includes(url));
+        if (missing.length === 0) placedUnits++;
+        for (const [key, url] of entries) {
+            const label = KEY_LABEL(key);
+            placedLines.push(markdown.includes(url)
+                ? `✅ Illustration ${label}: placed in the book — ${url}`
+                : `⚠️ Illustration ${label}: drawn, but NOT placed in the book (no matching frame) — ${url}`);
+        }
+    }
+    lines.push(`🎨 Drawn ${drawn.length}/${total} illustrations, placed in the book ${placedUnits}/${total}.`);
+    if (cancelled) lines.push('⏹ Drawing was cancelled. Illustrations not listed below were not drawn.');
     if (result.stopped) lines.push(`⏹ Drawing stopped early (${result.stopped === 'other' ? 'every illustration in the last batch failed' : result.stopped}).`);
+    if (result.sheetUrl && result.sheetUrl !== job.character_sheet_url) lines.push(`🧑‍🎨 New character sheet — ${result.sheetUrl}`);
+    lines.push(...placedLines);
+    if (placedLines.some((l) => l.startsWith('⚠️'))) lines.push('Illustrations marked NOT placed are already drawn: put the URL into the matching frame with an edit. Do not draw them again.');
     const sheet = result.failures.get(0);
     if (sheet) lines.push(`⚠️ ${sheet.message}`);
     for (const [unit, f] of failed.sort((a, b) => a[0] - b[0])) {
@@ -432,6 +455,6 @@ export function describePictureResult(job: PictureJob, result: PictureResult): s
         const wide = result.wideSources.get(unit);
         if (wide) lines.push(`   The drawn picture itself is saved: ${wide} (redraw with source_url to only retry the cut; no new image is generated).`);
     }
-    if (failed.length) lines.push('Successfully drawn illustrations are kept and will not be drawn again. Other illustrations are saved; only the empty frames are missing.');
+    if (failed.length) lines.push('Illustrations that were drawn are kept and will not be drawn again; only the failed ones are missing.');
     return lines.join('\n');
 }

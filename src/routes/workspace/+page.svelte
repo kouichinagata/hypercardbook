@@ -1570,6 +1570,8 @@ ${markdown}
         window.addEventListener('beforeunload', warnBeforeLeaving);
         chatHistory = [...chatHistory, { role: 'model', text: `🎨 Drawing ${total} illustration${total === 1 ? '' : 's'}… Please keep this tab open until it finishes.`, at: new Date().toISOString() }];
         scrollToBottom();
+        // 途中で止まっても、それまでに描けた絵の URL を結果に出せるように控える
+        let partial: PictureResult | null = null;
         try {
             // 1 枚できるたびに本へ入れる（途中で止まっても、できた絵は残る）。
             // 本の全文が渡されたときはそのテンプレートから、渡されないとき（描き直し）は今の本の「未生成」の枠に入れる。
@@ -1582,12 +1584,18 @@ ${markdown}
                 setStatus(p.phase === 'sheet'
                     ? '🎨 Drawing the character sheet…'
                     : `🎨 Drawing illustrations… ${p.done}/${p.total}${p.failed ? ` (${p.failed} failed)` : ''}. Please keep this tab open.`);
-            }, abort.signal, (_unit, partial) => applyNow(partial));
+            }, abort.signal, (_unit, current) => {
+                partial = current;
+                applyNow(current);
+            });
             // キャラシートまで描けたときだけ、最後にもう一度まとめて反映する（未生成の枠を含む）
             if (result.sheetUrl || !job.book_markdown) applyNow(result);
-            setStatus(describePictureResult(job, result));
+            setStatus(describePictureResult(job, result, markdown));
         } catch (err: any) {
-            setStatus(`⚠️ Drawing stopped: ${err?.message || 'unknown error'}`);
+            const drawnSoFar = partial as PictureResult | null;
+            setStatus(drawnSoFar && drawnSoFar.urls.size > 0
+                ? describePictureResult(job, drawnSoFar, markdown, abort.signal.aborted)
+                : `⚠️ Drawing stopped: ${err?.message || 'unknown error'}. No illustration was drawn.`);
         } finally {
             window.removeEventListener('beforeunload', warnBeforeLeaving);
             mangaAbort = null;
