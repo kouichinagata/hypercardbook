@@ -137,7 +137,9 @@ CRITICAL RULES:
 `;
 
 // Plan mode: a general-purpose assistant that never creates or edits books/cards.
-const PLAN_MODE_TOOLS = new Set(['update_biography']);
+const PLAN_MODE_TOOLS = new Set(['update_biography', 'view_image']);
+// view_image が 1 回で読み込める画像の上限
+const VIEW_IMAGE_MAX = 4;
 const planSystemInstruction = `
 You are the AI assistant of HyperCardBook, running in "Plan mode". In Plan mode you behave as a general-purpose assistant.
 
@@ -574,6 +576,18 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                             }
                         });
 
+                        toolDeclarations.push({
+                            name: 'view_image',
+                            description: `Look at images yourself. Returns the actual pictures so you can see what they show (content, composition, characters, whether a page looks right). Use it when the user asks about an image in the book or chat, or when you need to check illustrations before changing them. Only the user's own stored images (URLs in their HyperCardBook storage) can be loaded. At most ${VIEW_IMAGE_MAX} images per call.`,
+                            parameters: {
+                                type: 'OBJECT',
+                                properties: {
+                                    urls: { type: 'ARRAY', items: { type: 'STRING' }, description: `Image URLs to look at (max ${VIEW_IMAGE_MAX}).` }
+                                },
+                                required: ['urls']
+                            }
+                        });
+
                         if (proPlanActive) {
                             toolDeclarations.push(
                                 {
@@ -711,7 +725,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         if (skillsByName.has(SPRITE_SKILL_NAME)) {
                             toolDeclarations.push({
                                 name: 'detect_manga_panels',
-                                description: `Look at manga page images and return the panels on each page: position, dialogue text, and a suggested display time. You cannot see images yourself, so use this to get panel coordinates. Only the user's own stored images can be read. At most ${PANEL_DETECT_MAX_PAGES} pages per call; call it again for the rest.`,
+                                description: `Look at manga page images and return the panels on each page: position, dialogue text, and a suggested display time. Use this to get exact panel coordinates (use view_image to simply look at a picture). Only the user's own stored images can be read. At most ${PANEL_DETECT_MAX_PAGES} pages per call; call it again for the rest.`,
                                 parameters: {
                                     type: 'OBJECT',
                                     properties: {
@@ -1012,6 +1026,8 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                 emitStatus(`${isEditTool ? 'Applying' : 'Running'} ${fc.name}${pageHint}…`);
 
                                 let resultData = null;
+                                // view_image が読み込んだ画像。ツールの結果と一緒に AI へ返す
+                                const toolImages: { mimeType: string; data: string }[] = [];
 
                                 if (planMode && !PLAN_MODE_TOOLS.has(fc.name)) {
                                     resultData = { success: false, error: 'Plan mode is on. Books and cards are never changed in Plan mode.' };
@@ -1194,6 +1210,27 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                             message: 'Queued. The illustrations are drawn in the user\'s browser after your reply ends. Do NOT output the book Markdown yourself and do not call image tools; once this batch is queued, reply with one short message: the drawing of this batch (N images) has started, and the remaining units (list their numbers) will be drawn when the user asks to continue after seeing the results. Never say it has started before this tool succeeded.'
                                         };
                                     }
+                                } else if (fc.name === 'view_image') {
+                                    const urls = Array.isArray(fc.args?.urls)
+                                        ? [...new Set(fc.args.urls.map((u: unknown) => String(u ?? '').trim()).filter(Boolean))] as string[]
+                                        : [];
+                                    if (urls.length === 0 || urls.length > VIEW_IMAGE_MAX) {
+                                        resultData = { success: false, error: `urls must contain 1 to ${VIEW_IMAGE_MAX} URLs.` };
+                                    } else {
+                                        emitStatus(`Looking at ${urls.length} image${urls.length === 1 ? '' : 's'}…`);
+                                        const loaded: string[] = [];
+                                        const failed: string[] = [];
+                                        for (const url of urls) {
+                                            const images = await loadReferenceInputs(supabase, session.user.id, [url]).catch(() => null);
+                                            if (images && images.length === 1) {
+                                                toolImages.push({ mimeType: images[0].mime_type, data: images[0].data });
+                                                loaded.push(url);
+                                            } else failed.push(url);
+                                        }
+                                        resultData = loaded.length > 0
+                                            ? { success: true, shown: loaded, ...(failed.length ? { not_loaded: failed, note: 'Only images in the user\'s own storage can be loaded.' } : {}) }
+                                            : { success: false, error: 'None of these images could be loaded. Only images in the user\'s own storage can be read.', not_loaded: failed };
+                                    }
                                 } else if (fc.name === 'detect_manga_panels') {
                                     const urls = Array.isArray(fc.args?.page_urls) ? fc.args.page_urls.map((u: unknown) => String(u ?? '').trim()).filter(Boolean) : [];
                                     if (!skillsByName.has(SPRITE_SKILL_NAME)) {
@@ -1352,7 +1389,8 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                     functionResponse: {
                                         id: fc.id,
                                         name: fc.name,
-                                        response: { result: resultData }
+                                        response: { result: resultData },
+                                        ...(toolImages.length ? { parts: toolImages.map((img) => ({ inlineData: img })) } : {})
                                     }
                                 });
                             }
@@ -1363,7 +1401,12 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                     content: functionResponses.map((r: any) => ({
                                         type: 'tool_result',
                                         tool_use_id: r.functionResponse.id,
-                                        content: JSON.stringify(r.functionResponse.response.result ?? null)
+                                        content: r.functionResponse.parts?.length
+                                            ? [
+                                                { type: 'text', text: JSON.stringify(r.functionResponse.response.result ?? null) },
+                                                ...r.functionResponse.parts.map((p: any) => ({ type: 'image', source: { type: 'base64', media_type: p.inlineData.mimeType, data: p.inlineData.data } }))
+                                            ]
+                                            : JSON.stringify(r.functionResponse.response.result ?? null)
                                     }))
                                 });
                             } else {
