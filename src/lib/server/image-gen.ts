@@ -19,7 +19,7 @@ export function storageLimitForPlan(plan: string): number {
     return 20 * 1024 * 1024;
 }
 
-function storagePathFromPublicUrl(rawUrl: string, userId: string): string | null {
+export function storagePathFromPublicUrl(rawUrl: string, userId: string): string | null {
     try {
         const url = new URL(rawUrl);
         const prefix = `/storage/v1/object/public/${IMAGE_BUCKET}/${userId}/`;

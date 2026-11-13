@@ -16,6 +16,7 @@ import { getAllSkillFiles, getSkillFile, listSkills, saveSkill, type StoredSkill
 import { runSkillScript } from '$lib/server/skill-sandbox';
 import { SKILL_DESCRIPTION_MAX, isValidSkillFilePath, normalizeSkillName, validateSkill } from '$lib/skill-md';
 import { GEMINI_TEXT_MODEL } from '$lib/server/models';
+import { PICTURE_JOB_CLOSE, PICTURE_JOB_OPEN, PICTURE_SKILL_NAME, PICTURE_UNITS_PER_CALL, PICTURE_RUN_MAX, normalizePictureChunk, pictureRunCap } from '$lib/picture-book-job';
 import { MANGA_JOB_CLOSE, MANGA_JOB_OPEN, MANGA_PAGES_PER_CALL, MANGA_SKILL_NAME, normalizeMangaChunk } from '$lib/manga-job';
 import { PANEL_DETECT_MAX_PAGES, SPRITE_SKILL_NAME, detectPages } from '$lib/server/panel-detect';
 import { loadReferenceInputs, measureStoredBytes, storageLimitForPlan } from '$lib/server/image-gen';
@@ -142,7 +143,7 @@ You are the AI assistant of HyperCardBook, running in "Plan mode". In Plan mode 
 
 PLAN MODE RULES (these override every other instruction):
 1. You may talk about anything: casual chat, work consultations, brainstorming, research, and of course planning books or cards.
-2. You MUST NEVER create, edit, rewrite, or delete a book or card in Plan mode. Do not output a \`\`\`markdown code block, [UPDATE_PAGES] tags, [MANGA_JOB] tags, a full book/card body, or YAML frontmatter meant to be applied. You have no tools that edit books or cards.
+2. You MUST NEVER create, edit, rewrite, or delete a book or card in Plan mode. Do not output a \`\`\`markdown code block, [UPDATE_PAGES] tags, [MANGA_JOB] tags, [PICTURE_JOB] tags, a full book/card body, or YAML frontmatter meant to be applied. You have no tools that edit books or cards.
 3. If the user asks you to create or edit a book/card now, explain that Plan mode never changes books or cards, and ask them to turn Plan mode off themselves (＋ menu → Plan mode) and then send the request.
 4. When asked to plan, write the plan in plain text: purpose, target readers, structure (page by page or card by card), key points, style, and image ideas. Short sample wording is fine, but never as a ready-to-apply book/card. Ask clarifying questions when it helps, and refine the plan with the user.
 5. When the user approves the plan, remind them to turn Plan mode off and ask for the creation (for example "この Plan で作成して"). The plan stays in this conversation and will be used then.
@@ -515,7 +516,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
 
         // Plan mode: skills and other instructions above may still be loaded, but the Plan mode rules must win. Repeat them last.
         if (planMode) {
-            activeSystemInstruction += `\n\nPLAN MODE REMINDER (overrides EVERYTHING above, including skills and book/card format rules):\n- Plan mode is ON. Never output a book/card body, a \`\`\`markdown block meant to be applied, [UPDATE_PAGES], or [MANGA_JOB]. Books and cards are never changed.\n- Skills may be used for thinking, planning and advice. If a skill says to create or edit a book/card, give a plain-text plan instead and tell the user to turn Plan mode off to apply it.`;
+            activeSystemInstruction += `\n\nPLAN MODE REMINDER (overrides EVERYTHING above, including skills and book/card format rules):\n- Plan mode is ON. Never output a book/card body, a \`\`\`markdown block meant to be applied, [UPDATE_PAGES], [MANGA_JOB], or [PICTURE_JOB]. Books and cards are never changed.\n- Skills may be used for thinking, planning and advice. If a skill says to create or edit a book/card, give a plain-text plan instead and tell the user to turn Plan mode off to apply it.`;
         }
 
         const stream = new ReadableStream({
@@ -546,7 +547,10 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                     }
 
                     // まんがは台本を複数回に分けて受け取るため、ターン数の上限を広げる
-                    const maxTurns = skillsByName.has(MANGA_SKILL_NAME) ? 40 : 10;
+                    const maxTurns = skillsByName.has(MANGA_SKILL_NAME) || skillsByName.has(PICTURE_SKILL_NAME) ? 40 : 10;
+                    // 絵本: 1 回の依頼（1 ターン）で描く絵は、キャラシートも含めて 4 枚まで
+                    let pictureQueued = 0;
+                    let pictureHasSheet = false;
                     for (let turn = 0; turn < maxTurns; turn++) {
                         const toolDeclarations = [];
 
@@ -662,6 +666,44 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                         book_markdown: { type: 'STRING', description: 'LAST call only: the complete book Markdown (YAML frontmatter with layout: fill, cover, one image-only page per manga page, plus any text pages). Write each manga image as ![Page N]({{PAGE_N}}) with the literal token {{PAGE_N}} instead of a URL.' }
                                     },
                                     required: ['pages']
+                                }
+                            });
+                        }
+
+                        if (proPlanActive && skillsByName.has(PICTURE_SKILL_NAME)) {
+                            toolDeclarations.push({
+                                name: 'queue_picture_book_pages',
+                                description: `Queue picture-book illustrations to be drawn. The user's browser draws them AFTER your reply ends (one image per unit, with one shared character reference sheet; "wide" units are one double-page picture cut into left/right halves; "grid" units draw 2 or 4 separate PAGES in one image and cut them apart, so one image yields 2-4 pages) and puts each finished picture into the book. HARD LIMIT: at most ${PICTURE_RUN_MAX} images per user request, and the character sheet counts as one (so ${PICTURE_RUN_MAX - 1} units when a new sheet is needed, ${PICTURE_RUN_MAX} when character_sheet_url is given). Queue only the next batch; after the results, the user asks you to continue. Send style and characters only in the first call. Send book_markdown ONLY when creating the book (all units' tokens, including not-yet-drawn ones, which become 'not generated yet' frames); when drawing the remaining frames of an existing book, do NOT send book_markdown (the frames are filled in place and no text changes).`,
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        style: { type: 'STRING', description: 'First call only: one-line English art style, e.g. "soft watercolor picture-book illustration, warm pastel colors".' },
+                                        characters: {
+                                            type: 'ARRAY',
+                                            description: 'First call only: fixed English appearance of each character (age, hair, eyes, body, clothes, props). Pages reference only the id.',
+                                            items: { type: 'OBJECT', properties: { id: { type: 'STRING' }, appearance: { type: 'STRING' } }, required: ['id', 'appearance'] }
+                                        },
+                                        character_sheet_url: { type: 'STRING', description: 'Only when redrawing parts of an existing book: the existing character sheet image URL, so characters stay identical and no new sheet is drawn.' },
+                                        units: {
+                                            type: 'ARRAY',
+                                            description: `Illustrations to draw, numbered by unit (max ${PICTURE_UNITS_PER_CALL} per call).`,
+                                            items: {
+                                                type: 'OBJECT',
+                                                properties: {
+                                                    unit: { type: 'INTEGER', description: 'Unit number from 1. Referenced in book_markdown as {{UNIT_n}} (or {{UNIT_n_L}} / {{UNIT_n_R}} for wide, {{UNIT_n_1}}..{{UNIT_n_4}} for grid).' },
+                                                    type: { type: 'STRING', description: '"cover" (the front cover picture, text-free; use for the first unit), "single" (one scene, one page), "multi" (2-4 scenes blended into one page), "wide" (one picture across a double-page spread), or "grid" (2 or 4 separate page pictures in ONE image, cut apart afterwards; the cheap default for ordinary pages).' },
+                                                    setting: { type: 'STRING', description: 'Place, time of day, mood (English).' },
+                                                    characters: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Character ids appearing in this illustration.' },
+                                                    composition: { type: 'STRING', description: 'Camera and layout (English): distance, angle, where the subject sits, where there is empty space. For multi, the shapes and sizes of the scenes.' },
+                                                    source_url: { type: 'STRING', description: 'wide/grid only: URL of an already drawn picture whose cutting failed. The picture is not drawn again; only the cut is retried.' },
+                                                    scenes: { type: 'ARRAY', items: { type: 'STRING' }, description: 'single/wide: exactly one scene description. multi: 2 to 4 scenes in reading order. grid: exactly 2 or 4 scenes, one per page, in page order. English; never include text to be drawn.' }
+                                                },
+                                                required: ['unit', 'type', 'scenes']
+                                            }
+                                        },
+                                        book_markdown: { type: 'STRING', description: 'Only when creating the book: the complete book Markdown. Use {{UNIT_n}} instead of an image URL (wide: {{UNIT_n_L}} on the left page and {{UNIT_n_R}} on the right page; grid: {{UNIT_n_1}}..{{UNIT_n_4}} for the pages in order; the character sheet is {{SHEET}}).' }
+                                    },
+                                    required: ['units']
                                 }
                             });
                         }
@@ -1130,6 +1172,26 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                             success: true,
                                             queued_pages: chunk.job.pages.map(p => p.page),
                                             message: 'Queued. The pages are drawn in the user\'s browser after your reply ends. Do NOT output the book Markdown yourself and do not call image tools; once every page and the book_markdown are queued, reply with one short message telling the user the drawing has started and will take a while.'
+                                        };
+                                    }
+                                } else if (fc.name === 'queue_picture_book_pages') {
+                                    const chunk = !proPlanActive || !skillsByName.has(PICTURE_SKILL_NAME)
+                                        ? { error: 'The picture-book skill must be enabled (Pro plan or above).' }
+                                        : normalizePictureChunk(fc.args);
+                                    if (!('error' in chunk) && chunk.job.character_sheet_url) pictureHasSheet = true;
+                                    // 描く枚数は source_url のあるもの（切るだけ）を数えない
+                                    const toDraw = 'error' in chunk ? 0 : chunk.job.units.filter(u => !u.source_url).length;
+                                    if (!('error' in chunk) && pictureQueued + toDraw > pictureRunCap(pictureHasSheet)) {
+                                        resultData = { success: false, error: `Limit: at most ${PICTURE_RUN_MAX} images per request, and a new character sheet counts as one (${pictureRunCap(pictureHasSheet)} units now; already queued ${pictureQueued}). Do not queue more. Tell the user which units are not drawn yet and that they can ask you to continue after seeing the results.` };
+                                    } else if ('error' in chunk) {
+                                        resultData = { success: false, error: chunk.error };
+                                    } else {
+                                        pictureQueued += toDraw;
+                                        controller.enqueue(encoder.encode(`\n${PICTURE_JOB_OPEN}${JSON.stringify(chunk.job)}${PICTURE_JOB_CLOSE}\n`));
+                                        resultData = {
+                                            success: true,
+                                            queued_units: chunk.job.units.map(u => u.unit),
+                                            message: 'Queued. The illustrations are drawn in the user\'s browser after your reply ends. Do NOT output the book Markdown yourself and do not call image tools; once this batch is queued, reply with one short message: the drawing of this batch (N images) has started, and the remaining units (list their numbers) will be drawn when the user asks to continue after seeing the results. Never say it has started before this tool succeeded.'
                                         };
                                     }
                                 } else if (fc.name === 'detect_manga_panels') {

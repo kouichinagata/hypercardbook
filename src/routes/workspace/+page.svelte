@@ -9,6 +9,7 @@
     import AiModelPicker from '$lib/components/AiModelPicker.svelte';
     import { DEFAULT_ACTIVE_PLUGIN_IDS } from '$lib/plugins';
     import { AI_KEYS_CHANGED_EVENT, aiRequestHeaders, hasUserGeminiKey, imageModelLabel, selectedImageModel } from '$lib/ai-model';
+    import { assemblePictureBook, describePictureResult, extractPictureJob, fillPictureUnits, runPictureJob, type PictureJob, type PictureResult } from '$lib/picture-book-job';
     import { assembleMangaBook, extractMangaJob, requestImage, runMangaJob, runPool, type MangaJob } from '$lib/manga-job';
     import { marked } from 'marked';
     import { effectivePlanFromUser } from '$lib/plan';
@@ -1487,6 +1488,13 @@ ${markdown}
                 await runMangaJobInChat(mangaJob);
             }
 
+            // 絵本: AI が台本を渡したら、ここからブラウザで絵を描く
+            const pictureJob = planNow ? null : extractPictureJob(accumulatedText);
+            if (pictureJob) {
+                chatHistory[lastIndex].text = accumulatedText.replace(/\[PICTURE_JOB\][\s\S]*?\[\/PICTURE_JOB\]/g, '').trim();
+                await runPictureJobInChat(pictureJob);
+            }
+
         } catch (err: any) {
             if (generateController.signal.aborted) {
                 // ユーザーが Stop を押した。エラー表示は出さず、届いた分の回答は残す
@@ -1550,6 +1558,43 @@ ${markdown}
         }
     }
 
+    async function runPictureJobInChat(job: PictureJob) {
+        const total = job.units.length;
+        const index = chatHistory.length;
+        const setStatus = (text: string) => {
+            chatHistory = chatHistory.map((message, i) => i === index ? { ...message, text } : message);
+        };
+        const abort = new AbortController();
+        mangaAbort = abort;
+        const warnBeforeLeaving = (event: BeforeUnloadEvent) => event.preventDefault();
+        window.addEventListener('beforeunload', warnBeforeLeaving);
+        chatHistory = [...chatHistory, { role: 'model', text: `🎨 Drawing ${total} illustration${total === 1 ? '' : 's'}… Please keep this tab open until it finishes.`, at: new Date().toISOString() }];
+        scrollToBottom();
+        try {
+            // 1 枚できるたびに本へ入れる（途中で止まっても、できた絵は残る）。
+            // 本の全文が渡されたときはそのテンプレートから、渡されないとき（描き直し）は今の本の「未生成」の枠に入れる。
+            const applyNow = (result: Pick<PictureResult, 'urls' | 'sheetUrl'>) => {
+                markdown = job.book_markdown
+                    ? assemblePictureBook(job, result, markdown)
+                    : fillPictureUnits(markdown, job.units, result.urls);
+            };
+            const result = await runPictureJob(job, (p) => {
+                setStatus(p.phase === 'sheet'
+                    ? '🎨 Drawing the character sheet…'
+                    : `🎨 Drawing illustrations… ${p.done}/${p.total}${p.failed ? ` (${p.failed} failed)` : ''}. Please keep this tab open.`);
+            }, abort.signal, (_unit, partial) => applyNow(partial));
+            // キャラシートまで描けたときだけ、最後にもう一度まとめて反映する（未生成の枠を含む）
+            if (result.sheetUrl || !job.book_markdown) applyNow(result);
+            setStatus(describePictureResult(job, result));
+        } catch (err: any) {
+            setStatus(`⚠️ Drawing stopped: ${err?.message || 'unknown error'}`);
+        } finally {
+            window.removeEventListener('beforeunload', warnBeforeLeaving);
+            mangaAbort = null;
+            scrollToBottom();
+        }
+    }
+
     function parseMarkdownForChat(content: string): string {
         if (!content) return '';
         const processed = content.replace(/(\n{2,})/g, (match, p1, offset, string) => {
@@ -1570,6 +1615,8 @@ ${markdown}
         return message.text
             .replace(/\[MANGA_JOB\][\s\S]*?\[\/MANGA_JOB\]/g, '')
             .replace(/\[MANGA_JOB\][\s\S]*/g, '')
+            .replace(/\[PICTURE_JOB\][\s\S]*?\[\/PICTURE_JOB\]/g, '')
+            .replace(/\[PICTURE_JOB\][\s\S]*/g, '')
             .replace(/\[UPDATED_MARKDOWN\][\s\S]*/gi, '')
             .replace(/\[MARKDOWN_EDIT\][\s\S]*/g, '')
             .replace(
