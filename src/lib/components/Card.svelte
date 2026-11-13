@@ -371,8 +371,8 @@
         if (!markdown) return '';
         // Fields are numbered on the whole Markdown, as the server does
         let cleanMd = replaceFieldMarkers(markdown, renderField).replace(/^---\s*[\s\S]*?\s*---/, '').trim();
-        // Remove the whole line of a <style> block so no blank line is left inside an HTML block (it would end the block)
-        cleanMd = cleanMd.replace(/^[ \t]*<style>[\s\S]*?<\/style>[ \t]*\r?\n?/gim, '').replace(new RegExp(styleBlockPattern), '');
+        // Remove the whole line of a style block so no blank line is left inside an HTML block (it would end the block)
+        cleanMd = cleanMd.replace(new RegExp('^[ \\t]*<' + 'style>[\\s\\S]*?<' + '[\\/]style>[ \\t]*\\r?\\n?', 'gim'), '').replace(new RegExp(styleBlockPattern), '');
         // Seals pressed before the signature sit left-aligned in a row of inline boxes, so many of them wrap onto new lines
         cleanMd = replaceStampImages(cleanMd, (url) => `<span class="sign-slot sign-stamp"><img src="${url}" alt="seal"></span>`);
         cleanMd = replaceSignedImages(cleanMd, (url) => `<span class="sign-slot sign-signed"><img src="${url}" alt="signature"></span>`);
