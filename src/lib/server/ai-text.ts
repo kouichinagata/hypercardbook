@@ -53,12 +53,12 @@ export function resolveTextAi(request: Request | null): TextAi {
 }
 
 function claudeErrorMessage(status: number): string {
-	if (status === 401) return 'Claude APIキーが無効です。設定のAPI Keyを確認してください。';
-	if (status === 403) return 'Claude APIの利用が許可されていません。キーの権限を確認してください。';
-	if (status === 404) return '選択したClaudeモデルが見つかりません。モデル選択を確認してください。';
-	if (status === 429) return 'Claude APIの利用上限に達しました。しばらくしてからお試しください。';
-	if (status >= 500) return 'Claudeが混雑または障害中です。しばらくしてからお試しください。';
-	return `Claude APIでエラーが発生しました（${status}）。`;
+	if (status === 401) return 'The Claude API key is invalid. Check the API key in Settings.';
+	if (status === 403) return 'This Claude API key is not allowed to use the API. Check the key\'s permissions.';
+	if (status === 404) return 'The selected Claude model was not found. Check the model selection.';
+	if (status === 429) return 'The Claude API usage limit was reached. Please try again later.';
+	if (status >= 500) return 'Claude is busy or having an outage. Please try again later.';
+	return `The Claude API returned an error (${status}).`;
 }
 
 async function claudeRequest(apiKey: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
@@ -73,7 +73,7 @@ async function claudeRequest(apiKey: string, body: Record<string, unknown>, sign
 				signal
 			});
 		} catch {
-			throw new AiTextError('Claude APIに接続できませんでした。', 0);
+			throw new AiTextError('Could not connect to the Claude API.', 0);
 		}
 		if (response.ok) return response;
 		const detail = await response.text().catch(() => '');
@@ -88,7 +88,7 @@ async function claudeRequest(apiKey: string, body: Record<string, unknown>, sign
 		try { reason = String(JSON.parse(detail)?.error?.message || ''); } catch {}
 		throw new AiTextError(claudeErrorMessage(response.status) + (response.status === 400 && reason ? ` ${reason.slice(0, 300)}` : ''), response.status);
 	}
-	throw new AiTextError('Claude APIでエラーが発生しました。', 400);
+	throw new AiTextError('The Claude API returned an error.', 400);
 }
 
 /** モデルが返した文字列から JSON 本体だけを取り出す（コードフェンスや前置きを除去）。 */
@@ -210,14 +210,14 @@ export async function streamClaudeTurn(options: {
 		stream: true,
 		...(options.tools?.length ? { tools: options.tools, tool_choice: { type: 'auto' } } : {})
 	}, options.signal);
-	if (!response.body) throw new AiTextError('Claudeの返答がありません。', 502);
+	if (!response.body) throw new AiTextError('Claude returned no response.', 502);
 
 	const blocks: any[] = [];
 	let stopReason = '';
 	const receive = (event: any) => {
 		if (event.type === 'error') {
 			const kind = event.error?.type;
-			throw new AiTextError(kind === 'overloaded_error' ? claudeErrorMessage(529) : 'Claudeの応答が中断しました。', kind === 'overloaded_error' || kind === 'api_error' ? 529 : 502);
+			throw new AiTextError(kind === 'overloaded_error' ? claudeErrorMessage(529) : 'Claude\'s response was interrupted.', kind === 'overloaded_error' || kind === 'api_error' ? 529 : 502);
 		}
 		if (event.type === 'content_block_start') {
 			blocks[event.index] = { ...event.content_block, partial: '' };
@@ -267,7 +267,7 @@ export async function streamClaudeTurn(options: {
 		if (pending.trim()) frame(pending);
 	} catch (err) {
 		if (err instanceof AiTextError) throw err;
-		throw new AiTextError('Claudeとの通信が途中で切れました。', 502);
+		throw new AiTextError('The connection to Claude was cut off.', 502);
 	} finally {
 		await reader.cancel().catch(() => {});
 	}
@@ -293,7 +293,7 @@ export async function listClaudeModels(apiKey: string, signal?: AbortSignal): Pr
 		try {
 			response = await fetch(url, { headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, signal });
 		} catch {
-			throw new AiTextError('Claude APIに接続できませんでした。', 0);
+			throw new AiTextError('Could not connect to the Claude API.', 0);
 		}
 		if (!response.ok) {
 			await response.body?.cancel().catch(() => {});

@@ -9,13 +9,13 @@ export const GET: RequestHandler = async ({ request, locals }) => {
     }
     const apiKey = request.headers.get('x-user-anthropic-api-key')?.trim();
     if (!apiKey) {
-        return json({ error: 'Claude APIキーが登録されていません。' }, { status: 400 });
+        return json({ error: 'No Claude API key is registered.' }, { status: 400 });
     }
     try {
         const models = await listClaudeModels(apiKey, AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]));
         return json({ models }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (err) {
         const status = err instanceof AiTextError && err.status >= 400 && err.status < 600 ? err.status : 502;
-        return json({ error: err instanceof Error ? err.message : 'モデル一覧を取得できませんでした。' }, { status });
+        return json({ error: err instanceof Error ? err.message : 'Could not load the model list.' }, { status });
     }
 };
