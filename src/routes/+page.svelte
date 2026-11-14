@@ -20,6 +20,45 @@
 
     let { data } = $props();
 
+    // Shelf books arrive streamed from the server (see +page.server.ts). The last
+    // loaded list stays on screen while a reload is in flight, so nothing flickers.
+    let shelfBooks = $state<any[]>([]);
+    let booksLoaded = $state(false);
+    let booksLoadFailed = $state(false);
+    let lastBooksLoadAt = 0;
+    // Books removed from the shelf before the server confirmed it (deleting or deleted).
+    let hiddenBookIds = $state<string[]>([]);
+    $effect(() => {
+        const pending = data.books;
+        let cancelled = false;
+        Promise.resolve(pending).then(
+            (list) => {
+                if (cancelled) return;
+                shelfBooks = list;
+                booksLoaded = true;
+                booksLoadFailed = false;
+                lastBooksLoadAt = Date.now();
+            },
+            (err) => {
+                if (cancelled) return;
+                console.error('Failed to load the bookshelf:', err);
+                booksLoaded = true;
+                booksLoadFailed = shelfBooks.length === 0;
+            }
+        );
+        return () => { cancelled = true; };
+    });
+    let allBooks = $derived(hiddenBookIds.length ? shelfBooks.filter((b: any) => !hiddenBookIds.includes(b.id)) : shelfBooks);
+
+    // Short status shown while a book is being deleted, then briefly after.
+    let shelfNotice = $state<{ text: string; kind: 'busy' | 'done' | 'error' } | null>(null);
+    let shelfNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+    function showShelfNotice(text: string, kind: 'busy' | 'done' | 'error') {
+        clearTimeout(shelfNoticeTimer);
+        shelfNotice = { text, kind };
+        if (kind !== 'busy') shelfNoticeTimer = setTimeout(() => { shelfNotice = null; }, kind === 'error' ? 5000 : 2500);
+    }
+
     // Initialize Supabase browser client for logout action
     const supabase = createBrowserClient(
         env.PUBLIC_SUPABASE_URL || '',
@@ -283,9 +322,18 @@
 
         // Refresh the bookshelf after returning from an editor tab so saved,
         // renamed, recolored, published, or deleted books are shown immediately.
+        // Skipped right after a load, and for short blurs such as a confirm() dialog,
+        // so the whole shelf is not reloaded over and over.
+        let blurredAt = 0;
+        const handleWindowBlur = () => { blurredAt = Date.now(); };
         const handleWindowFocus = () => {
+            const now = Date.now();
+            const awayMs = blurredAt ? now - blurredAt : Infinity;
+            blurredAt = 0;
+            if (awayMs < 3000 || now - lastBooksLoadAt < 5000 || deletingBookCount > 0) return;
             invalidateAll();
         };
+        window.addEventListener('blur', handleWindowBlur);
         window.addEventListener('focus', handleWindowFocus);
         const closeCreateMenu = (event: MouseEvent) => {
             const target = event.target as Element | null;
@@ -302,13 +350,16 @@
         const urlParams = new URLSearchParams(window.location.search);
         const launchRoboId = urlParams.get('launch_robo');
         if (launchRoboId) {
-            let roboBook = data.books.find((b: any) => b.id === launchRoboId || b.slug === launchRoboId);
-            if (!roboBook && data.publicBooks) {
-                roboBook = data.publicBooks.find((b: any) => b.id === launchRoboId || b.slug === launchRoboId);
-            }
-            if (roboBook) {
-                openHyperRoboView(roboBook);
-            }
+            // Wait for the streamed shelf before looking the HyperRobo up.
+            Promise.resolve(data.books).then((books: any[]) => {
+                let roboBook = books.find((b: any) => b.id === launchRoboId || b.slug === launchRoboId);
+                if (!roboBook && data.publicBooks) {
+                    roboBook = data.publicBooks.find((b: any) => b.id === launchRoboId || b.slug === launchRoboId);
+                }
+                if (roboBook) {
+                    openHyperRoboView(roboBook);
+                }
+            }, () => {});
         }
 
         // PapeRoboの「＋追加」から: ?mini_app_select=1 （MiniAppを本棚から選ぶ）
@@ -342,6 +393,7 @@
 
         return () => {
             window.removeEventListener('focus', handleWindowFocus);
+            window.removeEventListener('blur', handleWindowBlur);
             window.removeEventListener('click', closeCreateMenu);
             window.removeEventListener('keydown', closeCreateMenuOnEscape);
         };
@@ -523,7 +575,7 @@
     let stackPathIds = $state<string[]>([]);
     let activeStack = $derived.by(() => {
         const id = stackPathIds[stackPathIds.length - 1];
-        return id ? (data.books.find((b: any) => b.id === id) ?? null) : null;
+        return id ? (allBooks.find((b: any) => b.id === id) ?? null) : null;
     });
     let isStackSelectionMode = $state(false);
     let showStackModal = $state(false);
@@ -550,8 +602,8 @@
 
     function getNextHyperRoboDefaultTitle() {
         let maxNum = 0;
-        if (data.books) {
-            data.books.forEach((b: any) => {
+        if (allBooks) {
+            allBooks.forEach((b: any) => {
                 if (b.playMode === 'hyperrobo' && b.title) {
                     const match = b.title.match(/^HyperRobo(\d+)$/);
                     if (match) {
@@ -570,8 +622,8 @@
 
     function getNextStackDefaultTitle() {
         let maxNum = 0;
-        if (data.books) {
-            data.books.forEach((b: any) => {
+        if (allBooks) {
+            allBooks.forEach((b: any) => {
                 if (b.isStack && b.title) {
                     const match = b.title.match(/^HyperStack(\d+)$/);
                     if (match) {
@@ -632,7 +684,7 @@
 
     const PUBLIC_CHUNK_SIZE = 100;
 
-    let myBooksList = $derived(data.books.filter((b: any) => !b.isSample && !b.isQuarkChoice));
+    let myBooksList = $derived(allBooks.filter((b: any) => !b.isSample && !b.isQuarkChoice));
     // Items already inside a stack live in that stack's hierarchy, not on the top shelf
     let topBooksList = $derived(
         isMiniAppSelectionMode
@@ -641,8 +693,8 @@
             ? myBooksList
             : myBooksList.filter((b: any) => !stackedItemIds.has(b.id) && !stackedItemIds.has(b.slug))
     );
-    let sampleBooksList = $derived(data.books.filter((b: any) => b.isSample && (!isMiniAppSelectionMode || matchesShelfSelection(b))));
-    let quarksChoiceList = $derived(data.books.filter((b: any) => b.isQuarkChoice && (!isMiniAppSelectionMode || matchesShelfSelection(b))));
+    let sampleBooksList = $derived(allBooks.filter((b: any) => b.isSample && (!isMiniAppSelectionMode || matchesShelfSelection(b))));
+    let quarksChoiceList = $derived(allBooks.filter((b: any) => b.isQuarkChoice && (!isMiniAppSelectionMode || matchesShelfSelection(b))));
 
     /* ===== Public Books 絞り込み ===== */
     let pbTypeFilter = $state('all');
@@ -922,11 +974,11 @@ HyperBook: ${hyperBook.title}
         const paperoboSlug = book.paperoboSlug || '';
         const hyperbookId = book.hyperbookId || '';
 
-        let papeBook = data.books.find((b: any) => b.id === paperoboSlug || b.slug === paperoboSlug);
+        let papeBook = allBooks.find((b: any) => b.id === paperoboSlug || b.slug === paperoboSlug);
         if (!papeBook && data.publicBooks) {
             papeBook = data.publicBooks.find((b: any) => b.id === paperoboSlug || b.slug === paperoboSlug);
         }
-        let hyperBook = data.books.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
+        let hyperBook = allBooks.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
         if (!hyperBook && data.publicBooks) {
             hyperBook = data.publicBooks.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
         }
@@ -968,8 +1020,22 @@ HyperBook: ${hyperBook.title}
 
     async function publishActiveHyperRobo() {
         if (!activeHyperRobo) return;
-        
+
+        // The shelf does not carry HyperRobo bodies; read the current one before rewriting it.
         let newMarkdown = activeHyperRobo.markdownContent || '';
+        if (!newMarkdown) {
+            const { data: row, error } = await supabase
+                .from('books')
+                .select('markdown_content')
+                .eq('id', activeHyperRobo.id)
+                .single();
+            newMarkdown = row?.markdown_content || '';
+            if (error || !newMarkdown) {
+                console.error('Failed to read HyperRobo before publishing:', error);
+                alert('Could not read this HyperRobo. Please reload and try again.');
+                return;
+            }
+        }
         if (newMarkdown.includes('is_public: false')) {
             newMarkdown = newMarkdown.replace('is_public: false', 'is_public: true');
         } else if (!newMarkdown.includes('is_public:')) {
@@ -1043,9 +1109,11 @@ HyperBook: ${hyperBook.title}
             const res = await fetch('/api/mini-apps');
             if (res.ok) {
                 const result = await res.json();
+                // The shelf may still be streaming in when this runs from a launch URL.
+                const books: any[] = booksLoaded ? allBooks : await Promise.resolve(data.books).catch(() => []);
                 // The list stores slugs for apps made by PapeRobo; map them to the shelf's book ids.
                 selectedMiniApps = (result.items || []).flatMap((item: any) => {
-                    const book = data.books.find((b: any) => b.id === item.ref || b.slug === item.ref);
+                    const book = books.find((b: any) => b.id === item.ref || b.slug === item.ref);
                     return [{ id: book?.id ?? item.ref, title: book?.title ?? item.title }];
                 });
             }
@@ -1075,7 +1143,7 @@ HyperBook: ${hyperBook.title}
         try {
             if (documentSelection) {
                 if (!documentSelectionKind || !window.opener || window.opener.closed) {
-                    alert('PapeRoboの元のチャットから選択画面を開き直してください。');
+                    alert('Please reopen the selection screen from the original PapeRobo chat.');
                     return;
                 }
                 window.opener.postMessage({ type: DOCUMENT_SELECTION_RESULT, requestId: documentSelection.requestId, kind: documentSelectionKind, refs: selectedMiniApps.map((b) => b.id) }, documentSelection.origin);
@@ -1290,7 +1358,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     // IDs of every item contained in any of the user's own stacks (hidden from the top shelf)
     let stackedItemIds = $derived.by(() => {
         const ids = new Set<string>();
-        for (const b of data.books) {
+        for (const b of allBooks) {
             if (b.isSample || b.isQuarkChoice || !b.isStack) continue;
             for (const ref of parseStackMarkdown(b.markdownContent || '')) ids.add(ref.id);
         }
@@ -1300,7 +1368,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     // Derived books to display on the shelf
     let displayedBooks = $derived.by(() => {
         if (!activeStack) {
-            return data.books;
+            return allBooks;
         }
         // While editing a stack, every own item must be selectable
         if (isStackSelectionMode) return myBooksList;
@@ -1308,7 +1376,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         const subItemRefs = parseStackMarkdown(activeStack.markdownContent || '');
         const matchedBooks: any[] = [];
         subItemRefs.forEach(ref => {
-            const found = data.books.find((b: any) => b.id === ref.id || b.slug === ref.id);
+            const found = allBooks.find((b: any) => b.id === ref.id || b.slug === ref.id);
             if (found) {
                 matchedBooks.push(found);
             }
@@ -1319,9 +1387,16 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     let selectedStackBookIds = $derived(selectedStackBooks.map(b => b.id));
 
     // Delete handler
+    let deletingBookCount = 0;
+    // Removes the book from the shelf at once, then deletes it on the server.
+    // On failure the book comes back and the error is shown.
     async function handleDeleteBook(book: any) {
         if (!confirm(`Are you sure you want to delete "${book.title}"?`)) return;
 
+        hiddenBookIds = [...hiddenBookIds, book.id];
+        if (selectedBookId === book.id) selectedBookId = '';
+        showShelfNotice(`Deleting "${book.title}"…`, 'busy');
+        deletingBookCount++;
         try {
             const response = await fetch('/api/delete', {
                 method: 'POST',
@@ -1330,17 +1405,20 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             });
 
             if (response.ok) {
-                await invalidateAll();
-                if (selectedBookId === book.id) {
-                    selectedBookId = '';
-                }
+                showShelfNotice(`Deleted "${book.title}".`, 'done');
+                // Refresh in the background (e.g. stacks that listed this book); the shelf is already up to date.
+                void invalidateAll();
             } else {
-                const errData = await response.json();
-                alert(`Failed to delete: ${errData.error}`);
+                const errData = await response.json().catch(() => ({}));
+                hiddenBookIds = hiddenBookIds.filter((id) => id !== book.id);
+                showShelfNotice(`Failed to delete "${book.title}": ${errData.error || response.statusText}`, 'error');
             }
         } catch (err) {
             console.error('Delete book error:', err);
-            alert('An error occurred during deletion.');
+            hiddenBookIds = hiddenBookIds.filter((id) => id !== book.id);
+            showShelfNotice(`Failed to delete "${book.title}". Please try again.`, 'error');
+        } finally {
+            deletingBookCount--;
         }
     }
 
@@ -2149,7 +2227,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     let activeHyperBook = $derived.by(() => {
         if (!activeHyperRobo) return null;
         const hyperbookId = activeHyperRobo.hyperbookId || '';
-        let book = data.books.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
+        let book = allBooks.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
         if (!book && data.publicBooks) {
             book = data.publicBooks.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
         }
@@ -2179,7 +2257,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     async function getLeftPaneUrl() {
         if (activeHyperRobo) {
             const paperoboSlug = activeHyperRobo.paperoboSlug || '';
-            let paperoboBook = data.books.find((b: any) => b.slug === paperoboSlug || b.id === paperoboSlug);
+            let paperoboBook = allBooks.find((b: any) => b.slug === paperoboSlug || b.id === paperoboSlug);
             if (!paperoboBook && data.publicBooks) {
                 paperoboBook = data.publicBooks.find((b: any) => b.slug === paperoboSlug || b.id === paperoboSlug);
             }
@@ -2207,7 +2285,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
         if (activeHyperRobo) {
             const hyperbookId = activeHyperRobo.hyperbookId || '';
-            const targetBook = data.books.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
+            const targetBook = allBooks.find((b: any) => b.id === hyperbookId || b.slug === hyperbookId);
             const isCard = targetBook ? targetBook.isCard : false;
             path = isCard ? `/hypercard/${hyperbookId}?embed=true` : `/hyperbook/${hyperbookId}?embed=true`;
         }
@@ -2237,7 +2315,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         <button
             type="button"
             class="header-logo-btn"
-            title="PapeRoboを開く（長押しで新しいタブ）"
+            title="Open PapeRobo (long-press for a new tab)"
             onclick={handleLogoClick}
             onpointerdown={startLogoPress}
             onpointerup={endLogoPress}
@@ -2252,9 +2330,9 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             </div>
         </button>
         {#if logoMenuOpen}
-            <button type="button" class="header-logo-backdrop" aria-label="閉じる" onclick={() => (logoMenuOpen = false)}></button>
+            <button type="button" class="header-logo-backdrop" aria-label="Close" onclick={() => (logoMenuOpen = false)}></button>
             <div class="header-logo-menu" role="menu">
-                <button type="button" role="menuitem" onclick={openPapeRoboInNewTab}>PapeRoboを新しいタブで開く</button>
+                <button type="button" role="menuitem" onclick={openPapeRoboInNewTab}>Open PapeRobo in a new tab</button>
             </div>
         {/if}
     </div>
@@ -2435,6 +2513,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
 
     <!-- 3D wooden bookshelf displayed directly on the landing page -->
     <div class="bookshelf-section">
+        {#if shelfNotice}
+            <div class="shelf-notice shelf-notice-{shelfNotice.kind}" role={shelfNotice.kind === 'error' ? 'alert' : 'status'} aria-live="polite">
+                {#if shelfNotice.kind === 'busy'}<span class="shelf-spinner" aria-hidden="true"></span>{/if}
+                <span>{shelfNotice.text}</span>
+            </div>
+        {/if}
         {#if activeStack}
             <div class="public-books-separator">
                 <button type="button" class="theme-switch" onclick={leaveStack}>‹ Back</button>
@@ -2470,6 +2554,17 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                 />
             {/if}
         {:else}
+            {#if !booksLoaded}
+                <div class="empty-shelf shelf-loading" role="status" aria-live="polite">
+                    <span class="shelf-spinner" aria-hidden="true"></span>
+                    <p>Loading bookshelf…</p>
+                </div>
+            {:else if booksLoadFailed}
+                <div class="empty-shelf" role="alert">
+                    <p>Could not load the bookshelf.</p>
+                    <button type="button" class="theme-switch" onclick={() => invalidateAll()}>Retry</button>
+                </div>
+            {/if}
             <!-- Always render Quark's Choice if available -->
             {#if quarksChoiceList && quarksChoiceList.length > 0}
                 <div class="public-books-separator">
@@ -2742,11 +2837,11 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             </div>
             <div class="stack-popup-body">
                 {#if documentSelection}
-                    <p class="select-hint">本棚から資料を選択し、SaveでPapeRoboのチャットに添付します。</p>
+                    <p class="select-hint">Select items from the shelf, then press Save to attach them to the PapeRobo chat.</p>
                     {#if documentSelection.category === 'content'}
                         <label class="listbox-label" for="document-content-kind">HyperContent</label>
                         <select id="document-content-kind" value={documentSelectionKind || ''} onchange={(event) => changeDocumentKind(event.currentTarget.value as SelectionKind)} disabled={isSavingMiniApp}>
-                            <option value="" disabled>種類を選択してください</option>
+                            <option value="" disabled>Choose a type</option>
                             {#each CONTENT_KINDS as item}<option value={item.kind}>{item.title}</option>{/each}
                         </select>
                     {/if}
@@ -3265,7 +3360,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                             bind:value={skillFormDescription}
                                             rows="3"
                                             maxlength={SKILL_DESCRIPTION_MAX}
-                                            placeholder="What the skill does AND when to use it. e.g. 丁寧語に書き換える。敬語にしてと頼まれたときに使う。"
+                                            placeholder="What the skill does AND when to use it. e.g. Rewrites text in polite language. Use when asked to make the wording more formal."
                                             disabled={!isProPlan || skillReadOnly}
                                         ></textarea>
                                         <span class="skill-hint">The AI sees only this text when deciding whether to load the skill. {skillFormDescription.length}/{SKILL_DESCRIPTION_MAX}</span>
@@ -4515,6 +4610,55 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         padding: 40px;
         color: var(--text-color);
     }
+
+    .shelf-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .shelf-spinner {
+        display: inline-block;
+        width: 22px;
+        height: 22px;
+        border: 3px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: shelf-spin 0.8s linear infinite;
+        flex-shrink: 0;
+    }
+
+    .shelf-notice .shelf-spinner {
+        width: 14px;
+        height: 14px;
+        border-width: 2px;
+    }
+
+    @keyframes shelf-spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .shelf-notice {
+        position: fixed;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%);
+        z-index: 2000;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        max-width: calc(100vw - 32px);
+        padding: 10px 18px;
+        border-radius: 999px;
+        font-size: 14px;
+        color: #fff;
+        background: rgba(30, 30, 30, 0.92);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    }
+
+    .shelf-notice-done { background: rgba(28, 110, 60, 0.95); }
+    .shelf-notice-error { background: rgba(170, 40, 40, 0.95); }
 
     .spinner {
         width: 18px;

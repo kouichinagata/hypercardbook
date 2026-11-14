@@ -37,7 +37,7 @@
             <img src="/favicon.png" alt="HyperCardBook Logo" class="title-logo" />
             HyperCardBook
         </h1>
-        <p class="subtitle">Write once. Publish AI interactive books in 80 languages.</p>
+        <p class="subtitle">Markdown is all you need!</p>
 
         {#if errorMessage}
             <div class="message error-message">

@@ -3,7 +3,7 @@
 
 ![HyperCardBook Logo](https://fxtqkhfkavwtctuljrqt.supabase.co/storage/v1/object/public/HyperCardBookBucket/d9841327-418b-41fd-8657-59c3b7f7fb19/ed9bf285-70f9-4f99-b026-0669a6a8395a_hyperbook_png.webp)
 
-**Write once. Publish interactive books in 80 languages.**
+**Markdown is all you need!**
 
 HyperCardBook is an open-source Markdown platform for creating AI-powered interactive books, interactive web content, and multilingual publications.
 

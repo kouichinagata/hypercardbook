@@ -395,7 +395,7 @@
                                                 <div class="phone-avatar-name">
                                                     <span class="phone-username">{book.title}</span>
                                                 </div>
-                                                <div class="phone-call-duration">通話中 ・ 00:02</div>
+                                                <div class="phone-call-duration">On call · 00:02</div>
                                             </div>
 
                                             <!-- 右下のアクションボタン (緑・赤) -->
@@ -445,7 +445,7 @@
                                                 <div class="phone-avatar-name">
                                                     <span class="phone-username">{book.title}</span>
                                                 </div>
-                                                <div class="phone-call-duration">通話中 ・ 00:02</div>
+                                                <div class="phone-call-duration">On call · 00:02</div>
                                             </div>
 
                                             <!-- 右下のアクションボタン (緑・赤) -->
