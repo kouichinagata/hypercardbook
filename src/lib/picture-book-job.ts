@@ -19,7 +19,7 @@ const SHEET_ASPECT = '3:2';
 export const PICTURE_IMAGES_PER_BATCH = 4;
 const CONCURRENCY = 2;
 
-/** cover: front cover picture (no text; the book shows the title and author itself) / single: 1 scene on one page / multi: 2–4 soft-framed scenes on one page / wide: one picture across a double-page spread / grid: 2 or 4 separate page pictures drawn in ONE image and cut apart (the cheap default for many pages) */
+/** cover: front cover picture with the book's title and author drawn into it / single: 1 scene on one page / multi: 2–4 soft-framed scenes on one page / wide: one picture across a double-page spread / grid: 2 or 4 separate page pictures drawn in ONE image and cut apart (the cheap default for many pages) */
 export type PictureUnitType = 'cover' | 'single' | 'multi' | 'wide' | 'grid';
 
 export interface PictureCharacter {
@@ -38,6 +38,9 @@ export interface PictureUnit {
     scenes: string[];
     /** wide / grid のみ: 生成済みの画像の URL。あれば描かずに、切る作業だけをやり直す */
     source_url?: string;
+    /** cover のみ: 表紙の絵に描き込むタイトルと作者名 */
+    title?: string;
+    author?: string;
 }
 
 export interface PictureJob {
@@ -73,7 +76,9 @@ export function normalizePictureChunk(args: any): { job: PictureJob } | { error:
             characters: (Array.isArray(r?.characters) ? r.characters : []).map((c: unknown) => clip(c, 64)).filter(Boolean).slice(0, 8),
             composition: clip(r?.composition, 600),
             scenes: type === 'multi' || type === 'grid' ? scenes.slice(0, 4) : scenes.slice(0, 1),
-            ...((type === 'wide' || type === 'grid') && /^https:\/\//.test(clip(r?.source_url, 1_000)) ? { source_url: clip(r.source_url, 1_000) } : {})
+            ...((type === 'wide' || type === 'grid') && /^https:\/\//.test(clip(r?.source_url, 1_000)) ? { source_url: clip(r.source_url, 1_000) } : {}),
+            ...(type === 'cover' && clip(r?.title, 200) ? { title: clip(r.title, 200) } : {}),
+            ...(type === 'cover' && clip(r?.author, 100) ? { author: clip(r.author, 100) } : {})
         });
     }
 
@@ -120,12 +125,27 @@ export function extractPictureJob(text: string): PictureJob | null {
 const DEFAULT_STYLE = 'soft watercolor picture-book illustration, warm gentle colors, hand-painted paper texture';
 const NO_TEXT = 'Do NOT draw any text, letters, captions, speech bubbles, numbers, logos, or watermarks anywhere in the picture.';
 
+// The cover's title and author: from the cover unit, else from the book's frontmatter.
+function coverText(job: PictureJob, unit: PictureUnit) {
+    const fm = job.book_markdown?.match(/^---\s*([\s\S]*?)\s*---/)?.[1] || '';
+    const field = (key: string) => fm.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))?.[1].trim().replace(/^["']|["']$/g, '') || '';
+    return { title: unit.title || field('title'), author: unit.author || field('author') };
+}
+
 export function buildPictureSheetPrompt(job: PictureJob): string | null {
     if (!job.characters?.length) return null;
     return `Character reference sheet for a children's picture book, ${job.style || DEFAULT_STYLE}. Plain off-white background.
 Characters:
 ${job.characters.map((c, i) => `${i + 1}. ${c.appearance}`).join('\n')}
 For each character show a full-body front view, a full-body side view, and a row of four face close-ups (neutral, happy, surprised, sad). Equal size, same outfit and colors in every view. ${NO_TEXT}`;
+}
+
+function coverLettering(job: PictureJob, unit: PictureUnit) {
+    const { title, author } = coverText(job, unit);
+    if (!title) return NO_TEXT;
+    return `Draw the book's title and author name on the cover as part of the artwork, in a beautiful hand-lettered picture-book style that matches the illustration, exactly as written (same characters, no extra words, no typos):
+- Title (large, near the top): ${title}
+${author ? `- Author (small, near the bottom): ${author}\n` : ''}Keep the lettering clearly readable and away from the edges, and do not cover the main character's face. No other text, numbers, logos, or watermarks.`;
 }
 
 export function buildPicturePrompt(job: PictureJob, unit: PictureUnit, hasReference: boolean): string {
@@ -161,7 +181,7 @@ ${NO_TEXT}${ref}`;
 Iconic, inviting and charming: the main character(s) large and centered in a representative moment, with the story's key setting behind them. Balanced composition, calm space around the subject, bright and warm.
 ${cast}${setting}${composition}Scene: ${unit.scenes[0]}
 
-${NO_TEXT} The title and author name are added separately by the book, so leave the picture completely free of lettering.${ref}`;
+${coverLettering(job, unit)}${ref}`;
     }
     if (unit.type === 'wide') {
         return `One wide double-page spread picture for a picture book (landscape), ${style}.

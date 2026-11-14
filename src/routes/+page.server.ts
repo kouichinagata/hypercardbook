@@ -9,6 +9,7 @@ const OWN_BOOK_COLUMNS = 'id, slug, title, author, cover_image, theme_color, use
 function parseShelfFrontmatter(markdown: string) {
     const fm = {
         playMode: 'book',
+        pageLayout: 'standard',
         subTitle: '',
         launchUrl: '',
         paperoboSlug: '',
@@ -28,6 +29,7 @@ function parseShelfFrontmatter(markdown: string) {
         const k = parts[0].trim();
         const v = parts.slice(1).join(':').trim();
         if (k === 'play_mode') fm.playMode = v;
+        if (k === 'layout' || k === 'mode' || k === 'page_mode') fm.pageLayout = v.toLowerCase();
         if (k === 'sub_title') fm.subTitle = v;
         if (k === 'launch_url') fm.launchUrl = v;
         if (k === 'paperobo_slug') fm.paperoboSlug = v;
@@ -58,6 +60,7 @@ function toShelfBook(b: any, extra: Record<string, unknown>, own = false) {
         isMiniApp: fm.playMode === 'miniapp',
         isStack: fm.playMode === 'stack',
         playMode: fm.playMode,
+        pageLayout: fm.pageLayout,
         launchUrl: fm.launchUrl,
         paperoboSlug: fm.paperoboSlug,
         ...(own ? { paperoboAgentId: fm.paperoboAgentId, paperoboPublicId: fm.paperoboPublicId } : {}),

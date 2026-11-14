@@ -19,16 +19,17 @@
 | 項目 | 内容 |
 |---|---|
 | unit | 絵の通し番号（1から）。文章だけのカードには付けない |
-| type | `cover`（表紙。最初のunit 1だけ。文字なし）／`single`（1場面）／`multi`（2〜4場面を1枚に）／`wide`（見開き1枚）／`grid`（別々のページの絵を2つか4つ、1枚に描いて切り分ける。標準） |
+| type | `cover`（表紙。最初のunit 1だけ。タイトルと作者名を絵に描く）／`single`（1場面）／`multi`（2〜4場面を1枚に）／`wide`（見開き1枚）／`grid`（別々のページの絵を2つか4つ、1枚に描いて切り分ける。標準） |
 | setting | 場所・時間・雰囲気。例：`cozy bedroom at dawn, wooden bed with blue checkered quilt, yellow curtains` |
 | characters | 出るキャラのidの配列 |
 | composition | 距離・角度・主役の位置・余白。multi は各場面の大きさ・形・配置 |
 | scenes | single/wide は1つ。multi は2〜4つ（読む順）。grid はちょうど2つか4つ（ページ順） |
+| title / author | cover だけ。フロントマターと同じタイトルと作者名。表紙の絵に描き込まれる |
 | source_url | wide / grid だけ。描けた横長の絵のURL（切るのだけ失敗したとき） |
 
 ### cover の例（unit 1）
 ```
-{"unit":1,"type":"cover","setting":"sunny meadow with a small cottage, morning","characters":["mimi"],"composition":"Mimi large and centered, smiling, waving; cottage and sunrise behind her","scenes":["Mimi stands in the meadow at sunrise, the cottage and a blue bird behind her."]}
+{"unit":1,"type":"cover","setting":"sunny meadow with a small cottage, morning","characters":["mimi"],"composition":"Mimi large and centered, smiling, waving; cottage and sunrise behind her; calm sky at the top for the title","title":"ミミと あさひ","author":"（作者の名前）","scenes":["Mimi stands in the meadow at sunrise, the cottage and a blue bird behind her."]}
 ```
 ### single の例
 ```
@@ -82,7 +83,7 @@ picture_book: {"style":"soft watercolor picture-book illustration, warm pastel c
 
 <div class="pb-textpage"><p class="pb-body">おしまい<br><br>原作：（原作があるときだけ。例：アンデルセン「みにくいアヒルの子」）<br>作：（作者の名前）</p></div>
 ```
-- `layout: full`、`cover_image: {{UNIT_1}}`（表紙の絵）、`author`（作者の名前）を必ず入れる。タイトルと作者名は、本が表紙に表示する。
+- `layout: full`、`cover_image: {{UNIT_1}}`（表紙の絵）、`author`（作者の名前）を必ず入れる。タイトルと作者名は表紙の絵に描かれる（unit 1 の `title` / `author`）。本は表紙に文字を重ねない。
 - 絵は `<img src="{{UNIT_n}}" alt="">`（見開きは `{{UNIT_n_L}}` / `{{UNIT_n_R}}`、grid は `{{UNIT_n_1}}`〜`{{UNIT_n_4}}`）。`<div class="pb-page">…</div>` は**1行で書き、中に空行を入れない**。文章は `<p class="pb-text">` で絵に重ねる。文章内の改行は `<br>`。
 - 文章だけのカードは `<div class="pb-textpage"><p class="pb-body">…</p></div>`。
 - `<style>` ブロックは本に1つだけ、上の内容をそのまま入れる。

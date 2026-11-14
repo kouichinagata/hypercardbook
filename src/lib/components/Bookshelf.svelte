@@ -573,8 +573,10 @@
                                     </div>
                                 {:else}
                                     {@const isPreset = ['white', 'black', 'blue', 'pink', 'gold'].includes(book.themeColor)}
+                                    {@const fullCover = book.pageLayout === 'full' && !!book.coverImage}
                                     <div 
                                         class="book-cover" 
+                                        class:full-cover={fullCover}
                                         data-theme-color={isPreset ? book.themeColor : 'black'}
                                         style={!isPreset && book.themeColor ? `background: ${book.themeColor};` : ''}
                                     >
@@ -586,11 +588,14 @@
                                                 onerror={(e) => (e.currentTarget as HTMLImageElement).style.display = 'none'}
                                             />
                                         {/if}
-                                        <div class="book-cover-title">{book.title}</div>
-                                        {#if book.author}
-                                            <div class="book-cover-author">
-                                                {book.author}
-                                            </div>
+                                        <!-- layout: full with a cover picture: the title and author are drawn in the picture itself -->
+                                        {#if !fullCover}
+                                            <div class="book-cover-title">{book.title}</div>
+                                            {#if book.author}
+                                                <div class="book-cover-author">
+                                                    {book.author}
+                                                </div>
+                                            {/if}
                                         {/if}
                                         {#if (isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
                                             <div class="stack-select-check-overlay">
@@ -885,6 +890,20 @@
         object-fit: contain;
         margin-bottom: 8px;
         transition: 0.3s;
+    }
+
+    /* layout: full with a cover picture: the picture fills the whole cover */
+    .book-cover.full-cover {
+        padding: 0;
+    }
+    .book-cover.full-cover .book-cover-img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        max-height: none;
+        object-fit: cover;
+        margin: 0;
     }
 
     .book-cover-title {

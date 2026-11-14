@@ -55,6 +55,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 
 function formatPublicBook(book: any) {
     let playMode = 'book';
+    let pageLayout = 'standard';
     let launchUrl = '';
     let paperoboSlug = '';
     let paperoboAgentId = '';
@@ -73,6 +74,7 @@ function formatPublicBook(book: any) {
             const key = parts[0].trim();
             const value = parts.slice(1).join(':').trim();
             if (key === 'play_mode') playMode = value;
+            if (/^\S/.test(line) && (key === 'layout' || key === 'mode' || key === 'page_mode')) pageLayout = value.toLowerCase();
             if (key === 'launch_url') launchUrl = value;
             if (key === 'paperobo_slug') paperoboSlug = value;
             if (key === 'paperobo_agent_id') paperoboAgentId = value;
@@ -98,6 +100,7 @@ function formatPublicBook(book: any) {
         isPublic: book.is_public,
         publishedAt: book.published_at,
         playMode,
+        pageLayout,
         launchUrl,
         paperoboSlug,
         paperoboAgentId,

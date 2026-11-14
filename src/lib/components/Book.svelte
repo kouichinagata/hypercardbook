@@ -1528,12 +1528,13 @@
                 {#if coverImage}
                     <img src={coverImage} alt={title} class="cover-image" id="coverImg" />
                 {/if}
-                <div class="cover-caption">
+                <!-- layout: full with a cover picture: the title and author are drawn in the picture itself -->
+                {#if !(pageLayout === 'full' && coverImage)}
                     <div class="cover-title" id="coverTitle">{title || ''}</div>
                     {#if author}
                         <div class="cover-author" id="coverAuthor">{author}</div>
                     {/if}
-                </div>
+                {/if}
             </div>
 
             {#if viewMode === 'vertical'}
@@ -1832,27 +1833,13 @@
     .cover-image { width: 85%; max-height: 455px; object-fit: contain; margin-bottom: 20px; }
     .cover-title { font-size: 2.1rem; margin: 5px 0; font-weight: bold; }
     .cover-author { font-size: 1.4rem; opacity: 0.8; }
-    /* The caption wrapper takes no part in the normal cover layout. */
-    .cover-caption { display: contents; }
-
-    /* layout: full (not fill) with a cover picture: the picture fills the whole cover,
-       and the title and author sit on a dark gradient at the bottom. */
-    .cover-overlay.layout-full { padding: 0; overflow: hidden; justify-content: flex-end; }
+    /* layout: full (not fill) with a cover picture: the picture, which has the title
+       and author drawn in, fills the whole cover. */
+    .cover-overlay.layout-full { padding: 0; overflow: hidden; }
     .cover-overlay.layout-full .cover-image {
         position: absolute; inset: 0;
         width: 100%; height: 100%; max-height: none;
         object-fit: cover; margin: 0;
-    }
-    .cover-overlay.layout-full .cover-caption {
-        display: block; position: relative; z-index: 1;
-        width: 100%; box-sizing: border-box;
-        padding: 56px 20px 24px; text-align: center;
-        background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
-    }
-    .book-workspace .cover-overlay.layout-full .cover-caption #coverTitle,
-    .book-workspace .cover-overlay.layout-full .cover-caption #coverAuthor {
-        color: #ffffff !important;
     }
 
     /* ページめくりエフェクト（動的生成のため :global） */
