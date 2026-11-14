@@ -468,6 +468,9 @@ ${biographyContext || '(empty - nothing known yet)'}
         const imageModel = hasOwnImageKey && isImageModelId(requestedImageModel) ? requestedImageModel : DEFAULT_IMAGE_MODEL;
         const imageGenMax = proPlanActive || hasOwnImageKey ? 4 : 1;
         const imageEditMax = proPlanActive || hasOwnImageKey ? IMAGE_EDITS_MAX : 1;
+        // Without edit_images, the manga / picture-book drawing tools must not be used to "edit" an existing picture:
+        // they always draw from scratch and never see the current picture.
+        const noEditToolNote = imageToolsActive ? '' : ' Image Generation mode is OFF, so edit_images is not available. This tool always draws pictures from scratch and never uses the current picture. If the user wants to change a picture that is already in the book (add the title to the cover, change a color, fix an expression), do NOT use this tool: tell the user to turn on Image Generation mode.';
         const allowedActivePluginIds = proPlanActive ? activePluginIds : ['hypercard-hook'];
 
         // Skills (progressive disclosure): only name + description go into the system prompt.
@@ -699,7 +702,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         if (proPlanActive && skillsByName.has(MANGA_SKILL_NAME)) {
                             toolDeclarations.push({
                                 name: 'queue_manga_pages',
-                                description: `Queue manga pages to be drawn. The user's browser draws them AFTER your reply ends (one image per page, with one shared character reference sheet), then fills the book. Send at most ${MANGA_PAGES_PER_CALL} pages per call and call it repeatedly until every page is queued; send style and characters only in the first call; send book_markdown in the last call.`,
+                                description: `Queue manga pages to be drawn. The user's browser draws them AFTER your reply ends (one image per page, with one shared character reference sheet), then fills the book. Send at most ${MANGA_PAGES_PER_CALL} pages per call and call it repeatedly until every page is queued; send style and characters only in the first call; send book_markdown in the last call.${noEditToolNote}`,
                                 parameters: {
                                     type: 'OBJECT',
                                     properties: {
@@ -741,7 +744,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                         if (proPlanActive && skillsByName.has(PICTURE_SKILL_NAME)) {
                             toolDeclarations.push({
                                 name: 'queue_picture_book_pages',
-                                description: `Queue picture-book illustrations to be drawn. The user's browser draws them AFTER your reply ends (one image per unit, with one shared character reference sheet; "wide" units are one double-page picture cut into left/right halves; "grid" units draw 2 or 4 separate PAGES in one image and cut them apart, so one image yields 2-4 pages) and puts each finished picture into the book. HARD LIMIT: at most ${PICTURE_RUN_MAX} images per user request, and the character sheet counts as one (so ${PICTURE_RUN_MAX - 1} units when a new sheet is needed, ${PICTURE_RUN_MAX} when character_sheet_url is given). Queue only the next batch; after the results, the user asks you to continue. Send style and characters only in the first call. Send book_markdown ONLY when creating the book (all units' tokens, including not-yet-drawn ones, which become 'not generated yet' frames); when drawing the remaining frames of an existing book, do NOT send book_markdown (the frames are filled in place and no text changes).`,
+                                description: `Queue picture-book illustrations to be drawn. The user's browser draws them AFTER your reply ends (one image per unit, with one shared character reference sheet; "wide" units are one double-page picture cut into left/right halves; "grid" units draw 2 or 4 separate PAGES in one image and cut them apart, so one image yields 2-4 pages) and puts each finished picture into the book. HARD LIMIT: at most ${PICTURE_RUN_MAX} images per user request, and the character sheet counts as one (so ${PICTURE_RUN_MAX - 1} units when a new sheet is needed, ${PICTURE_RUN_MAX} when character_sheet_url is given). Queue only the next batch; after the results, the user asks you to continue. Send style and characters only in the first call. Send book_markdown ONLY when creating the book (all units' tokens, including not-yet-drawn ones, which become 'not generated yet' frames); when drawing the remaining frames of an existing book, do NOT send book_markdown (the frames are filled in place and no text changes).${noEditToolNote}`,
                                 parameters: {
                                     type: 'OBJECT',
                                     properties: {
