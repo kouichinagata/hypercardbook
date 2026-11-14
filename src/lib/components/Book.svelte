@@ -1524,14 +1524,16 @@
             {/if}
 
             <!-- 表紙エリア -->
-            <div class="cover-overlay" id="cover" data-continuous-special="cover" style="background: {!['white', 'black', 'blue', 'pink', 'gold'].includes(themeColor) ? themeColor : ''}; transform: {isOpened ? 'rotateY(-110deg)' : 'none'}; opacity: {isOpened ? 0 : 1}; pointer-events: {isOpened ? 'none' : 'auto'};">
+            <div class="cover-overlay" class:layout-full={pageLayout === 'full' && !!coverImage} id="cover" data-continuous-special="cover" style="background: {!['white', 'black', 'blue', 'pink', 'gold'].includes(themeColor) ? themeColor : ''}; transform: {isOpened ? 'rotateY(-110deg)' : 'none'}; opacity: {isOpened ? 0 : 1}; pointer-events: {isOpened ? 'none' : 'auto'};">
                 {#if coverImage}
                     <img src={coverImage} alt={title} class="cover-image" id="coverImg" />
                 {/if}
-                <div class="cover-title" id="coverTitle">{title || ''}</div>
-                {#if author}
-                    <div class="cover-author" id="coverAuthor">{author}</div>
-                {/if}
+                <div class="cover-caption">
+                    <div class="cover-title" id="coverTitle">{title || ''}</div>
+                    {#if author}
+                        <div class="cover-author" id="coverAuthor">{author}</div>
+                    {/if}
+                </div>
             </div>
 
             {#if viewMode === 'vertical'}
@@ -1830,6 +1832,28 @@
     .cover-image { width: 85%; max-height: 455px; object-fit: contain; margin-bottom: 20px; }
     .cover-title { font-size: 2.1rem; margin: 5px 0; font-weight: bold; }
     .cover-author { font-size: 1.4rem; opacity: 0.8; }
+    /* The caption wrapper takes no part in the normal cover layout. */
+    .cover-caption { display: contents; }
+
+    /* layout: full (not fill) with a cover picture: the picture fills the whole cover,
+       and the title and author sit on a dark gradient at the bottom. */
+    .cover-overlay.layout-full { padding: 0; overflow: hidden; justify-content: flex-end; }
+    .cover-overlay.layout-full .cover-image {
+        position: absolute; inset: 0;
+        width: 100%; height: 100%; max-height: none;
+        object-fit: cover; margin: 0;
+    }
+    .cover-overlay.layout-full .cover-caption {
+        display: block; position: relative; z-index: 1;
+        width: 100%; box-sizing: border-box;
+        padding: 56px 20px 24px; text-align: center;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+    .book-workspace .cover-overlay.layout-full .cover-caption #coverTitle,
+    .book-workspace .cover-overlay.layout-full .cover-caption #coverAuthor {
+        color: #ffffff !important;
+    }
 
     /* ページめくりエフェクト（動的生成のため :global） */
     :global(.page-turn-under),
@@ -2283,7 +2307,30 @@
     }
     .book-workspace.vertical-mode .continuous-page.full-layout .continuous-markdown {
         padding: 0 !important;
-        line-height: 0 !important;
+    }
+    /* Text-only pages in full layout keep a full screen height, so they are never 0px tall */
+    .book-workspace.vertical-mode .continuous-page-list .continuous-page.full-layout:not(:has(img)) {
+        min-height: calc(100vh - 65px) !important;
+        min-height: calc(100dvh - 65px) !important;
+    }
+    /* Plain Markdown text in full layout stays off the screen edges */
+    .book-workspace.vertical-mode .continuous-page.full-layout .continuous-markdown > :global(:is(p:not(:has(img)), h1, h2, h3, h4, h5, h6, ul, ol, blockquote, table)) {
+        margin-left: 16px !important;
+        margin-right: 16px !important;
+    }
+    /* Picture-book pages: on a phone, the text joins the page flow instead of an absolute layer */
+    .book-workspace.vertical-mode .continuous-page.full-layout .continuous-markdown :global(.pb-textpage) {
+        position: relative !important;
+        inset: auto !important;
+        min-height: calc(100dvh - 65px) !important;
+        padding: 32px 20px !important;
+    }
+    .book-workspace.vertical-mode .continuous-page.full-layout .continuous-markdown :global(.pb-text) {
+        position: static !important;
+        margin: 0 !important;
+        padding: 16px 20px 24px !important;
+        border-radius: 0 !important;
+        background: transparent !important;
     }
     .book-workspace.vertical-mode .continuous-page.full-layout .continuous-markdown :global(p:has(> img:only-child)) {
         margin: 0 !important;
