@@ -19,7 +19,9 @@ import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 import { PICTURE_JOB_CLOSE, PICTURE_JOB_OPEN, PICTURE_SKILL_NAME, PICTURE_UNITS_PER_CALL, PICTURE_RUN_MAX, normalizePictureChunk, pictureRunCap } from '$lib/picture-book-job';
 import { MANGA_JOB_CLOSE, MANGA_JOB_OPEN, MANGA_PAGES_PER_CALL, MANGA_SKILL_NAME, normalizeMangaChunk } from '$lib/manga-job';
 import { PANEL_DETECT_MAX_PAGES, SPRITE_SKILL_NAME, detectPages } from '$lib/server/panel-detect';
-import { loadReferenceInputs, measureStoredBytes, storageLimitForPlan, storagePathFromPublicUrl } from '$lib/server/image-gen';
+import { ALLOWED_ASPECT_RATIOS, DEFAULT_IMAGE_MODEL, IMAGE_BUCKET, generateAndStoreImage, loadReferenceInputs, measureStoredBytes, storageLimitForPlan, storagePathFromPublicUrl, type AspectRatio } from '$lib/server/image-gen';
+import { getActiveGeminiApiKey } from '$lib/server/plan';
+import { imageModelLabel, isImageModelId } from '$lib/ai-model';
 import { IMAGE_EDIT_CLOSE, IMAGE_EDIT_OPEN, IMAGE_EDITS_MAX, normalizeImageEditChunk } from '$lib/image-edit-job';
 import { SPEECH_MAX_LINES, generateSpeeches } from '$lib/server/tts';
 import { applyEdits, applyPageEdit, lineDiff } from '$lib/markdown-edit';
@@ -127,7 +129,7 @@ CRITICAL RULES:
    - For event hooks (\`on_open_stack\`, \`on_close_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
 
 10. NANO BANANA 2 LITE GENERATED IMAGES:
-   - If the prompt contains a "### Generated Images" section (the heading may end with the image model name in parentheses), use every provided image URL exactly as written. Never replace, shorten, or fabricate these URLs.
+   - When generate_images returns image URLs (or the prompt contains a "### Generated Images" section), use every provided image URL exactly as written. Never replace, shorten, or fabricate these URLs.
    - For one generated image, place it at the bottom of the most relevant content page unless the user requests another position.
    - For two or more generated images:
      - Add \`layout: fill\` to the YAML frontmatter.
@@ -221,7 +223,7 @@ CRITICAL RULES:
     - For event hooks (\`on_open_stack\`, \`on_open_stack\`, \`on_open_card\`, \`on_close_card\`, \`on_mouse_up\`), you can use JavaScript with: goCard(index), saveData(key, value), getData(key), alert(msg), or AI instructions starting with "[AI]".
 
   9. NANO BANANA 2 LITE GENERATED IMAGES:
-    - If the prompt contains a "### Generated Images" section (the heading may end with the image model name in parentheses), use the first provided image URL exactly as written.
+    - When generate_images returns image URLs (or the prompt contains a "### Generated Images" section), use the first provided image URL exactly as written.
     - Place that image at the bottom of the card unless the user requests another position.
 
 `;
@@ -322,6 +324,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             webSearchEnabled = false,
             webSearchSource = 'workspace',
             planMode = false,
+            imageGenerationEnabled = false,
             currentVersion = null,
             undoHistory = []
         } = await request.json();
@@ -456,6 +459,15 @@ ${biographyContext || '(empty - nothing known yet)'}
 """`;
 
         const proPlanActive = isProPlan(userPlan);
+        // Image Generation mode: the AI draws new pictures (generate_images) or edits pictures in the book (edit_images).
+        // Same permission as image generation in the workspace: a paid plan, the user's own Gemini key, or the home-page hand-off.
+        const userGeminiKey = request.headers.get('x-user-gemini-api-key')?.trim() || '';
+        const hasOwnImageKey = Boolean(userGeminiKey);
+        const imageToolsActive = Boolean(imageGenerationEnabled) && !planMode && (paidPlanActive || hasOwnImageKey || isHomeHandoff);
+        const requestedImageModel = request.headers.get('x-user-image-model')?.trim() || '';
+        const imageModel = hasOwnImageKey && isImageModelId(requestedImageModel) ? requestedImageModel : DEFAULT_IMAGE_MODEL;
+        const imageGenMax = proPlanActive || hasOwnImageKey ? 4 : 1;
+        const imageEditMax = proPlanActive || hasOwnImageKey ? IMAGE_EDITS_MAX : 1;
         const allowedActivePluginIds = proPlanActive ? activePluginIds : ['hypercard-hook'];
 
         // Skills (progressive disclosure): only name + description go into the system prompt.
@@ -555,6 +567,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                     let pictureQueued = 0;
                     let pictureHasSheet = false;
                     let editsQueued = 0;
+                    let imagesGenerated = 0;
                     for (let turn = 0; turn < maxTurns; turn++) {
                         const toolDeclarations = [];
 
@@ -644,7 +657,21 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                             );
                         }
 
-                        if (proPlanActive && (skillsByName.has(MANGA_SKILL_NAME) || skillsByName.has(PICTURE_SKILL_NAME))) {
+                        if (imageToolsActive) {
+                            toolDeclarations.push({
+                                name: 'generate_images',
+                                description: `Draw NEW pictures (Image Generation mode is on). Returns the stored image URLs right away; put them into the book or card exactly as returned. Use this only when the user wants a new picture; to change a picture that is already in the book, use edit_images instead. At most ${imageGenMax} image${imageGenMax === 1 ? '' : 's'} per request.`,
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        prompt: { type: 'STRING', description: 'English description of the picture: subject, scene, style, mood. Quote any text to draw exactly.' },
+                                        count: { type: 'INTEGER', description: `How many variations (1-${imageGenMax}).` },
+                                        aspect_ratio: { type: 'STRING', description: 'One of 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9. Default 1:1 (2:3 for several).' },
+                                        reference_url: { type: 'STRING', description: 'Optional: one image URL from the user\'s own storage (for example an attached image) to use as the reference.' }
+                                    },
+                                    required: ['prompt']
+                                }
+                            });
                             toolDeclarations.push({
                                 name: 'edit_images',
                                 description: `Edit pictures that are already in the book (manga pages, picture-book illustrations, or the cover), keeping everything else the same. The user's browser redraws each picture AFTER your reply ends, using the original picture as the reference, and replaces it in the book (the cover's cover_image too). Use this when the user wants a change to an existing picture (add the title to the cover, change a color, fix an expression or a speech bubble) instead of drawing a new one. Only pictures in the user's own storage can be edited. At most ${IMAGE_EDITS_MAX} pictures per request; each counts as one image.`,
@@ -1239,9 +1266,52 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                             message: 'Queued. The illustrations are drawn in the user\'s browser after your reply ends. Do NOT output the book Markdown yourself and do not call image tools; once this batch is queued, reply with one short message: the drawing of this batch (N images) has started, and the remaining units (list their numbers) will be drawn when the user asks to continue after seeing the results. Never say it has started before this tool succeeded.'
                                         };
                                     }
+                                } else if (fc.name === 'generate_images') {
+                                    const prompt = String(fc.args?.prompt ?? '').trim().slice(0, 4_000);
+                                    const count = Math.min(Math.max(Math.floor(Number(fc.args?.count) || 1), 1), imageGenMax);
+                                    const ratio = String(fc.args?.aspect_ratio ?? '');
+                                    const aspectRatio = (ALLOWED_ASPECT_RATIOS.has(ratio) ? ratio : count > 1 ? '2:3' : '1:1') as AspectRatio;
+                                    const referenceUrl = String(fc.args?.reference_url ?? '').trim();
+                                    if (!imageToolsActive) {
+                                        resultData = { success: false, error: 'Image Generation mode is off. Tell the user to turn it on.' };
+                                    } else if (!prompt) {
+                                        resultData = { success: false, error: 'prompt is required.' };
+                                    } else if (referenceUrl && !storagePathFromPublicUrl(referenceUrl, session.user.id)) {
+                                        resultData = { success: false, error: 'reference_url must be an image in the user\'s own storage.' };
+                                    } else if (imagesGenerated + count > imageGenMax) {
+                                        resultData = { success: false, error: `Limit: at most ${imageGenMax} new image${imageGenMax === 1 ? '' : 's'} per request (already drawn ${imagesGenerated}).` };
+                                    } else {
+                                        const uploaded: string[] = [];
+                                        try {
+                                            const references = referenceUrl ? await loadReferenceInputs(supabase, session.user.id, [referenceUrl]) : [];
+                                            if (!references) throw new Error('Could not load the reference image.');
+                                            const apiKey = getActiveGeminiApiKey(session, userGeminiKey);
+                                            if (!apiKey) throw new Error('GEMINI_API_KEY is not set.');
+                                            const imageAi = new GoogleGenAI({ apiKey });
+                                            const quota = { used: await measureStoredBytes(supabase, session.user.id), limit: storageLimitForPlan(userPlan) };
+                                            const urls: string[] = [];
+                                            for (let i = 0; i < count; i++) {
+                                                emitStatus(`Drawing image ${i + 1}/${count} with ${imageModelLabel(imageModel)}…`);
+                                                const stored = await generateAndStoreImage({
+                                                    supabase, ai: imageAi, userId: session.user.id, model: imageModel,
+                                                    prompt: count > 1 ? `${prompt}\n\nCreate variation ${i + 1} of ${count} with a distinct composition while preserving the requested subject and style.` : prompt,
+                                                    aspectRatio, references, quota, label: imageModelLabel(imageModel)
+                                                });
+                                                uploaded.push(stored.path);
+                                                urls.push(stored.url);
+                                            }
+                                            imagesGenerated += urls.length;
+                                            // チャットにも、描いた絵を出す
+                                            controller.enqueue(encoder.encode(`\n\n🏙️ **${imageModelLabel(imageModel)}** — Generated ${urls.length} image${urls.length === 1 ? '' : 's'}:\n\n${urls.map((u, i) => `![image_${i + 1}](${u})`).join('\n')}\n\n`));
+                                            resultData = { success: true, image_urls: urls, note: 'Use these URLs exactly as written.' };
+                                        } catch (err: any) {
+                                            if (uploaded.length) await supabase.storage.from(IMAGE_BUCKET).remove(uploaded).catch(() => {});
+                                            resultData = { success: false, error: err?.message || 'Image generation failed.' };
+                                        }
+                                    }
                                 } else if (fc.name === 'edit_images') {
-                                    const chunk = !proPlanActive || !(skillsByName.has(MANGA_SKILL_NAME) || skillsByName.has(PICTURE_SKILL_NAME))
-                                        ? { error: 'The manga or picture-book skill must be enabled (Pro plan or above).' }
+                                    const chunk = !imageToolsActive
+                                        ? { error: 'Image Generation mode is off. Tell the user to turn it on to edit pictures.' }
                                         : normalizeImageEditChunk(fc.args);
                                     // 他人の絵や外部の URL は参考画像として読めず、別の絵が新しく描かれてしまうので受け付けない
                                     const notOwned = 'error' in chunk ? [] : chunk.job.edits.filter(e => !storagePathFromPublicUrl(e.image_url, session.user.id)).map(e => e.image_url);
@@ -1249,8 +1319,8 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                         resultData = { success: false, error: chunk.error };
                                     } else if (notOwned.length) {
                                         resultData = { success: false, error: 'Only pictures in the user\'s own storage can be edited.', not_editable: notOwned };
-                                    } else if (editsQueued + chunk.job.edits.length > IMAGE_EDITS_MAX) {
-                                        resultData = { success: false, error: `Limit: at most ${IMAGE_EDITS_MAX} pictures per request (already queued ${editsQueued}). Tell the user which pictures are left; they can ask again after seeing the results.` };
+                                    } else if (editsQueued + chunk.job.edits.length > imageEditMax) {
+                                        resultData = { success: false, error: `Limit: at most ${imageEditMax} picture${imageEditMax === 1 ? '' : 's'} per request (already queued ${editsQueued}). Tell the user which pictures are left; they can ask again after seeing the results.` };
                                     } else {
                                         editsQueued += chunk.job.edits.length;
                                         controller.enqueue(encoder.encode(`\n${IMAGE_EDIT_OPEN}${JSON.stringify(chunk.job)}${IMAGE_EDIT_CLOSE}\n`));

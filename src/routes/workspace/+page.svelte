@@ -8,10 +8,10 @@
     import Card from '$lib/components/Card.svelte';
     import AiModelPicker from '$lib/components/AiModelPicker.svelte';
     import { DEFAULT_ACTIVE_PLUGIN_IDS } from '$lib/plugins';
-    import { AI_KEYS_CHANGED_EVENT, aiRequestHeaders, hasUserGeminiKey, imageModelLabel, selectedImageModel } from '$lib/ai-model';
+    import { AI_KEYS_CHANGED_EVENT, aiRequestHeaders, hasUserGeminiKey, imageModelLabel, imageRequestHeaders, selectedImageModel } from '$lib/ai-model';
     import { assemblePictureBook, describePictureResult, extractPictureJob, fillPictureUnits, runPictureJob, type PictureJob, type PictureResult } from '$lib/picture-book-job';
     import { applyImageEdit, describeImageEditResult, extractImageEditJob, runImageEditJob, type ImageEditJob } from '$lib/image-edit-job';
-    import { assembleMangaBook, extractMangaJob, requestImage, runMangaJob, runPool, type MangaJob } from '$lib/manga-job';
+    import { assembleMangaBook, extractMangaJob, runMangaJob, type MangaJob } from '$lib/manga-job';
     import { marked } from 'marked';
     import { effectivePlanFromUser } from '$lib/plan';
     import { DDC_CLASSES, getDdcFullLabel } from '$lib/ddc';
@@ -252,25 +252,6 @@
         if (plan === 'standard') return '200MB';
         return '20MB';
     });
-
-    function requestedImageCount(promptText: string): number {
-        // 自分の Gemini キーがあるユーザーは枚数の上限なし（画像は 1 枚ずつ並列で生成する）
-        if (hasGeminiKey) {
-            const many = promptText.match(/(\d{1,3})\s*(?:枚|images?)/i);
-            return many ? Math.max(1, Number(many[1])) : 1;
-        }
-        if (!isProPlan) return 1;
-		const match = promptText.match(/([1-4])\s*(?:枚|images?)/i);
-        return match ? Number(match[1]) : 1;
-    }
-
-    function imageReferenceUrls(promptText: string, attachedImages: AttachedFile[]): string[] {
-        const markdownUrls = Array.from(promptText.matchAll(/!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/g), (match) => match[1]);
-        return Array.from(new Set([
-            ...attachedImages.map((image) => image.url || '').filter(Boolean),
-            ...markdownUrls
-        ])).slice(0, 1);
-    }
 
     // Monaco Editor states
     let useMonaco = $state(false);
@@ -1250,8 +1231,6 @@ ${markdown}
         const planNow = planMode;
         const canUseImageGeneration = imageGenEnabled && (imageAllowed || requestSource === 'home') && !!promptText.trim();
         const canUseWebSearch = webSearchEnabled && (isPaidPlan || requestSource === 'home');
-        const imageCount = requestedImageCount(promptText);
-        const referenceImages = imageReferenceUrls(visiblePrompt, images);
 
         // Add user message to history
         chatHistory = [...chatHistory, { role: 'user', text: visiblePrompt, at: new Date().toISOString() }];
@@ -1274,71 +1253,8 @@ ${markdown}
         // Backup current book state before AI modifications
         markdownHistory = [...markdownHistory, markdown];
 
-        // Check if imageGenEnabled is active for image generation / modification
-        if (canUseImageGeneration) {
-            const loadingIndex = chatHistory.length;
-            const modelLabel = imageModelLabel(selectedImageModel());
-            const setImageStatus = (text: string) => {
-                chatHistory = chatHistory.map((message, index) => index === loadingIndex ? { ...message, text } : message);
-            };
-            chatHistory = [...chatHistory, { role: 'model', text: `🏙️ Generating images with ${modelLabel}...`, at: new Date().toISOString() }];
-            scrollToBottom();
-            try {
-                let generatedImages: { name: string; url: string }[] = [];
-                if (hasGeminiKey) {
-                    // 自分のキー: 1 枚ずつ並列（4 件）で呼ぶので、枚数に上限がない。生成できた分だけ使う。
-                    const slots: (string | null)[] = Array(imageCount).fill(null);
-                    let finished = 0;
-                    let lastError = '';
-                    await runPool(slots, 4, async (_slot, i) => {
-                        const variantPrompt = imageCount > 1
-                            ? `${promptText.trim()}\n\nCreate variation ${i + 1} of ${imageCount} with a distinct composition while preserving the requested subject and style.`
-                            : promptText.trim();
-                        try {
-                            slots[i] = await requestImage(variantPrompt, imageCount > 1 ? '2:3' : '1:1', referenceImages, generateController.signal);
-                        } catch (err: any) {
-                            lastError = err?.message || lastError;
-                        }
-                        finished++;
-                        if (imageCount > 1) setImageStatus(`🏙️ Generating images with ${modelLabel}... ${finished}/${imageCount}`);
-                    });
-                    generatedImages = slots.flatMap((url, i) => url ? [{ name: `image_${i + 1}`, url }] : []);
-                    if (generatedImages.length === 0) throw new Error(lastError || 'Image generation failed.');
-                } else {
-                    const imgRes = await fetch('/api/generate-image', {
-                        method: 'POST',
-                        signal: generateController.signal,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            prompt: promptText,
-                            count: imageCount,
-                            source: requestSource,
-                            aspectRatio: imageCount > 1 ? '2:3' : '1:1',
-                            referenceImages
-                        })
-                    });
-                    const imgData = await imgRes.json();
-                    if (!imgRes.ok) {
-                        throw new Error(imgData.error || `Image generation failed (${imgRes.status})`);
-                    }
-                    if (imgData.success && imgData.images && imgData.images.length > 0) {
-                        generatedImages = imgData.images;
-                    }
-                }
-                if (generatedImages.length > 0) {
-                    const generatedImgsMarkdown = generatedImages.map((img) => `![${img.name}](${img.url})`).join('\n');
-                    finalPrompt += `\n\n### Generated Images (${modelLabel})\nUse these exact image URLs in the generated content:\n${generatedImgsMarkdown}\n`;
-                    setImageStatus(`🏙️ **${modelLabel}** — Generated ${generatedImages.length} image${generatedImages.length === 1 ? '' : 's'}:\n\n${generatedImgsMarkdown}`);
-                }
-            } catch (imgErr) {
-                console.error('[Workspace Image Gen Error]:', imgErr);
-                const message = generateController.signal.aborted ? '⏹ Stopped.' : `⚠️ ${imgErr instanceof Error ? imgErr.message : 'Image generation failed.'}`;
-                chatHistory = chatHistory.map((item, index) => index === loadingIndex
-                    ? { ...item, text: message }
-                    : item
-                );
-            }
-        }
+        // Image Generation mode: nothing is drawn up front. The AI decides whether to draw new pictures
+        // (generate_images) or edit pictures already in the book (edit_images), so a request is never drawn twice.
 
         // Append temporary Thinking... AI response after image generation.
         chatHistory = [...chatHistory, { role: 'model', text: 'Thinking...', at: new Date().toISOString() }];
@@ -1351,7 +1267,8 @@ ${markdown}
                 signal: generateController.signal,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...aiRequestHeaders()
+                    ...aiRequestHeaders(),
+                    ...(canUseImageGeneration ? imageRequestHeaders() : {})
                 },
                 body: JSON.stringify({
                     prompt: finalPrompt,
@@ -1365,7 +1282,8 @@ ${markdown}
                     activePluginIds: $state.snapshot(activePluginIds),
                     webSearchEnabled: canUseWebSearch,
                     webSearchSource: requestSource,
-                    planMode: planNow
+                    planMode: planNow,
+                    imageGenerationEnabled: canUseImageGeneration
                 })
             });
 
