@@ -19,7 +19,8 @@ import { GEMINI_TEXT_MODEL } from '$lib/server/models';
 import { PICTURE_JOB_CLOSE, PICTURE_JOB_OPEN, PICTURE_SKILL_NAME, PICTURE_UNITS_PER_CALL, PICTURE_RUN_MAX, normalizePictureChunk, pictureRunCap } from '$lib/picture-book-job';
 import { MANGA_JOB_CLOSE, MANGA_JOB_OPEN, MANGA_PAGES_PER_CALL, MANGA_SKILL_NAME, normalizeMangaChunk } from '$lib/manga-job';
 import { PANEL_DETECT_MAX_PAGES, SPRITE_SKILL_NAME, detectPages } from '$lib/server/panel-detect';
-import { loadReferenceInputs, measureStoredBytes, storageLimitForPlan } from '$lib/server/image-gen';
+import { loadReferenceInputs, measureStoredBytes, storageLimitForPlan, storagePathFromPublicUrl } from '$lib/server/image-gen';
+import { IMAGE_EDIT_CLOSE, IMAGE_EDIT_OPEN, IMAGE_EDITS_MAX, normalizeImageEditChunk } from '$lib/image-edit-job';
 import { SPEECH_MAX_LINES, generateSpeeches } from '$lib/server/tts';
 import { applyEdits, applyPageEdit, lineDiff } from '$lib/markdown-edit';
 import { applyMarkdownEditCommand } from '$lib/server/card-edit';
@@ -553,6 +554,7 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                     // 絵本: 1 回の依頼（1 ターン）で描く絵は、キャラシートも含めて 4 枚まで
                     let pictureQueued = 0;
                     let pictureHasSheet = false;
+                    let editsQueued = 0;
                     for (let turn = 0; turn < maxTurns; turn++) {
                         const toolDeclarations = [];
 
@@ -642,6 +644,31 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                             );
                         }
 
+                        if (proPlanActive && (skillsByName.has(MANGA_SKILL_NAME) || skillsByName.has(PICTURE_SKILL_NAME))) {
+                            toolDeclarations.push({
+                                name: 'edit_images',
+                                description: `Edit pictures that are already in the book (manga pages, picture-book illustrations, or the cover), keeping everything else the same. The user's browser redraws each picture AFTER your reply ends, using the original picture as the reference, and replaces it in the book (the cover's cover_image too). Use this when the user wants a change to an existing picture (add the title to the cover, change a color, fix an expression or a speech bubble) instead of drawing a new one. Only pictures in the user's own storage can be edited. At most ${IMAGE_EDITS_MAX} pictures per request; each counts as one image.`,
+                                parameters: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        edits: {
+                                            type: 'ARRAY',
+                                            description: `Pictures to edit (max ${IMAGE_EDITS_MAX}).`,
+                                            items: {
+                                                type: 'OBJECT',
+                                                properties: {
+                                                    image_url: { type: 'STRING', description: 'URL of the picture exactly as it appears in the book Markdown (an <img src>, a Markdown image, or cover_image).' },
+                                                    instruction: { type: 'STRING', description: 'English: only the change to make. Quote any text to draw exactly, e.g. Add the title "シンデレラ" in large hand-lettered characters near the top, and the author name "Quark" small near the bottom.' }
+                                                },
+                                                required: ['image_url', 'instruction']
+                                            }
+                                        }
+                                    },
+                                    required: ['edits']
+                                }
+                            });
+                        }
+
                         if (proPlanActive && skillsByName.has(MANGA_SKILL_NAME)) {
                             toolDeclarations.push({
                                 name: 'queue_manga_pages',
@@ -705,10 +732,12 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                                 type: 'OBJECT',
                                                 properties: {
                                                     unit: { type: 'INTEGER', description: 'Unit number from 1. Referenced in book_markdown as {{UNIT_n}} (or {{UNIT_n_L}} / {{UNIT_n_R}} for wide, {{UNIT_n_1}}..{{UNIT_n_4}} for grid).' },
-                                                    type: { type: 'STRING', description: '"cover" (the front cover picture, text-free; use for the first unit), "single" (one scene, one page), "multi" (2-4 scenes blended into one page), "wide" (one picture across a double-page spread), or "grid" (2 or 4 separate page pictures in ONE image, cut apart afterwards; the cheap default for ordinary pages).' },
+                                                    type: { type: 'STRING', description: '"cover" (the front cover picture with the title and author drawn in; use for the first unit), "single" (one scene, one page), "multi" (2-4 scenes blended into one page), "wide" (one picture across a double-page spread), or "grid" (2 or 4 separate page pictures in ONE image, cut apart afterwards; the cheap default for ordinary pages).' },
                                                     setting: { type: 'STRING', description: 'Place, time of day, mood (English).' },
                                                     characters: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Character ids appearing in this illustration.' },
                                                     composition: { type: 'STRING', description: 'Camera and layout (English): distance, angle, where the subject sits, where there is empty space. For multi, the shapes and sizes of the scenes.' },
+                                                    title: { type: 'STRING', description: 'cover only: the book title exactly as in the frontmatter; it is drawn into the cover picture.' },
+                                                    author: { type: 'STRING', description: 'cover only: the author name exactly as in the frontmatter; it is drawn into the cover picture.' },
                                                     source_url: { type: 'STRING', description: 'wide/grid only: URL of an already drawn picture whose cutting failed. The picture is not drawn again; only the cut is retried.' },
                                                     scenes: { type: 'ARRAY', items: { type: 'STRING' }, description: 'single/wide: exactly one scene description. multi: 2 to 4 scenes in reading order. grid: exactly 2 or 4 scenes, one per page, in page order. English; never include text to be drawn.' }
                                                 },
@@ -1208,6 +1237,27 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
                                             success: true,
                                             queued_units: chunk.job.units.map(u => u.unit),
                                             message: 'Queued. The illustrations are drawn in the user\'s browser after your reply ends. Do NOT output the book Markdown yourself and do not call image tools; once this batch is queued, reply with one short message: the drawing of this batch (N images) has started, and the remaining units (list their numbers) will be drawn when the user asks to continue after seeing the results. Never say it has started before this tool succeeded.'
+                                        };
+                                    }
+                                } else if (fc.name === 'edit_images') {
+                                    const chunk = !proPlanActive || !(skillsByName.has(MANGA_SKILL_NAME) || skillsByName.has(PICTURE_SKILL_NAME))
+                                        ? { error: 'The manga or picture-book skill must be enabled (Pro plan or above).' }
+                                        : normalizeImageEditChunk(fc.args);
+                                    // 他人の絵や外部の URL は参考画像として読めず、別の絵が新しく描かれてしまうので受け付けない
+                                    const notOwned = 'error' in chunk ? [] : chunk.job.edits.filter(e => !storagePathFromPublicUrl(e.image_url, session.user.id)).map(e => e.image_url);
+                                    if ('error' in chunk) {
+                                        resultData = { success: false, error: chunk.error };
+                                    } else if (notOwned.length) {
+                                        resultData = { success: false, error: 'Only pictures in the user\'s own storage can be edited.', not_editable: notOwned };
+                                    } else if (editsQueued + chunk.job.edits.length > IMAGE_EDITS_MAX) {
+                                        resultData = { success: false, error: `Limit: at most ${IMAGE_EDITS_MAX} pictures per request (already queued ${editsQueued}). Tell the user which pictures are left; they can ask again after seeing the results.` };
+                                    } else {
+                                        editsQueued += chunk.job.edits.length;
+                                        controller.enqueue(encoder.encode(`\n${IMAGE_EDIT_OPEN}${JSON.stringify(chunk.job)}${IMAGE_EDIT_CLOSE}\n`));
+                                        resultData = {
+                                            success: true,
+                                            queued: chunk.job.edits.map(e => e.image_url),
+                                            message: 'Queued. The pictures are edited in the user\'s browser after your reply ends and replaced in the book automatically. Do NOT edit the Markdown to change these URLs yourself. Reply with one short message that the editing of N picture(s) has started.'
                                         };
                                     }
                                 } else if (fc.name === 'view_image') {

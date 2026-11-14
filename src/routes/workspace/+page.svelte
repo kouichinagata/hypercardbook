@@ -10,6 +10,7 @@
     import { DEFAULT_ACTIVE_PLUGIN_IDS } from '$lib/plugins';
     import { AI_KEYS_CHANGED_EVENT, aiRequestHeaders, hasUserGeminiKey, imageModelLabel, selectedImageModel } from '$lib/ai-model';
     import { assemblePictureBook, describePictureResult, extractPictureJob, fillPictureUnits, runPictureJob, type PictureJob, type PictureResult } from '$lib/picture-book-job';
+    import { applyImageEdit, describeImageEditResult, extractImageEditJob, runImageEditJob, type ImageEditJob } from '$lib/image-edit-job';
     import { assembleMangaBook, extractMangaJob, requestImage, runMangaJob, runPool, type MangaJob } from '$lib/manga-job';
     import { marked } from 'marked';
     import { effectivePlanFromUser } from '$lib/plan';
@@ -1495,6 +1496,13 @@ ${markdown}
                 await runPictureJobInChat(pictureJob);
             }
 
+            // 絵の修正（絵本・まんが共通）: 元の絵を元に描き直し、本の中の絵と入れ替える
+            const imageEditJob = planNow ? null : extractImageEditJob(accumulatedText);
+            if (imageEditJob) {
+                chatHistory[lastIndex].text = chatHistory[lastIndex].text.replace(/\[IMAGE_EDIT_JOB\][\s\S]*?\[\/IMAGE_EDIT_JOB\]/g, '').trim();
+                await runImageEditJobInChat(imageEditJob);
+            }
+
         } catch (err: any) {
             if (generateController.signal.aborted) {
                 // ユーザーが Stop を押した。エラー表示は出さず、届いた分の回答は残す
@@ -1551,6 +1559,38 @@ ${markdown}
             setStatus(`🎨 Done: ${ok}/${total} pages drawn.${result.failed.length ? `\n\n⚠️ Pages that could not be drawn: ${result.failed.join(', ')}. Ask me to redraw them.` : ''}`);
         } catch (err: any) {
             setStatus(`⚠️ Manga drawing stopped: ${err?.message || 'unknown error'}`);
+        } finally {
+            window.removeEventListener('beforeunload', warnBeforeLeaving);
+            mangaAbort = null;
+            scrollToBottom();
+        }
+    }
+
+    async function runImageEditJobInChat(requested: ImageEditJob) {
+        // 本の中に無い絵は描いても入れ替えられないので、描かずに飛ばす（画像の無駄づかいを避ける）
+        const notInBook = requested.edits.filter((e) => !markdown.includes(e.image_url)).map((e) => e.image_url);
+        const job: ImageEditJob = { edits: requested.edits.filter((e) => markdown.includes(e.image_url)) };
+        const total = job.edits.length;
+        const index = chatHistory.length;
+        const setStatus = (text: string) => {
+            chatHistory = chatHistory.map((message, i) => i === index ? { ...message, text } : message);
+        };
+        const abort = new AbortController();
+        mangaAbort = abort;
+        const warnBeforeLeaving = (event: BeforeUnloadEvent) => event.preventDefault();
+        window.addEventListener('beforeunload', warnBeforeLeaving);
+        chatHistory = [...chatHistory, { role: 'model', text: `🎨 Editing ${total} picture${total === 1 ? '' : 's'}… Please keep this tab open until it finishes.`, at: new Date().toISOString() }];
+        scrollToBottom();
+        try {
+            const result = await runImageEditJob(job, (done, all) => {
+                setStatus(`🎨 Editing pictures… ${done}/${all}. Please keep this tab open.`);
+            }, abort.signal, (from, to) => {
+                // 1 枚できるたびに本へ入れる（途中で止まっても、直せた絵は残る）
+                markdown = applyImageEdit(markdown, from, to);
+            });
+            setStatus(describeImageEditResult(result, notInBook));
+        } catch (err: any) {
+            setStatus(`⚠️ Editing stopped: ${err?.message || 'unknown error'}`);
         } finally {
             window.removeEventListener('beforeunload', warnBeforeLeaving);
             mangaAbort = null;
@@ -1625,6 +1665,8 @@ ${markdown}
             .replace(/\[MANGA_JOB\][\s\S]*/g, '')
             .replace(/\[PICTURE_JOB\][\s\S]*?\[\/PICTURE_JOB\]/g, '')
             .replace(/\[PICTURE_JOB\][\s\S]*/g, '')
+            .replace(/\[IMAGE_EDIT_JOB\][\s\S]*?\[\/IMAGE_EDIT_JOB\]/g, '')
+            .replace(/\[IMAGE_EDIT_JOB\][\s\S]*/g, '')
             .replace(/\[UPDATED_MARKDOWN\][\s\S]*/gi, '')
             .replace(/\[MARKDOWN_EDIT\][\s\S]*/g, '')
             .replace(
