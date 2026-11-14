@@ -1454,9 +1454,23 @@ ${markdown}
         }
     }
 
+    // The result of a drawing / editing job lives only in the browser's chat. Save it to the chat history too,
+    // so after the page is reopened the AI still knows what was drawn and why something failed.
+    // A failure here only loses the saved copy; the job and the book are not affected.
+    function saveJobResultToChat(bookId: string, index: number) {
+        const text = chatHistory[index]?.text;
+        if (!bookId || !data.session?.user || !text) return;
+        fetch('/api/chat-log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookId, text })
+        }).catch((err) => console.error('Could not save the job result to the chat history:', err));
+    }
+
     async function runMangaJobInChat(job: MangaJob) {
         const total = job.pages.length;
         const index = chatHistory.length;
+        const jobBookId = bookUuid;
         const setStatus = (text: string) => {
             chatHistory = chatHistory.map((message, i) => i === index ? { ...message, text } : message);
         };
@@ -1480,6 +1494,7 @@ ${markdown}
         } finally {
             window.removeEventListener('beforeunload', warnBeforeLeaving);
             mangaAbort = null;
+            saveJobResultToChat(jobBookId, index);
             scrollToBottom();
         }
     }
@@ -1490,6 +1505,7 @@ ${markdown}
         const job: ImageEditJob = { edits: requested.edits.filter((e) => markdown.includes(e.image_url)) };
         const total = job.edits.length;
         const index = chatHistory.length;
+        const jobBookId = bookUuid;
         const setStatus = (text: string) => {
             chatHistory = chatHistory.map((message, i) => i === index ? { ...message, text } : message);
         };
@@ -1512,6 +1528,7 @@ ${markdown}
         } finally {
             window.removeEventListener('beforeunload', warnBeforeLeaving);
             mangaAbort = null;
+            saveJobResultToChat(jobBookId, index);
             scrollToBottom();
         }
     }
@@ -1519,6 +1536,7 @@ ${markdown}
     async function runPictureJobInChat(job: PictureJob) {
         const total = job.units.length;
         const index = chatHistory.length;
+        const jobBookId = bookUuid;
         const setStatus = (text: string) => {
             chatHistory = chatHistory.map((message, i) => i === index ? { ...message, text } : message);
         };
@@ -1557,6 +1575,7 @@ ${markdown}
         } finally {
             window.removeEventListener('beforeunload', warnBeforeLeaving);
             mangaAbort = null;
+            saveJobResultToChat(jobBookId, index);
             scrollToBottom();
         }
     }

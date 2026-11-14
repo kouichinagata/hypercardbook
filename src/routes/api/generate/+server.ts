@@ -522,6 +522,9 @@ ${availableSkills.length > 0 ? availableSkills.map(s => `- ${s.name}: ${s.descri
         const undoEntries = (Array.isArray(undoHistory) ? undoHistory : []).filter((h: any) => Number.isInteger(h?.version) && h.version >= 1);
         const undoVersions = new Set<number>(undoEntries.map((h: any) => h.version));
         activeSystemInstruction += `\n\nDOCUMENT IDENTITY:\n- When you output the whole open book/card in a markdown code block, keep its id and play_mode exactly as they are. A different id or play_mode is treated as a different document and is not applied to the open one.`;
+        if (!imageToolsActive) {
+            activeSystemInstruction += `\n\nPICTURE CHANGES:\n- Image Generation mode is OFF: you cannot change the pixels of a picture. If the user asks to change a picture itself (add text to it, recolor it), do not fake it with an HTML/CSS overlay or a new page; tell the user to turn on Image Generation mode. Use an overlay only if the user asks for one.`;
+        }
         if (undoEntries.length > 0) {
             const list = undoEntries
                 .map((h: any) => `- version ${h.version}: "${String(h.title ?? '').slice(0, 80)}" (play_mode: ${String(h.play_mode ?? '').slice(0, 20)}), ${String(h.changed ?? '').slice(0, 20)} lines to the next version`)
