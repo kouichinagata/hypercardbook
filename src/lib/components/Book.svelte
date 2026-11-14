@@ -2336,6 +2336,18 @@
         box-shadow: none !important;
         object-fit: contain !important;
     }
+    /* Half-spread pages (an absolutely positioned image inside .pb-page) have no height of their own,
+       so give them a fixed shape and keep the 200%-wide crop that shows one half of the spread */
+    .book-workspace.vertical-mode .continuous-page.full-layout .continuous-markdown :global(.pb-page:has(> img[style*="absolute"])) {
+        height: auto !important;
+        aspect-ratio: 3 / 4;
+    }
+    .book-workspace.vertical-mode .continuous-page.full-layout .continuous-markdown :global(.pb-page:has(> img[style*="absolute"]) > img) {
+        width: 200% !important;
+        height: 100% !important;
+        max-width: none !important;
+        object-fit: cover !important;
+    }
     .book-workspace.vertical-mode .continuous-page.full-layout .page-number {
         display: none;
     }
