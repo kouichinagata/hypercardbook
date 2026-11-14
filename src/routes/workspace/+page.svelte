@@ -1985,6 +1985,20 @@ ${markdown}
 
     function insertImageAtCursor(newUrl: string, altText: string) {
         const alt = altText.replace(/[\(\)\[\]]/g, '').trim();
+        const snippet = `![${alt}](${newUrl})`;
+
+        // Monaco: insert at Monaco's own cursor (the hidden textarea's cursor is always at the end)
+        if (useMonaco && monacoEditor) {
+            const selection = monacoEditor.getSelection();
+            if (selection) {
+                monacoEditor.executeEdits('insert-image', [
+                    { range: selection, text: snippet, forceMoveMarkers: true }
+                ]);
+                monacoEditor.focus();
+                return;
+            }
+        }
+
         if (!sourceEditorEl) {
             markdown += `\n![${alt}](${newUrl})\n`;
             return;
