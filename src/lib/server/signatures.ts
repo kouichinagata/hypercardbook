@@ -10,6 +10,7 @@ import { isValidSignatureSvg } from '../signature/signature-svg.ts';
 import { isValidStampSvg } from '../signature/stamp-svg.ts';
 import { isComplete, recordCompletion } from './markdown-verify.ts';
 import { copySignedContractToSigners } from './contracts.ts';
+import { notifyOwnerSigned } from './paperoboNotice.ts';
 
 // Signing is done here, in one place: the owner (logged in), a guest with a sign link, and PapeRobo all go through applySignature.
 const BUCKET = 'HyperCardBookBucket';
@@ -65,7 +66,7 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
     if (!isValidSignatureSvg(svg)) return { ok: false, status: 400, error: 'Invalid signature.' };
     if (!Number.isInteger(slot) || !['my', 'your', 'any'].includes(kind) || !Number.isInteger(baseVersion)) return { ok: false, status: 400, error: 'Invalid request.' };
 
-    const { data: book } = await admin.from('books').select('id, user_id, markdown_content, version, slug').eq('id', bookId).maybeSingle();
+    const { data: book } = await admin.from('books').select('id, user_id, title, markdown_content, version, slug').eq('id', bookId).maybeSingle();
     if (!book) return { ok: false, status: 404, error: 'Document not found.' };
     if (actor.type === 'owner' && actor.userId !== book.user_id) return { ok: false, status: 403, error: 'Not your document.' };
     if (actor.type === 'guest' && !guestMaySign(kind)) return { ok: false, status: 403, error: 'This slot is for the owner.' };
@@ -124,6 +125,7 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
         if (writeError || !saved) throw new Error(writeError?.message || 'conflict');
         await recordCompletion(admin, book.id, after);
         await copySignedContractToSigners(admin, book.id, after);
+        if (actor.type !== 'owner') await notifyOwnerSigned({ ownerId: book.user_id, bookId: book.id, title: book.title, complete: isComplete(after), signatureId: signatureId! });
         return { ok: true, markdown: after, version: saved.version };
     } catch (err) {
         console.error('[signature] failed, rolling back:', err);
@@ -180,7 +182,7 @@ export async function applyStamp(admin: SupabaseClient, input: { bookId: string;
     if (!isValidStampSvg(svg)) return { ok: false, status: 400, error: 'Invalid seal.' };
     if (mode !== 'stamp' && mode !== 'both') return { ok: false, status: 400, error: 'Invalid request.' };
 
-    const { data: book } = await admin.from('books').select('id, user_id, markdown_content, version, slug').eq('id', bookId).maybeSingle();
+    const { data: book } = await admin.from('books').select('id, user_id, title, markdown_content, version, slug').eq('id', bookId).maybeSingle();
     if (!book) return { ok: false, status: 404, error: 'Document not found.' };
     const isOwner = userId === book.user_id;
     const before: string = book.markdown_content || '';
@@ -228,6 +230,7 @@ export async function applyStamp(admin: SupabaseClient, input: { bookId: string;
         if (writeError || !saved) throw new Error(writeError?.message || 'conflict');
         await recordCompletion(admin, book.id, after);
         await copySignedContractToSigners(admin, book.id, after);
+        if (!isOwner) await notifyOwnerSigned({ ownerId: book.user_id, bookId: book.id, title: book.title, complete: isComplete(after), signatureId: signatureId! });
         return { ok: true, markdown: after, version: saved.version, slot: target.slot, mode, complete: isComplete(after), remaining: signSlotKinds(after).length };
     } catch (err) {
         console.error('[stamp] failed, rolling back:', err);
