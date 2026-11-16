@@ -2582,6 +2582,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                     onDownloadBook={handleDownloadBook}
                     fromPage="home"
                     showHyperCardTvBtn={true}
+                    onPapeRoboClick={() => window.open(buildPapeRoboUrl(), '_blank', 'noopener')}
                     isStackSelection={shelfSelecting}
                     selectedStackBookIds={shelfSelectedIds}
                     isHyperRoboSelection={isHyperRoboSelectionMode}

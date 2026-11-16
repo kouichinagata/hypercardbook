@@ -31,6 +31,7 @@
         isPublicShelf = false,
         showHyperRoboBtn = false,
         showHyperCardTvBtn = false,
+        onPapeRoboClick = null,
         isHyperRoboSelection = false,
         selectedHyperRoboBookIds = [],
         onToggleHyperRoboSelectionMode = null,
@@ -246,12 +247,21 @@
     {#if showHyperRoboBtn || showStackBtn || showHyperCardTvBtn}
         <div class="top-shelf-actions">
             {#if showHyperCardTvBtn}
+                {#if onPapeRoboClick}
+                    <button
+                        type="button"
+                        class="top-shelf-hyperrobo-btn"
+                        onclick={() => onPapeRoboClick?.()}
+                    >
+                        🤖 PapeRobo
+                    </button>
+                {/if}
                 <button
                     type="button"
                     class="top-shelf-hypercardtv-btn"
                     onclick={() => window.open('https://www.tatetop.com/hypercardtv/hypertv', '_blank')}
                 >
-                    📺 HyperCard-TV
+                    📺 Hyper-TV
                 </button>
             {/if}
 
