@@ -352,7 +352,13 @@
             return;
         }
         const el = (e.target as HTMLElement | null)?.closest?.('.sign-pending') as HTMLElement | null;
-        if (el && slotIsSignable(Number(el.dataset.slot))) signingSlot = Number(el.dataset.slot);
+        if (!el || !slotIsSignable(Number(el.dataset.slot))) return;
+        // The last signature completes the document and locks its fields
+        if (signKinds.length === 1 && scanFields(markdown).length > 0) {
+            alert('Fill in every field before the last signature.');
+            return;
+        }
+        signingSlot = Number(el.dataset.slot);
     }
 
     function renderSignSlot(slot: number): string {

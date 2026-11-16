@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { guestMaySign, nextStampSlot, signSlotInMarkdown, signSlotKinds, stampSlotInMarkdown, type SignKind } from '../signature/markers.ts';
-import { setFieldInMarkdown } from '../signature/fields.ts';
+import { hasFields, setFieldInMarkdown } from '../signature/fields.ts';
 import { isValidSignatureSvg } from '../signature/signature-svg.ts';
 import { isValidStampSvg } from '../signature/stamp-svg.ts';
 import { isComplete, recordCompletion } from './markdown-verify.ts';
@@ -14,6 +14,7 @@ import { copySignedContractToSigners } from './contracts.ts';
 // Signing is done here, in one place: the owner (logged in), a guest with a sign link, and PapeRobo all go through applySignature.
 const BUCKET = 'HyperCardBookBucket';
 export const SIGN_LINK_DAYS = 14;
+const FILL_FIELDS_FIRST = 'Fill in every field before the last signature.';
 
 export const sha256 = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 export const hashToken = (token: string) => sha256('markdown-sign-link-v1:' + token);
@@ -80,6 +81,8 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
 
     const before: string = book.markdown_content || '';
     if (signSlotKinds(before)[slot] !== kind) return { ok: false, status: 409, error: 'No such slot.' };
+    // The last signature completes the document and locks its fields, so every field must be filled first
+    if (signSlotKinds(before).length === 1 && hasFields(before)) return { ok: false, status: 409, error: FILL_FIELDS_FIRST };
 
     // The WebP is always rendered here from the validated SVG, never taken from the client
     let bytes: Buffer;
@@ -185,6 +188,7 @@ export async function applyStamp(admin: SupabaseClient, input: { bookId: string;
     if (issuance && (await certificateState(admin, bookId, before, issuance.verify_id)).status === 'complete') return { ok: false, status: 409, error: 'This certificate is already complete.' };
     const target = nextStampSlot(before, (kind) => isOwner ? (!issuance || kind !== 'your') : guestMaySign(kind));
     if (!target) return { ok: false, status: 409, error: 'There is no slot left for you to stamp.' };
+    if (mode === 'stamp' && signSlotKinds(before).length === 1 && hasFields(before)) return { ok: false, status: 409, error: FILL_FIELDS_FIRST };
 
     let bytes: Buffer;
     try {
