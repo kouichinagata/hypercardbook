@@ -12,11 +12,11 @@ description: <<1〜2文の説明。例: まんが「…」のコマを順に動�
 cover_image: <<1ページ目の画像URL>>
 theme_color: black
 ---
+<div class="sprite-player" data-sprite='{"format":"portrait","pages":["<<ページ1の画像URL>>","<<ページ2の画像URL>>"],"panels":[{"page":0,"x":0.004,"y":0.004,"w":0.58,"h":0.31,"dur":3.4,"move":"zoom","audio":"<<音声URL>>"},{"page":0,"x":0.59,"y":0.004,"w":0.4,"h":0.31,"dur":2.5,"move":"none"}]}'></div>
+
 # <<まんがのタイトル>>
 
 ▶ を押すと、まんがのコマが順に再生されます。速度と縦横（9:16／16:9）はボタンで切り替えられます。
-
-<div class="sprite-player" data-sprite='{"format":"portrait","pages":["<<ページ1の画像URL>>","<<ページ2の画像URL>>"],"panels":[{"page":0,"x":0.004,"y":0.004,"w":0.58,"h":0.31,"dur":3.4,"move":"zoom","audio":"<<音声URL>>"},{"page":0,"x":0.59,"y":0.004,"w":0.4,"h":0.31,"dur":2.5,"move":"none"}]}'></div>
 
 <script>
 var s = document.createElement('script');
