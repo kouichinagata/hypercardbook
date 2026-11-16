@@ -43,6 +43,10 @@
         // 全コマの音声は先に Blob として取得しておくので、差し替えても読み込み待ちが入らない（末尾が切れない）。
         var audio = new Audio();
         var blobUrls = [], curIdx = -1, muted = false, unlocked = false;
+        // 今のコマの音が鳴らせなかったか。鳴らせない音は待たない
+        var soundFailed = false, holdSince = 0;
+        var MAX_HOLD_MS = 4000; // 音を待つのは最大4秒まで（固まらないように）
+        audio.addEventListener('error', function () { soundFailed = true; });
         function soundSrc(i) {
             var p = data.panels[i];
             if (!p || !p.audio) return null;
@@ -92,6 +96,8 @@
             if (idx !== curIdx) {
                 curIdx = idx;
                 restart = true;
+                soundFailed = false;
+                holdSince = 0;
                 audio.pause();
                 src = soundSrc(idx);
                 if (!src) return;
@@ -104,7 +110,19 @@
             audio.muted = muted;
             audio.defaultPlaybackRate = speed;
             audio.playbackRate = speed;
-            if (audio.paused && !audio.ended) audio.play().catch(function () {});
+            if (audio.paused && !audio.ended) audio.play().catch(function () {
+                if (curIdx === idx) soundFailed = true;
+            });
+        }
+        // コマ idx が終わる時刻（秒）
+        function panelEnd(idx) {
+            var acc = 0;
+            for (var i = 0; i <= idx; i++) acc += data.panels[i].dur > 0 ? data.panels[i].dur : 1;
+            return acc;
+        }
+        // コマ idx の音が、まだ鳴っている（または鳴り始める前）か
+        function soundBusy(idx) {
+            return idx === curIdx && !!soundSrc(idx) && !soundFailed && !audio.ended;
         }
         function pauseSound() {
             audio.pause();
@@ -173,8 +191,20 @@
 
         function tick(now) {
             if (!playing) return;
-            t += ((now - last) / 1000) * speed;
+            var dt = ((now - last) / 1000) * speed;
             last = now;
+            // 音が鳴り終わるまで次のコマへ進まない（iOS は鳴り始めが遅く、最後が切れるため）
+            var idx = locate().idx, end = panelEnd(idx);
+            if (t + dt >= end && soundBusy(idx)) {
+                if (!holdSince) holdSince = now;
+                if (now - holdSince < MAX_HOLD_MS) {
+                    t = end - 0.001;
+                    draw();
+                    requestAnimationFrame(tick);
+                    return;
+                }
+            }
+            t += dt;
             if (t >= total) {
                 t = 0;
                 playing = false;
