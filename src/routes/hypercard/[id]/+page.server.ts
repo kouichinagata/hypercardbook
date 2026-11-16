@@ -5,6 +5,8 @@ import { servedOnMarkdown, viewerRedirect, type ContentRow } from '$lib/content-
 import { parseBookFrontmatter } from '$lib/book-frontmatter';
 import { isTemplate } from '$lib/signature/contract';
 import { createContract } from '$lib/server/contracts';
+import { adminClient } from '$lib/server/signatures';
+import { effectivePlanFromUser, isPaidPlan } from '$lib/plan';
 import { linkSharedBooks } from '$lib/server/link-access';
 import { isBookUuid } from '$lib/unlisted-mini-app';
 import type { PageServerLoad } from './$types';
@@ -113,10 +115,10 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch, setHead
             throw redirect(302, `/hyperbook/${id}?${redirectParams.toString()}`);
         }
 
-        // The owner opening their own template here (not in the workspace) gets a contract; a contract with variables left is opened as it is
+        // The owner opening their own template here (not in the workspace) gets a contract (Standard or above); a contract with variables left is opened as it is
         const ownerUserId = locals.session?.user.id;
-        if (row && !shareToken && ownerUserId && (row as ContentRow & { user_id?: string }).user_id === ownerUserId && isTemplate(markdownContent)) {
-            const contractId = await createContract(supabase, ownerUserId, row.id);
+        if (row && !shareToken && ownerUserId && (row as ContentRow & { user_id?: string }).user_id === ownerUserId && isTemplate(markdownContent) && isPaidPlan(effectivePlanFromUser(locals.session?.user))) {
+            const contractId = await createContract(adminClient(), ownerUserId, row.id);
             if (contractId) throw redirect(302, `/hypercard/${contractId}${url.search}`);
         }
 

@@ -1,13 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
-import { contractMarkdown, contractStamp, isContract, signedCopyMarkdown } from '../signature/contract.ts';
+import { contractMarkdown, contractStamp, isCertificate, isContract, signedCopyMarkdown } from '../signature/contract.ts';
 import { isComplete } from '../signature/markers.ts';
+import { copyTemplateSignatures } from './markdown-verify.ts';
 
 /** Make a contract (a private card of the user) from a template card; returns the contract's id, or null when it could not be made. */
 export async function createContract(supabase: SupabaseClient, userId: string, templateId: string): Promise<string | null> {
     const { data: template } = await supabase
         .from('books')
-        .select('id, title, author, cover_image, theme_color, markdown_content')
+        .select('id, user_id, title, author, cover_image, theme_color, markdown_content')
         .eq('id', templateId)
         .maybeSingle();
     if (!template) return null;
@@ -32,6 +33,13 @@ export async function createContract(supabase: SupabaseClient, userId: string, t
         console.error('[contract] could not create:', error);
         return null;
     }
+    try {
+        await copyTemplateSignatures(supabase, template, contract.id, userId);
+    } catch (err) {
+        console.error('[contract] could not copy the template signatures:', err);
+        await supabase.from('books').delete().eq('id', contract.id);
+        return null;
+    }
     return contract.id as string;
 }
 
@@ -41,7 +49,7 @@ export async function createContract(supabase: SupabaseClient, userId: string, t
  */
 export async function copySignedContractToSigners(admin: SupabaseClient, bookId: string, markdown: string): Promise<void> {
     try {
-        if (!isContract(markdown) || !isComplete(markdown)) return;
+        if (!(isContract(markdown) || isCertificate(markdown)) || !isComplete(markdown)) return;
         const { data: book } = await admin.from('books').select('id, user_id, title, author, cover_image, theme_color').eq('id', bookId).maybeSingle();
         if (!book) return;
         const { data: signatures, error } = await admin.from('markdown_signatures').select('signer_id').eq('book_id', bookId).not('signer_id', 'is', null);

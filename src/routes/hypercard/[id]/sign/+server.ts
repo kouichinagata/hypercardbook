@@ -35,11 +35,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
     const body = await request.json();
     const { slot, kind, baseVersion, svg } = body;
     const userId = locals.session?.user.id;
-    // A template can be tried but not filled or signed by anyone but its owner
-    if (userId !== book.user_id) {
-        const { data: row } = await admin.from('books').select('markdown_content').eq('id', book.id).maybeSingle();
-        if (isTemplate(row?.markdown_content || '')) return json({ error: 'Please log in to save your changes.' }, { status: 401 });
-    }
+    // A template is edited in the workspace only, even by its owner: here it can be tried but not filled or signed
+    const { data: row } = await admin.from('books').select('markdown_content').eq('id', book.id).maybeSingle();
+    if (isTemplate(row?.markdown_content || '')) return json({ error: 'Templates can only be edited in the workspace.' }, { status: 403 });
     // Form fields are for the person the card is handed to: anyone with the link fills them, logged in or not
     if (body.field) {
         const actor = userId && userId === book.user_id ? ({ type: 'owner', userId } as const) : ({ type: 'guest', name: null } as const);

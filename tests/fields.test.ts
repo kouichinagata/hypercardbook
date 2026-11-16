@@ -51,14 +51,14 @@ test('a radio knows its group and which option is last', () => {
     assert.deepEqual(f.map((x) => [x.group, x.lastInGroup]), [[0, false], [0, true], [2, true]]);
 });
 
-test('a template has variables and is not a contract, a certificate, or signed', async () => {
+test('a template has variables and is not a contract or a certificate; the owner may have signed it', async () => {
     const { isTemplate, contractMarkdown } = await import('../src/lib/signature/contract.ts');
     assert.equal(isTemplate('---\nid: a\nplay_mode: card\n---\n{{MarkdownAIinput:xxxx}}'), true);
     assert.equal(isTemplate('{{MarkdownAIverify}}'), true);
     assert.equal(isTemplate('plain text'), false);
     assert.equal(isTemplate('---\ncontract_source_id: t\n---\n{{MarkdownAIcheck}}'), false);
     assert.equal(isTemplate('---\ncertificate_issuance_id: c\n---\n{{MarkdownAIverify}}'), false);
-    assert.equal(isTemplate('![MarkdownAIverify:my](https://x.test/a.webp) {{MarkdownAIverify}}'), false);
+    assert.equal(isTemplate('![MarkdownAIverify:my](https://x.test/a.webp) {{MarkdownAIverify}}'), true);
     const md = contractMarkdown('---\nid: tpl\nis_public: true\npublished_at: 2026-01-01\ntitle: T\n---\n{{MarkdownAIcheck}}', { id: 'contract-1', sourceId: 'T1', title: 'T 2026-11-03 15:20' });
     assert.equal(md, '---\nid: contract-1\nis_public: false\ncontract_source_id: T1\ntitle: T 2026-11-03 15:20\n---\n{{MarkdownAIcheck}}');
     assert.equal(isTemplate(md), false);

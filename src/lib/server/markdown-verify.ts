@@ -80,6 +80,24 @@ export async function mayRecordCompletion(admin: SupabaseClient, bookId: string)
     return isPaidPlan(effectivePlanFromUser(data.user));
 }
 
+/**
+ * A copy made from a template keeps the signatures already in the template. The server copies their records to the copy
+ * when it makes the copy, so the copy's own records prove them. Only the template owner's own copies get them.
+ */
+export async function copyTemplateSignatures(admin: SupabaseClient, template: { id: string; user_id?: string | null; markdown_content: string }, copyId: string, userId: string): Promise<void> {
+    const urls = signatureImageUrls(template.markdown_content);
+    if (!urls.length || template.user_id !== userId) return;
+    const { data, error } = await admin
+        .from('markdown_signatures')
+        .select('kind, signer_type, signer_id, signer_name, svg, webp_url, svg_sha256, webp_sha256, markdown_sha256, signed_at, method')
+        .eq('book_id', template.id)
+        .in('webp_url', urls);
+    if (error) throw error;
+    if (!data?.length) return;
+    const { error: insertError } = await admin.from('markdown_signatures').insert(data.map((row) => ({ ...row, book_id: copyId })));
+    if (insertError) throw insertError;
+}
+
 /** Called right after the last slot is saved. Failures are logged only: signing itself must never fail because of this. */
 export async function recordCompletion(admin: SupabaseClient, bookId: string, markdown: string): Promise<VerifyRecord | null> {
     try {

@@ -24,11 +24,13 @@ export function isVerifyDocument(markdown: string): boolean {
     );
 }
 
-/** Has a variable, is not a contract or certificate, and has nothing signed yet */
+/** Made from a template by PapeRobo's certificate button */
+export const isCertificate = (markdown: string) => hasFrontmatterKey(markdown, 'certificate_issuance_id');
+
+/** Has a variable and is not a contract or certificate. The owner's own signature may already be in it. */
 export function isTemplate(markdown: string): boolean {
     if (!signSlotKinds(markdown).length && !hasFields(markdown)) return false;
-    if (hasFrontmatterKey(markdown, 'contract_source_id') || hasFrontmatterKey(markdown, 'certificate_issuance_id')) return false;
-    return signatureImageUrls(markdown).length === 0;
+    return !isContract(markdown) && !isCertificate(markdown);
 }
 
 /** "2026-11-03 15:20" in Japan time: tells contracts made from one template apart */

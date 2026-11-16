@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { error } from '@sveltejs/kit';
-import { signSlotKinds, signatureImageUrls } from '../signature/markers.ts';
-import { isComplete, newVerifyId, recordCompletion, verifyHash, type VerifyRecord } from './markdown-verify.ts';
+import { signSlotKinds } from '../signature/markers.ts';
+import { copyTemplateSignatures, isComplete, newVerifyId, recordCompletion, verifyHash, type VerifyRecord } from './markdown-verify.ts';
 
 export const issuanceKey = (bookId: string) => `certificate-issued:${bookId}`;
 
@@ -25,15 +25,21 @@ export function certificateMarkdown(markdown: string, input: { id: string; sourc
     return `---\nid: ${input.id}\nis_public: false\ncertificate_issuance_id: ${input.certificateId}\ncertificate_source_id: ${input.sourceId}\ncertificate_issuer: ${input.issuer}\ncertificate_issued_at: ${input.issuedAt}\n${fields}\n---\n${body}`;
 }
 
-export async function issueCertificate(admin: SupabaseClient, template: { id: string; title: string; markdown_content: string; author?: string; cover_image?: string; theme_color?: string }, userId: string) {
+export async function issueCertificate(admin: SupabaseClient, template: { id: string; user_id?: string | null; title: string; markdown_content: string; author?: string; cover_image?: string; theme_color?: string }, userId: string) {
     if (!signSlotKinds(template.markdown_content).length) throw error(400, 'This card has no MarkdownAIverify fields.');
-    if (signatureImageUrls(template.markdown_content).length) throw error(400, 'Choose an unsigned certificate template.');
     const certificateId = newVerifyId();
     const issuedAt = new Date().toISOString();
     const slug = `certificate-${certificateId}`;
     const markdown = certificateMarkdown(template.markdown_content, { id: slug, sourceId: template.id, issuer: userId, certificateId, issuedAt });
     const { data: copy, error: copyError } = await admin.from('books').insert({ user_id: userId, slug, title: template.title, author: template.author || null, cover_image: template.cover_image || null, theme_color: template.theme_color || 'white', markdown_content: markdown, is_public: false, published_at: null }).select('id').single();
     if (copyError || !copy) throw error(503, 'Could not create the certificate.');
+    try {
+        await copyTemplateSignatures(admin, template, copy.id, userId);
+    } catch (err) {
+        console.error('[certificate] could not copy the template signatures:', err);
+        await admin.from('books').delete().eq('id', copy.id);
+        throw error(503, 'Could not create the certificate.');
+    }
     const record: VerifyRecord = { verify_id: certificateId, book_id: copy.id, markdown, signatures: [], completed_at: issuedAt };
     const { error: recordError } = await admin.from('markdown_verify').insert({ ...record, sha256: verifyHash(record), complete_key: issuanceKey(copy.id) });
     if (recordError) {
