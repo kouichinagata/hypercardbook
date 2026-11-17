@@ -327,12 +327,13 @@
     function renderField(field: FieldMarker): string {
         const off = fieldsLive ? '' : ' disabled';
         const n = field.index;
+        // A check box or radio is followed by its label, so its Confirm button goes at the end of the label (see placeOkButtons)
         if (field.kind === 'check') {
-            return `<span class="field-slot" data-field="${n}"><input class="field-toggle" type="checkbox"${field.checked ? ' checked' : ''}${off}><button type="button" class="field-ok"${off}>Confirm</button></span>`;
+            return `<span class="field-slot" data-field="${n}"><input class="field-toggle" type="checkbox"${field.checked ? ' checked' : ''}${off}></span>${okMark(n)}`;
         }
         if (field.kind === 'radio') {
-            const button = field.lastInGroup ? `<button type="button" class="field-ok"${off}>Confirm</button>` : '';
-            return `<span class="field-slot" data-field="${n}"><input class="field-toggle" type="radio" name="field-group-${field.group}" data-field="${n}"${field.checked ? ' checked' : ''}${off}>${button}</span>`;
+            const mark = field.lastInGroup ? okMark(n) : '';
+            return `<span class="field-slot" data-field="${n}"><input class="field-toggle" type="radio" name="field-group-${field.group}" data-field="${n}"${field.checked ? ' checked' : ''}${off}></span>${mark}`;
         }
         const spec = field.input!;
         let box: string;
@@ -345,10 +346,20 @@
         return `<span class="field-slot" data-field="${n}">${box}<button type="button" class="field-ok"${off}>Confirm</button></span>`;
     }
 
+    const okMark = (n: number) => `\u0000OK${n}\u0000`;
+
+    /** Move each check box / radio Confirm mark past its label: to the end of the line, or of the table cell */
+    function placeOkButtons(md: string): string {
+        const off = fieldsLive ? '' : ' disabled';
+        return md.replace(/\u0000OK(\d+)\u0000([^\r\n|\u0000]*?)([ \t]*)(?=\r?\n|\||\u0000|$)/g, (_m, n, label, tail) => `${label}<button type="button" class="field-ok" data-field="${n}"${off}>Confirm</button>${tail}`);
+    }
+
     function handleBodyClick(e: MouseEvent) {
         const ok = (e.target as HTMLElement | null)?.closest?.('.field-ok') as HTMLElement | null;
         if (ok && fieldsLive) {
-            commitField(ok.closest('.field-slot') as HTMLElement);
+            // A text field's button sits in its slot; a check box / radio button sits after the label
+            const slot = (ok.closest('.field-slot') ?? ok.closest('.card-webview-body')?.querySelector(`.field-slot[data-field="${ok.dataset.field}"]`)) as HTMLElement | null;
+            if (slot) commitField(slot);
             return;
         }
         const el = (e.target as HTMLElement | null)?.closest?.('.sign-pending') as HTMLElement | null;
@@ -376,7 +387,7 @@
     let cardBodyHtml = $derived.by(() => {
         if (!markdown) return '';
         // Fields are numbered on the whole Markdown, as the server does
-        let cleanMd = replaceFieldMarkers(markdown, renderField).replace(/^---\s*[\s\S]*?\s*---/, '').trim();
+        let cleanMd = placeOkButtons(replaceFieldMarkers(markdown, renderField)).replace(/^---\s*[\s\S]*?\s*---/, '').trim();
         // Remove the whole line of a style block so no blank line is left inside an HTML block (it would end the block)
         cleanMd = cleanMd.replace(new RegExp('^[ \\t]*<' + 'style>[\\s\\S]*?<' + '[\\/]style>[ \\t]*\\r?\\n?', 'gim'), '').replace(new RegExp(styleBlockPattern), '');
         // Seals pressed before the signature sit left-aligned in a row of inline boxes, so many of them wrap onto new lines
