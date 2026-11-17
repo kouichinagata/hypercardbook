@@ -102,25 +102,26 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch, setHead
         row = data;
     }
 
-        // Public content created from the cutover (and the standard MiniApps) is served from the markdown domain
-        // A link-shared document is not for search engines, caches or referrers
-        if (row?.link_access && !row.is_public) setHeaders({ 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'private, no-store' });
-        const target = viewerRedirect(url, shareToken ? true : row ? servedOnMarkdown(row, undefined, isBookUuid(id)) : false, dev);
-        if (target) throw redirect(302, target);
-
-        // Check if markdown is actually a "Book" instead of a "Card"
+        // Check if markdown is actually a "Book" instead of a "Card" (/hyperbook picks the domain itself)
         const isCard = isCardMarkdown(markdownContent) || (!markdownContent.includes('play_mode: book') && !/Page\s*\d+:/i.test(markdownContent) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(markdownContent));
         if (!isCard) {
             const redirectParams = new URLSearchParams(url.searchParams);
             throw redirect(302, `/hyperbook/${id}?${redirectParams.toString()}`);
         }
 
-        // The owner opening their own template here (not in the workspace) gets a contract (Standard or above); a contract with variables left is opened as it is
+        // The owner opening their own template here (not in the workspace) gets a contract (Standard or above); a contract with variables left is opened as it is.
+        // Before the domain redirect: the markdown domain has no session, so a link-shared template opened by its UUID would never be copied there.
         const ownerUserId = locals.session?.user.id;
         if (row && !shareToken && ownerUserId && (row as ContentRow & { user_id?: string }).user_id === ownerUserId && isTemplate(markdownContent) && isPaidPlan(effectivePlanFromUser(locals.session?.user))) {
             const contractId = await createContract(adminClient(), ownerUserId, row.id);
             if (contractId) throw redirect(302, `/hypercard/${contractId}${url.search}`);
         }
+
+        // Public content created from the cutover (and the standard MiniApps) is served from the markdown domain
+        // A link-shared document is not for search engines, caches or referrers
+        if (row?.link_access && !row.is_public) setHeaders({ 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'private, no-store' });
+        const target = viewerRedirect(url, shareToken ? true : row ? servedOnMarkdown(row, undefined, isBookUuid(id)) : false, dev);
+        if (target) throw redirect(302, target);
 
         // Compute back URL with query parameters
         let backUrl = '/';
