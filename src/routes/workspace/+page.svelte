@@ -255,6 +255,8 @@
 
     // Monaco Editor states
     let useMonaco = $state(false);
+    // False until onMount decides between Monaco and the plain textarea, so the textarea does not flash before Monaco
+    let editorChosen = $state(false);
     let monacoContainerEl = $state<HTMLDivElement | null>(null);
     // $state.raw: the sync effects must re-run once the editor exists (it loads asynchronously); raw, so Monaco's object is not proxied
     let monacoEditor: any = $state.raw(null);
@@ -1791,6 +1793,7 @@ ${markdown}
         if (isMobile && data.bookId) mobilePane = activeTab === 'source' ? 'source' : 'preview';
         // PC 版の HyperCard ワークスペースは Monaco エディタで始める（スマホ・HyperBook は従来どおりプレーンテキスト）
         if (mode === 'card' && !isMobile) toggleMonaco();
+        editorChosen = true;
 
         return () => {
             document.body.classList.remove('scroll-locked');
@@ -2625,7 +2628,7 @@ ${markdown}
                 bind:value={markdown}
                 placeholder="YAML frontmatter and Markdown format..."
                 class="source-editor"
-                class:hidden={activeTab !== 'source' || useMonaco}
+                class:hidden={activeTab !== 'source' || useMonaco || !editorChosen}
                 readonly={!data.session?.user}
             ></textarea>
 
@@ -2634,7 +2637,7 @@ ${markdown}
                     bind:this={monacoContainerEl} 
                     class="monaco-container" 
                     class:hidden={activeTab !== 'source'}
-                    style="width: 100%; height: 100%; text-align: left;"
+                    style="width: 100%; height: 100%; text-align: left; background: #000;"
                 ></div>
             {/if}
         </div>
