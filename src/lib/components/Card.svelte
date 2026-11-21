@@ -332,6 +332,15 @@
         });
     }
 
+    /** Show a slider's number while it moves */
+    function handleBodyInput(e: Event) {
+        const range = e.target as HTMLInputElement | null;
+        if (range?.classList?.contains('field-range')) {
+            const out = range.nextElementSibling;
+            if (out?.classList.contains('field-range-value')) out.textContent = range.value;
+        }
+    }
+
     function handleBodyChange(e: Event) {
         const box = e.target as HTMLInputElement | HTMLTextAreaElement | null;
         const slotEl = box?.closest?.('.field-slot[data-changeable]') as HTMLElement | null;
@@ -342,6 +351,8 @@
         if (field.kind === 'check') keepChangeable(index, (box as HTMLInputElement).checked);
         else if (field.kind === 'radio') {
             if ((box as HTMLInputElement).checked) keepChangeable(index, true);
+        } else if (field.kind === 'slider' || field.kind === 'select') {
+            if (box.value !== '') keepChangeable(index, box.value);
         } else {
             const problem = box.value === '' ? null : validateInput(field.input!, box.value);
             if (problem) {
@@ -369,6 +380,15 @@
         if (!field) return;
         if (field.kind === 'check') {
             saveField(index, (slotEl.querySelector('input') as HTMLInputElement).checked);
+        } else if (field.kind === 'slider') {
+            saveField(index, (slotEl.querySelector('input') as HTMLInputElement).value);
+        } else if (field.kind === 'select') {
+            const value = (slotEl.querySelector('select') as HTMLSelectElement).value;
+            if (value === '') {
+                alert('Select an option.');
+                return;
+            }
+            saveField(index, value);
         } else if (field.kind === 'radio') {
             // The Confirm button sits on the last option; the selected one is whichever radio of the group is on
             const picked = slotEl.closest('.card-webview-body')?.querySelector(`input[name="${(slotEl.querySelector('input') as HTMLInputElement).name}"]:checked`) as HTMLInputElement | null;
@@ -390,15 +410,46 @@
 
     const attr = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+    const sliderHtml = (field: FieldMarker, off: string) =>
+        `<input class="field-range" type="range" min="${field.range!.min}" max="${field.range!.max}" step="1" value="${field.value}"${off}><output class="field-range-value">${field.value}</output>`;
+
+    function selectHtml(field: FieldMarker, off: string): string {
+        const none = field.selected! < 0 ? '<option value="" disabled selected>Select…</option>' : '';
+        const options = field.options!.map((o, i) => `<option value="${i}"${i === field.selected ? ' selected' : ''}>${attr(o)}</option>`).join('');
+        return `<select class="field-input"${off}>${none}${options}</select>`;
+    }
+
+    /** Opens the mail app (to the button's addresses) with the whole Markdown as the body (the YAML frontmatter is not Markdown: left out) */
+    function openMailto(to: string[]) {
+        const body = markdown.replace(/^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '').replace(/^\s+/, '');
+        const a = document.createElement('a');
+        a.href = `mailto:${to.join(',')}?body=${encodeURIComponent(body)}`;
+        a.click();
+    }
+
+    /** Now, as 2026/11/22 10:30 (UTC+09:00) */
+    function sentAt(): string {
+        const d = new Date();
+        const p = (n: number) => String(n).padStart(2, '0');
+        const off = -d.getTimezoneOffset();
+        const zone = `${off < 0 ? '-' : '+'}${p(Math.floor(Math.abs(off) / 60))}:${p(Math.abs(off) % 60)}`;
+        return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())} (UTC${zone})`;
+    }
+
     function renderChangeableField(field: FieldMarker): string {
         const off = changeableLive ? '' : ' disabled';
         const n = field.index;
         const slot = (inner: string) => `<span class="field-slot" data-field="${n}" data-changeable="1">${inner}</span>`;
+        // Mailto changes nothing, so anyone can use it at any time
+        if (field.kind === 'button') return `<button type="button" class="field-mailto" data-field="${n}">Mailto</button>`;
+        if (field.kind === 'slider') return slot(sliderHtml(field, off));
+        if (field.kind === 'select') return slot(selectHtml(field, off));
         if (field.kind === 'check') return slot(`<input class="field-toggle" type="checkbox"${field.checked ? ' checked' : ''}${off}>`);
         if (field.kind === 'radio') return slot(`<input class="field-toggle" type="radio" name="field-group-${field.group}" data-field="${n}"${field.checked ? ' checked' : ''}${off}>`);
         const spec = field.input!;
         const value = field.value ?? '';
         if (spec.type === 'date') return slot(`<input class="field-input" type="date" value="${attr(value)}"${off}>`);
+        if (spec.type === 'time') return slot(`<input class="field-input" type="time" value="${attr(value)}"${off}>`);
         if (spec.type === 'textarea') return slot(`<textarea class="field-input" rows="4"${off}>${attr(value).replace(/\r?\n/g, '&#10;')}</textarea>`);
         const maxlength = spec.length === null ? '' : ` maxlength="${spec.length}"`;
         return slot(`<input class="field-input" type="text" value="${attr(value)}"${maxlength}${spec.type === 'digits' ? ' inputmode="numeric" pattern="[0-9]*"' : ''}${off}>`);
@@ -416,9 +467,14 @@
             const mark = field.lastInGroup ? okMark(n) : '';
             return `<span class="field-slot" data-field="${n}"><input class="field-toggle" type="radio" name="field-group-${field.group}" data-field="${n}"${field.checked ? ' checked' : ''}${off}></span>${mark}`;
         }
+        if (field.kind === 'button') return `<span class="field-slot" data-field="${n}"><button type="button" class="field-mailto"${off}>Mailto</button></span>`;
+        const ok = `<button type="button" class="field-ok"${off}>Confirm</button>`;
+        if (field.kind === 'slider') return `<span class="field-slot" data-field="${n}">${sliderHtml(field, off)}${ok}</span>`;
+        if (field.kind === 'select') return `<span class="field-slot" data-field="${n}">${selectHtml(field, off)}${ok}</span>`;
         const spec = field.input!;
         let box: string;
         if (spec.type === 'date') box = `<input class="field-input" type="date"${off}>`;
+        else if (spec.type === 'time') box = `<input class="field-input" type="time"${off}>`;
         else if (spec.type === 'textarea') box = `<textarea class="field-input" rows="4"${off}></textarea>`;
         else {
             const maxlength = spec.length === null ? '' : ` maxlength="${spec.length}"`;
@@ -436,6 +492,20 @@
     }
 
     function handleBodyClick(e: MouseEvent) {
+        const mail = (e.target as HTMLElement | null)?.closest?.('.field-mailto') as HTMLButtonElement | null;
+        if (mail) {
+            const slotEl = mail.closest('.field-slot') as HTMLElement | null;
+            const index = Number((slotEl ?? mail).dataset.field);
+            const field = scanFields(markdown)[index];
+            if (field?.kind !== 'button') return;
+            // The Confirm version is sent once: it is replaced with "Sent by email to … on …"
+            if (field.confirm) {
+                if (!fieldsLive) return;
+                openMailto(field.mailto!);
+                saveField(index, sentAt());
+            } else openMailto(field.mailto!);
+            return;
+        }
         const ok = (e.target as HTMLElement | null)?.closest?.('.field-ok') as HTMLElement | null;
         if (ok && fieldsLive) {
             // A text field's button sits in its slot; a check box / radio button sits after the label
@@ -643,7 +713,7 @@
 
         <div class="card-webview-frame" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} style={!['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? `background-color: ${cardThemeColor};` : ''} class:embed-mode={isEmbed}>
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <div class="card-webview-body markdown-body" onclick={handleBodyClick} onchange={handleBodyChange}>
+            <div class="card-webview-body markdown-body" onclick={handleBodyClick} onchange={handleBodyChange} oninput={handleBodyInput}>
                 {#if verifyDoc}
                     <div class="markdown-verify">{@html cardBodyHtml}</div>
                 {:else}
@@ -690,6 +760,30 @@
     :global(.card-webview-body .field-ok:disabled) {
         opacity: 0.5;
         cursor: default;
+    }
+    :global(.card-webview-body .field-range) {
+        vertical-align: middle;
+        accent-color: #b58900;
+    }
+    :global(.card-webview-body .field-range-value) {
+        min-width: 2.5em;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    :global(.card-webview-body .field-mailto) {
+        padding: 4px 12px;
+        border: 1px solid #888;
+        border-radius: 6px;
+        background: #f3f3f3;
+        color: #222;
+        cursor: pointer;
+    }
+    :global(.card-webview-body .field-mailto:disabled) {
+        opacity: 0.5;
+        cursor: default;
+    }
+    :global(.card-webview-body .field-slot .field-range-value) {
+        align-self: center;
     }
     :global(.card-webview-body .field-toggle) {
         transform: scale(1.2);
