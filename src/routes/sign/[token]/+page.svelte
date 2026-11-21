@@ -22,18 +22,22 @@
             return out.markdown as string;
         },
         canFill: () => true,
-        fill: async (index: number, value: string | boolean) => {
-            const res = await fetch(location.pathname, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ field: true, index, value })
-            });
-            const out = await res.json();
-            if (!res.ok) throw new Error(out.error || 'save failed');
-            version = out.version;
-            return out.markdown as string;
-        }
+        // Changeable fields are saved on the server each time they change (this page has no editor to keep them)
+        fillChangeable: (index: number, value: string | boolean) => fillField(index, value),
+        fill: (index: number, value: string | boolean) => fillField(index, value)
     };
+
+    async function fillField(index: number, value: string | boolean) {
+        const res = await fetch(location.pathname, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ field: true, index, value })
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || 'save failed');
+        version = out.version;
+        return out.markdown as string;
+    }
 </script>
 
 <svelte:head>

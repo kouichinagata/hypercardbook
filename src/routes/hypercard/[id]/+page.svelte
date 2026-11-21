@@ -5,6 +5,7 @@
     import { page } from '$app/state';
     import SignNavigator from '$lib/signature/SignNavigator.svelte';
     import { hasFields } from '$lib/signature/fields';
+    import { changeableSignKinds, hasSignMarkers } from '$lib/signature/markers';
 
     let { data } = $props();
     let activePluginIds = $derived(data.session?.user?.user_metadata?.active_plugin_ids || DEFAULT_ACTIVE_PLUGIN_IDS);
@@ -18,7 +19,7 @@
     const signUrl = `/hypercard/${encodeURIComponent(data.id)}/sign`;
 
     onMount(async () => {
-        if (!/\{\{\s*(my|your\s*)?MarkdownAIverify\s*\}\}/.test(markdown) && !hasFields(markdown)) return;
+        if (!hasSignMarkers(markdown) && !changeableSignKinds(markdown).length && !hasFields(markdown)) return;
         try {
             const res = await fetch(signUrl);
             if (!res.ok) return;
@@ -43,18 +44,22 @@
             return out.markdown as string;
         },
         canFill: () => true,
-        fill: async (index: number, value: string | boolean) => {
-            const res = await fetch(signUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...(data.shareTicket ? { 'x-paperobo-share': data.shareTicket } : {}) },
-                body: JSON.stringify({ field: true, index, value })
-            });
-            const out = await res.json();
-            if (!res.ok) throw new Error(out.error || 'save failed');
-            version = out.version;
-            return out.markdown as string;
-        }
+        // Changeable fields are saved on the server each time they change (this page has no editor to keep them)
+        fillChangeable: (index: number, value: string | boolean) => fillField(index, value),
+        fill: (index: number, value: string | boolean) => fillField(index, value)
     };
+
+    async function fillField(index: number, value: string | boolean) {
+        const res = await fetch(signUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(data.shareTicket ? { 'x-paperobo-share': data.shareTicket } : {}) },
+            body: JSON.stringify({ field: true, index, value })
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || 'save failed');
+        version = out.version;
+        return out.markdown as string;
+    }
 </script>
 
 <svelte:head>

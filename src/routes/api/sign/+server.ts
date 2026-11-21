@@ -11,7 +11,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         const done = await applyField(adminClient(), { bookId: String(body.bookId ?? ''), index: body.index, value: body.value, actor: { type: 'owner', userId } });
         return done.ok ? json(done) : json({ error: done.error }, { status: done.status });
     }
-    const { bookId, slot, kind, baseVersion, svg } = body;
-    const outcome = await applySignature(adminClient(), { bookId: String(bookId ?? ''), slot, kind, baseVersion, svg, actor: { type: 'owner', userId } });
+    const { bookId, slot, kind, baseVersion, svg, changeable, fields } = body;
+    const outcome = await applySignature(adminClient(), { bookId: String(bookId ?? ''), slot, kind, baseVersion, svg, changeable, fields, actor: { type: 'owner', userId } });
     return outcome.ok ? json(outcome) : json({ error: outcome.error }, { status: outcome.status });
 };

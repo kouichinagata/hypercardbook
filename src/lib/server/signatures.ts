@@ -4,8 +4,8 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
-import { guestMaySign, nextStampSlot, signSlotInMarkdown, signSlotKinds, stampSlotInMarkdown, type SignKind } from '../signature/markers.ts';
-import { hasFields, setFieldInMarkdown } from '../signature/fields.ts';
+import { changeableSignKinds, guestMaySign, nextStampSlot, signChangeableInMarkdown, signSlotInMarkdown, signSlotKinds, stampSlotInMarkdown, type SignKind } from '../signature/markers.ts';
+import { applyChangeableValues, hasConfirmFields, scanFields, setFieldInMarkdown } from '../signature/fields.ts';
 import { isValidSignatureSvg } from '../signature/signature-svg.ts';
 import { isValidStampSvg } from '../signature/stamp-svg.ts';
 import { isComplete, recordCompletion } from './markdown-verify.ts';
@@ -48,7 +48,11 @@ export async function resolveSignLink(admin: SupabaseClient, token: string): Pro
 }
 
 export type SignActor = { type: 'owner'; userId: string } | { type: 'guest'; name: string | null; userId?: string };
-export type SignInput = { bookId: string; slot: number; kind: SignKind; baseVersion: number; svg: unknown; actor: SignActor };
+/**
+ * `changeable`: the slot is a {{MarkdownAIverify}} that can be signed again (numbered among those), not a Confirm slot.
+ * `fields`: the current values of the changeable fields on the signer's screen, saved together with the signature.
+ */
+export type SignInput = { bookId: string; slot: number; kind: SignKind; baseVersion: number; svg: unknown; actor: SignActor; changeable?: unknown; fields?: unknown };
 export type SignOutcome = { ok: true; markdown: string; version: number } | { ok: false; status: number; error: string };
 
 /**
@@ -62,7 +66,8 @@ async function storeSignature(admin: SupabaseClient, record: Record<string, unkn
 }
 
 export async function applySignature(admin: SupabaseClient, input: SignInput): Promise<SignOutcome> {
-    const { bookId, slot, kind, baseVersion, svg, actor } = input;
+    const { bookId, slot, kind, baseVersion, svg, actor, fields } = input;
+    const changeable = input.changeable === true;
     if (!isValidSignatureSvg(svg)) return { ok: false, status: 400, error: 'Invalid signature.' };
     if (!Number.isInteger(slot) || !['my', 'your', 'any'].includes(kind) || !Number.isInteger(baseVersion)) return { ok: false, status: 400, error: 'Invalid request.' };
 
@@ -74,16 +79,20 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
     if (issuance) {
         if (actor.type === 'guest' && !actor.userId) return { ok: false, status: 403, error: 'Sign this certificate in the chat where you received it.' };
         const state = await certificateState(admin, bookId, book.markdown_content || '', issuance.verify_id);
-        if (state.status === 'complete') return { ok: false, status: 409, error: 'This certificate is already complete.' };
+        if (state.status === 'complete' && !changeable) return { ok: false, status: 409, error: 'This certificate is already complete.' };
         if (actor.type === 'owner' && kind === 'your') return { ok: false, status: 403, error: 'This field must be signed by the recipient.' };
     }
     // The page the signer saw is out of date (someone signed or edited meanwhile): slot numbers may have moved
     if (book.version !== baseVersion) return { ok: false, status: 409, error: 'The document has changed. Reload and try again.' };
 
     const before: string = book.markdown_content || '';
-    if (signSlotKinds(before)[slot] !== kind) return { ok: false, status: 409, error: 'No such slot.' };
-    // The last signature completes the document and locks its fields, so every field must be filled first
-    if (signSlotKinds(before).length === 1 && hasFields(before)) return { ok: false, status: 409, error: FILL_FIELDS_FIRST };
+    const wasComplete = isComplete(before);
+    // The changeable fields on the signer's screen are saved with the signature
+    const filled = fields === undefined ? before : applyChangeableValues(before, fields);
+    if (filled === null) return { ok: false, status: 400, error: 'A field value does not fit. Check the fields and try again.' };
+    if ((changeable ? changeableSignKinds(filled) : signSlotKinds(filled))[slot] !== kind) return { ok: false, status: 409, error: 'No such slot.' };
+    // The last Confirm signature completes the document and locks its Confirm fields, so every Confirm field must be confirmed first
+    if (!changeable && signSlotKinds(filled).length === 1 && hasConfirmFields(filled)) return { ok: false, status: 409, error: FILL_FIELDS_FIRST };
 
     // The WebP is always rendered here from the validated SVG, never taken from the client
     let bytes: Buffer;
@@ -99,7 +108,7 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
     if (uploadError) return { ok: false, status: 500, error: 'Could not store the signature image.' };
     const url = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 
-    const after = signSlotInMarkdown(before, slot, kind, url)!;
+    const after = (changeable ? signChangeableInMarkdown(filled, slot, kind, url) : signSlotInMarkdown(filled, slot, kind, url))!;
     let signatureId: string | null = null;
     try {
         signatureId = await storeSignature(admin, {
@@ -123,9 +132,13 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
             .select('version')
             .maybeSingle();
         if (writeError || !saved) throw new Error(writeError?.message || 'conflict');
-        await recordCompletion(admin, book.id, after);
-        await copySignedContractToSigners(admin, book.id, after);
-        if (actor.type !== 'owner') await notifyOwnerSigned({ ownerId: book.user_id, bookId: book.id, title: book.title, complete: isComplete(after), signatureId: signatureId! });
+        // Only the signature that completes the document records it (a changeable one signed later never does)
+        const completes = !wasComplete && isComplete(after);
+        if (completes) {
+            await recordCompletion(admin, book.id, after);
+            await copySignedContractToSigners(admin, book.id, after);
+        }
+        if (actor.type !== 'owner') await notifyOwnerSigned({ ownerId: book.user_id, bookId: book.id, title: book.title, complete: completes, signatureId: signatureId! });
         return { ok: true, markdown: after, version: saved.version };
     } catch (err) {
         console.error('[signature] failed, rolling back:', err);
@@ -136,8 +149,9 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
 }
 
 /**
- * Fill a form field ({{MarkdownAIinput}} / check / radio) of a document. Not once the document is complete:
- * a completed document (every slot signed) is never changed. `actor` is the owner, or a guest holding a sign link.
+ * Save a form field of a document. A Confirm field ({{MarkdownAIinputConfirm}} / check / radio) is confirmed once, and not once
+ * the document is complete. A changeable field ({{MarkdownAIinput}} / check / radio) is saved each time it is changed, also after completion.
+ * `actor` is the owner, or a guest holding a sign link.
  */
 export async function applyField(
     admin: SupabaseClient,
@@ -151,7 +165,9 @@ export async function applyField(
     if (actor.type === 'owner' && actor.userId !== book.user_id) return { ok: false, status: 403, error: 'Not your document.' };
 
     const before: string = book.markdown_content || '';
-    if (isComplete(before)) return { ok: false, status: 409, error: 'A completed document cannot be changed.' };
+    const target = scanFields(before)[index as number];
+    if (!target) return { ok: false, status: 400, error: 'That value does not fit the field.' };
+    if (target.confirm && isComplete(before)) return { ok: false, status: 409, error: 'A completed document cannot be changed.' };
     const after = setFieldInMarkdown(before, index as number, value);
     if (after === null) return { ok: false, status: 400, error: 'That value does not fit the field.' };
 
@@ -190,7 +206,7 @@ export async function applyStamp(admin: SupabaseClient, input: { bookId: string;
     if (issuance && (await certificateState(admin, bookId, before, issuance.verify_id)).status === 'complete') return { ok: false, status: 409, error: 'This certificate is already complete.' };
     const target = nextStampSlot(before, (kind) => isOwner ? (!issuance || kind !== 'your') : guestMaySign(kind));
     if (!target) return { ok: false, status: 409, error: 'There is no slot left for you to stamp.' };
-    if (mode === 'stamp' && signSlotKinds(before).length === 1 && hasFields(before)) return { ok: false, status: 409, error: FILL_FIELDS_FIRST };
+    if (mode === 'stamp' && signSlotKinds(before).length === 1 && hasConfirmFields(before)) return { ok: false, status: 409, error: FILL_FIELDS_FIRST };
 
     let bytes: Buffer;
     try {

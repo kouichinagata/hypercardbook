@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
     const { admin, book } = await findBook(params.id);
     if (!book) return json({ error: 'Not found' }, { status: 404 });
     const body = await request.json();
-    const { slot, kind, baseVersion, svg } = body;
+    const { slot, kind, baseVersion, svg, changeable, fields } = body;
     const userId = locals.session?.user.id;
     // A template is edited in the workspace only, even by its owner: here it can be tried but not filled or signed
     const { data: row } = await admin.from('books').select('markdown_content').eq('id', book.id).maybeSingle();
@@ -46,6 +46,6 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
     }
     const viewer = ticketViewer(request, book.id);
     const actor = userId && userId === book.user_id ? ({ type: 'owner', userId } as const) : ({ type: 'guest', name: null, ...(viewer ? { userId: viewer } : {}) } as const);
-    const outcome = await applySignature(admin, { bookId: book.id, slot, kind, baseVersion, svg, actor });
+    const outcome = await applySignature(admin, { bookId: book.id, slot, kind, baseVersion, svg, changeable, fields, actor });
     return outcome.ok ? json(outcome) : json({ error: outcome.error }, { status: outcome.status });
 };

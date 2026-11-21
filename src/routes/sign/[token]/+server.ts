@@ -12,8 +12,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
         const done = await applyField(admin, { bookId: link.bookId, index: body.index, value: body.value, actor: { type: 'guest', name: null } });
         return done.ok ? json(done) : json({ error: done.error }, { status: done.status });
     }
-    const { slot, kind, baseVersion, svg, name } = body;
+    const { slot, kind, baseVersion, svg, name, changeable, fields } = body;
     const signerName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 100) : null;
-    const outcome = await applySignature(admin, { bookId: link.bookId, slot, kind, baseVersion, svg, actor: { type: 'guest', name: signerName } });
+    const outcome = await applySignature(admin, { bookId: link.bookId, slot, kind, baseVersion, svg, changeable, fields, actor: { type: 'guest', name: signerName } });
     return outcome.ok ? json(outcome) : json({ error: outcome.error }, { status: outcome.status });
 };

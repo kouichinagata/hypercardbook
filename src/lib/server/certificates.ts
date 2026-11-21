@@ -26,7 +26,7 @@ export function certificateMarkdown(markdown: string, input: { id: string; sourc
 }
 
 export async function issueCertificate(admin: SupabaseClient, template: { id: string; user_id?: string | null; title: string; markdown_content: string; author?: string; cover_image?: string; theme_color?: string }, userId: string) {
-    if (!signSlotKinds(template.markdown_content).length) throw error(400, 'This card has no MarkdownAIverify fields.');
+    if (!signSlotKinds(template.markdown_content).length) throw error(400, 'This card has no MarkdownAIverifyConfirm fields.');
     const certificateId = newVerifyId();
     const issuedAt = new Date().toISOString();
     const slug = `certificate-${certificateId}`;

@@ -1,7 +1,7 @@
 // A template is a card with MarkdownAI variables that is not itself a contract: opening it outside the workspace
 // makes a contract (one document per signing), and the contract is the one that is filled and signed.
 import { hasFields } from './fields.ts';
-import { signatureImageUrls, signSlotKinds } from './markers.ts';
+import { changeableSignKinds, signatureImageUrls, signSlotKinds } from './markers.ts';
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---(?:\r?\n|$)/;
 
@@ -17,6 +17,7 @@ export const isContract = (markdown: string) => hasFrontmatterKey(markdown, 'con
 export function isVerifyDocument(markdown: string): boolean {
     return (
         signSlotKinds(markdown).length > 0 ||
+        changeableSignKinds(markdown).length > 0 ||
         hasFields(markdown) ||
         signatureImageUrls(markdown).length > 0 ||
         hasFrontmatterKey(markdown, 'contract_source_id') ||
@@ -29,7 +30,7 @@ export const isCertificate = (markdown: string) => hasFrontmatterKey(markdown, '
 
 /** Has a variable and is not a contract or certificate. The owner's own signature may already be in it. */
 export function isTemplate(markdown: string): boolean {
-    if (!signSlotKinds(markdown).length && !hasFields(markdown)) return false;
+    if (!signSlotKinds(markdown).length && !changeableSignKinds(markdown).length && !hasFields(markdown)) return false;
     return !isContract(markdown) && !isCertificate(markdown);
 }
 

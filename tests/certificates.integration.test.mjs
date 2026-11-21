@@ -12,7 +12,7 @@ async function harness(t) {
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hcb-certificate-'));
  await fs.symlink(path.join(root,'node_modules'),path.join(dir,'node_modules'));
  const key='certificate-'+crypto.randomUUID();
- const template={id:'template',user_id:owner,title:'Certificate',slug:'template',version:1,is_public:false,markdown_content:'---\nid: template\nplay_mode: card\nis_public: true\n---\n# Certificate\n{{myMarkdownAIverify}}\n{{yourMarkdownAIverify}}'};
+ const template={id:'template',user_id:owner,title:'Certificate',slug:'template',version:1,is_public:false,markdown_content:'---\nid: template\nplay_mode: card\nis_public: true\n---\n# Certificate\n{{myMarkdownAIverifyConfirm}}\n{{yourMarkdownAIverifyConfirm}}'};
  const state={tables:{books:[template],markdown_verify:[],markdown_signatures:[]},objects:new Map(),failIssuance:false,failCompletion:false,users:{[owner]:{app_metadata:{plan:'pro'}},[peer]:{app_metadata:{plan:'free'}}}};
  globalThis[Symbol.for(key)]=state;
  t.after(async()=>{delete globalThis[Symbol.for(key)];await fs.rm(dir,{recursive:true,force:true});});
@@ -22,6 +22,7 @@ async function harness(t) {
  const state=globalThis[Symbol.for(${JSON.stringify(key)})];
  export const env={PUBLIC_SUPABASE_URL:'https://test.invalid',HYPERCARDBOOK_SHARED_SECRET:'test-only-key',SUPABASE_SERVICE_ROLE_KEY:'test-only-key'};
  export const dev=false;
+ export async function notifyOwnerSigned(){}
  export function createClient(){return client;}
  export const client={auth:{admin:{async getUserById(id){return{data:{user:state.users[id]||null},error:null}}}},storage:{from(){return {async upload(p,bytes){state.objects.set(p,bytes);return{}},getPublicUrl(p){return{data:{publicUrl:'https://test.invalid/'+p}}},async remove(paths){paths.forEach(p=>state.objects.delete(p));return{}}}}},from(table){
  let filters=[],sort=null,count=null,op=null,value;
@@ -42,7 +43,7 @@ async function harness(t) {
  `);
  const sources={certificates:'src/lib/server/certificates.ts',verify:'src/lib/server/markdown-verify.ts',signatures:'src/lib/server/signatures.ts',contracts:'src/lib/server/contracts.ts',documents:'src/lib/server/paperoboDocuments.ts',route:'src/routes/api/paperobo/documents/+server.ts'};
  const files=Object.fromEntries(Object.keys(sources).map(k=>[k,path.join(dir,k+'.mjs')]));
- const replacements={'../plan.ts':path.join(root,'src/lib/plan.ts'),'$lib/plan':path.join(root,'src/lib/plan.ts'),'$env/dynamic/private':fixture,'$env/dynamic/public':fixture,'@supabase/supabase-js':fixture,'$app/environment':fixture,'./certificates.ts':files.certificates,'./markdown-verify.ts':files.verify,'$lib/server/markdown-verify':files.verify,'$lib/server/certificates':files.certificates,'$lib/server/signatures':files.signatures,'$lib/server/contracts':files.contracts,'./contracts.ts':files.contracts,'$lib/signature/contract':path.join(root,'src/lib/signature/contract.ts'),'../signature/contract.ts':path.join(root,'src/lib/signature/contract.ts'),'$lib/server/paperoboDocuments':files.documents,'$lib/signature/markers':path.join(root,'src/lib/signature/markers.ts'),'$lib/content-origin':path.join(root,'src/lib/content-origin.ts'),'$lib/book-frontmatter':path.join(root,'src/lib/book-frontmatter.ts'),'./paperoboDocumentTicket':path.join(root,'src/lib/server/paperoboDocumentTicket.ts'),'../signature/fields.ts':path.join(root,'src/lib/signature/fields.ts'),'../signature/markers.ts':path.join(root,'src/lib/signature/markers.ts'),'../signature/signature-svg.ts':path.join(root,'src/lib/signature/signature-svg.ts'),'../signature/stamp-svg.ts':path.join(root,'src/lib/signature/stamp-svg.ts')};
+ const replacements={'../plan.ts':path.join(root,'src/lib/plan.ts'),'$lib/plan':path.join(root,'src/lib/plan.ts'),'$env/dynamic/private':fixture,'$env/dynamic/public':fixture,'@supabase/supabase-js':fixture,'./paperoboNotice.ts':fixture,'$app/environment':fixture,'./certificates.ts':files.certificates,'./markdown-verify.ts':files.verify,'$lib/server/markdown-verify':files.verify,'$lib/server/certificates':files.certificates,'$lib/server/signatures':files.signatures,'$lib/server/contracts':files.contracts,'./contracts.ts':files.contracts,'$lib/signature/contract':path.join(root,'src/lib/signature/contract.ts'),'../signature/contract.ts':path.join(root,'src/lib/signature/contract.ts'),'$lib/server/paperoboDocuments':files.documents,'$lib/signature/markers':path.join(root,'src/lib/signature/markers.ts'),'$lib/content-origin':path.join(root,'src/lib/content-origin.ts'),'$lib/book-frontmatter':path.join(root,'src/lib/book-frontmatter.ts'),'./paperoboDocumentTicket':path.join(root,'src/lib/server/paperoboDocumentTicket.ts'),'../signature/fields.ts':path.join(root,'src/lib/signature/fields.ts'),'../signature/markers.ts':path.join(root,'src/lib/signature/markers.ts'),'../signature/signature-svg.ts':path.join(root,'src/lib/signature/signature-svg.ts'),'../signature/stamp-svg.ts':path.join(root,'src/lib/signature/stamp-svg.ts')};
  for(const [key,file]of Object.entries(sources)){
  let source=await fs.readFile(path.join(root,file),'utf8');
  for(const[from,to]of Object.entries(replacements))source=source.replaceAll("'"+from+"'",JSON.stringify(pathToFileURL(to).href));
@@ -56,7 +57,7 @@ const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 240" width="
 const seal='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320"><circle cx="50" cy="50" r="40" fill="none" stroke="red"/></svg>';
 test('issuing rejects missing/code-only fields; copies stay private and every issuance has a durable original',async t=>{
  const h=await harness(t);const before=h.template.markdown_content;
- for(const body of ['No fields','`{{MarkdownAIverify}}`','```\n{{MarkdownAIverify}}\n```']){
+ for(const body of ['No fields','`{{MarkdownAIverifyConfirm}}`','```\n{{MarkdownAIverifyConfirm}}\n```']){
  h.template.markdown_content='---\nplay_mode: card\n---\n'+body;
  await assert.rejects(h.api({action:'issue-certificate',id:'template',userId:owner}),e=>e.status===400);
  }
@@ -85,7 +86,7 @@ test('a recipient completes the certificate; issuer cannot consume recipient fie
  const signed=await h.api({action:'open',...share,userId:peer});assert.equal(signed.certificate.status,'complete');assert.equal(signed.certificate.remaining,0);assert.equal(signed.hasSignMarkers,false);
  assert.equal(h.state.tables.markdown_verify.length,2);assert.equal(h.state.tables.markdown_signatures[1].signer_id,peer);
  const original=(await h.api({action:'download',...share,userId:peer})).source;
- h.state.tables.books.find(b=>b.id===d.id).markdown_content='tampered {{MarkdownAIverify}}';
+ h.state.tables.books.find(b=>b.id===d.id).markdown_content='tampered {{MarkdownAIverifyConfirm}}';
  assert.equal((await h.api({action:'download',...share,userId:peer})).source,original);
  const token=new URL(signed.previewUrl).searchParams.get('paperobo_share');assert.equal((await h.documents.sharedDocument(token,'preview',d.id)).markdown_content,original);
  await assert.rejects(h.api({action:'stamp',...share,userId:peer,svg:seal,mode:'stamp'}),e=>e.status===409);
@@ -121,9 +122,9 @@ test('contracts use ordinary attachment semantics and require real fields and a 
  // Sending an existing contract again sends that contract, not another copy
  assert.equal((await h.api({action:'read-contract',id:contract.id,userId:owner})).document.id,contract.id);assert.equal(h.state.tables.books.length,2);
  await assert.rejects(h.api({action:'issue-certificate',id:'template',userId:owner}),e=>e.status===403);
- for(const source of ['No fields','`{{MarkdownAIverify}}`','```\n{{MarkdownAIverify}}\n```']) {
+ for(const source of ['No fields','`{{MarkdownAIverifyConfirm}}`','```\n{{MarkdownAIverifyConfirm}}\n```']) {
   h.template.markdown_content='---\nplay_mode: card\n---\n'+source;
-  await assert.rejects(h.api({action:'read-contract',id:'template',userId:owner}),e=>e.status===400&&e.body.message==='This card has no MarkdownAIverify fields.');
+  await assert.rejects(h.api({action:'read-contract',id:'template',userId:owner}),e=>e.status===400&&e.body.message==='This card has no MarkdownAIverifyConfirm fields.');
  }
  h.template.markdown_content=before.markdown_content;
  h.state.users[owner].app_metadata.plan='free';
@@ -152,7 +153,7 @@ test('Free hosts can sign and invite recipients without a verification record; r
  for(const plan of ['free','standard','pro','enterprise','promotion']) {
   h.state.users[owner].app_metadata=plan==='promotion'?{plan:'free',promotion_plan:'standard',promotion_expires_at:'2099-01-01'}:{plan};
   const id='ordinary-'+plan;
-  h.state.tables.books.push({...h.template,id,slug:id,version:1,markdown_content:'{{myMarkdownAIverify}}\n{{yourMarkdownAIverify}}'});
+  h.state.tables.books.push({...h.template,id,slug:id,version:1,markdown_content:'{{myMarkdownAIverifyConfirm}}\n{{yourMarkdownAIverifyConfirm}}'});
   const first=await h.signatures.applySignature(h.signatures.adminClient(),{bookId:id,slot:0,kind:'my',baseVersion:1,svg,actor:{type:'owner',userId:owner}});
   assert.equal(first.ok,true);assert.equal(h.state.tables.markdown_verify.filter(r=>r.book_id===id).length,0);
   const last=await h.signatures.applySignature(h.signatures.adminClient(),{bookId:id,slot:0,kind:'your',baseVersion:2,svg,actor:{type:'guest',name:null,userId:peer}});
@@ -162,7 +163,7 @@ test('Free hosts can sign and invite recipients without a verification record; r
  }
  // A paying signer cannot turn a Free-owned request into a recorded document.
  h.state.users[owner].app_metadata={plan:'free'};h.state.users[peer].app_metadata={plan:'pro'};
- h.state.tables.books.push({...h.template,id:'free-host',slug:'free-host',version:1,markdown_content:'{{yourMarkdownAIverify}}'});
+ h.state.tables.books.push({...h.template,id:'free-host',slug:'free-host',version:1,markdown_content:'{{yourMarkdownAIverifyConfirm}}'});
  const stamped=await h.signatures.applyStamp(h.signatures.adminClient(),{bookId:'free-host',svg:seal,mode:'stamp',userId:peer});
  assert.equal(stamped.ok,true);assert.equal(stamped.complete,true);
  assert.equal(h.state.tables.markdown_verify.filter(r=>r.book_id==='free-host').length,0);
@@ -174,4 +175,30 @@ test('a recorded issuance retains recording entitlement after its issuer downgra
  await h.api({action:'stamp',id:d.id,userId:owner,selectedBy:owner,certificateId:d.certificateId,svg:seal,mode:'stamp'});
  await h.api({action:'sign-certificate',id:d.id,userId:peer,selectedBy:owner,certificateId:d.certificateId,svg,slot:0,kind:'your',baseVersion:2});
  assert.equal((await h.api({action:'open',id:d.id,userId:peer,selectedBy:owner,certificateId:d.certificateId})).certificate.status,'complete');
+});
+
+test('changeable fields are saved when changed and with any signature; only the last Confirm signature records Verify; changeable parts stay changeable after it', async t => {
+ const h=await harness(t);const client=h.signatures.adminClient();const S=h.signatures;
+ h.state.tables.books.push({...h.template,id:'mixed',slug:'mixed',version:1,markdown_content:'Name: {{MarkdownAIinput}}\nCode: {{MarkdownAIinputConfirm}}\n{{MarkdownAIverify}}\n{{yourMarkdownAIverifyConfirm}}'});
+ const book=()=>h.state.tables.books.find(b=>b.id==='mixed');
+ const records=()=>h.state.tables.markdown_verify.filter(r=>r.book_id==='mixed').length;
+ const early=await S.applySignature(client,{bookId:'mixed',slot:0,kind:'your',baseVersion:1,svg,fields:['Taro'],actor:{type:'guest',name:null}});
+ assert.equal(early.ok,false);assert.equal(early.error,'Fill in every field before the last signature.');
+ // A changeable field is saved each time it changes
+ const typed=await S.applyField(client,{bookId:'mixed',index:0,value:'Ichiro',actor:{type:'guest',name:null}});
+ assert.equal(typed.ok,true);assert.match(typed.markdown,/Name: \{\{MarkdownAIinput=Ichiro\}\}/);
+ assert.equal((await S.applyField(client,{bookId:'mixed',index:1,value:'A1',actor:{type:'owner',userId:owner}})).ok,true);
+ const re=await S.applySignature(client,{bookId:'mixed',slot:0,kind:'any',baseVersion:3,svg,changeable:true,fields:['Taro'],actor:{type:'guest',name:null}});
+ assert.equal(re.ok,true);assert.match(re.markdown,/Name: \{\{MarkdownAIinput=Taro\}\}/);assert.match(re.markdown,/\{\{MarkdownAIverify=https?:\/\/[^}]+\}\}/);assert.equal(records(),0);
+ const bad=await S.applySignature(client,{bookId:'mixed',slot:0,kind:'your',baseVersion:4,svg,fields:['Taro','extra'],actor:{type:'guest',name:null}});
+ assert.equal(bad.ok,false);assert.equal(bad.status,400);
+ const last=await S.applySignature(client,{bookId:'mixed',slot:0,kind:'your',baseVersion:4,svg,fields:['Jiro'],actor:{type:'guest',name:null}});
+ assert.equal(last.ok,true);assert.match(last.markdown,/Name: \{\{MarkdownAIinput=Jiro\}\}/);assert.equal(records(),1);
+ assert.match(h.state.tables.markdown_verify.find(r=>r.book_id==='mixed').markdown,/MarkdownAIinput=Jiro/);
+ // After completion the changeable signature can be signed again and still saves the fields, without a second record
+ const after=await S.applySignature(client,{bookId:'mixed',slot:0,kind:'any',baseVersion:5,svg,changeable:true,fields:['Saburo'],actor:{type:'guest',name:null}});
+ assert.equal(after.ok,true);assert.match(book().markdown_content,/Name: \{\{MarkdownAIinput=Saburo\}\}/);assert.equal(records(),1);
+ // ...and a changeable field can still be saved on its own after completion
+ const late=await S.applyField(client,{bookId:'mixed',index:0,value:'Shiro',actor:{type:'guest',name:null}});
+ assert.equal(late.ok,true);assert.match(book().markdown_content,/Name: \{\{MarkdownAIinput=Shiro\}\}/);assert.equal(records(),1);
 });

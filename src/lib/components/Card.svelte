@@ -1,12 +1,12 @@
 <script lang="ts">
     import { marked } from 'marked';
-    import { onDestroy, onMount } from 'svelte';
+    import { onDestroy, onMount, tick } from 'svelte';
     import { browser } from '$app/environment';
     import './markdown-verify.css';
     import SignaturePad from '$lib/signature/SignaturePad.svelte';
-    import { replaceSignedImages, replaceStampImages, isComplete, signSlotKinds, replaceSignMarkers, type SignKind } from '$lib/signature/markers';
+    import { replaceSignedImages, replaceStampImages, isComplete, signSlotKinds, replaceSignMarkers, changeableSignKinds, replaceChangeableSigns, type SignKind } from '$lib/signature/markers';
     import { isVerifyDocument } from '$lib/signature/contract';
-    import { replaceFieldMarkers, validateInput, scanFields, type FieldMarker } from '$lib/signature/fields';
+    import { replaceFieldMarkers, validateInput, scanFields, setFieldInMarkdown, changeableValues, applyChangeableValues, type FieldMarker } from '$lib/signature/fields';
 
     let {
         markdown = '',
@@ -22,13 +22,17 @@
         markdown?: string; id?: string; showNewTab?: boolean; isEmbed?: boolean; backUrl?: string;
         activePluginIds?: string[]; currentUserId?: string;
         onMarkdownChange?: (markdown: string) => void;
-        // Who may sign which slot, and how: sign() returns the new Markdown (the server has already saved it)
-        // canFill / fill do the same for form fields ({{MarkdownAIinput}} / check / radio): text for an input, a boolean for check / radio
+        // Who may sign which slot, and how: sign() returns the new Markdown (the server has already saved it).
+        // `changeable`: a {{MarkdownAIverify}} slot (signed again any number of times); `fields`: the changeable field values, saved with the signature.
+        // canFill / fill do the same for Confirm fields ({{MarkdownAIinputConfirm}} / check / radio): text for an input, a boolean for check / radio.
+        // fillChangeable saves a changeable field on the server each time it is changed; without it (the workspace) the change stays in the
+        // Markdown on screen and the host saves it as usual.
         signer?: {
             canSign: (kind: SignKind) => boolean;
-            sign: (slot: number, kind: SignKind, result: { svg: string }) => Promise<string>;
+            sign: (slot: number, kind: SignKind, result: { svg: string; changeable?: boolean; fields?: (string | boolean | null)[] }) => Promise<string>;
             canFill?: () => boolean;
             fill?: (index: number, value: string | boolean) => Promise<string>;
+            fillChangeable?: (index: number, value: string | boolean) => Promise<string>;
         };
     } = $props();
 
@@ -267,32 +271,92 @@
         return 'white';
     });
 
-    // {{MarkdownAIverify}} signature slots: pending (yellow) -> signed (blue, a plain Markdown image link) / error (red).
+    // {{MarkdownAIverifyConfirm}} signature slots: pending (yellow) -> signed (blue, a plain Markdown image link) / error (red).
+    // {{MarkdownAIverify}} slots can be signed again: clicking the signature opens the pad again.
     // Signing needs the host to provide both callbacks (the workspace of the user's own bookshelf); other views only show colors.
     let signingSlot = $state<number | null>(null);
+    let signingChangeable = $state(false);
     let signErrorSlots = $state<number[]>([]);
     let signKinds = $derived(signSlotKinds(markdown));
+    let changeableKinds = $derived(changeableSignKinds(markdown));
 
     async function saveSignature(slot: number, result: { svg: string }) {
+        const changeable = signingChangeable;
+        // The changeable fields on screen are saved together with the signature (the Sign button is what saves them)
+        const values = changeableValues(markdown);
         try {
-            onMarkdownChange?.(await signer!.sign(slot, signKinds[slot] ?? 'any', result));
+            const kind = (changeable ? changeableKinds[slot] : signKinds[slot]) ?? 'any';
+            onMarkdownChange?.(await signer!.sign(slot, kind, { ...result, ...(changeable ? { changeable: true } : {}), ...(values.length ? { fields: values } : {}) }));
         } catch (err) {
             console.error('Signature failed:', err);
-            signErrorSlots = [...signErrorSlots, slot];
+            if (changeable) alert(err instanceof Error ? err.message : 'Could not sign.');
+            else signErrorSlots = [...signErrorSlots, slot];
         }
         signingSlot = null;
+        signingChangeable = false;
     }
 
-    function slotIsSignable(slot: number): boolean {
-        return !!signer && !!signKinds[slot] && signer.canSign(signKinds[slot]);
+    function slotIsSignable(slot: number, changeable = false): boolean {
+        const kind = changeable ? changeableKinds[slot] : signKinds[slot];
+        return !!signer && !!kind && signer.canSign(kind);
     }
 
-    // Form fields are live until the document is complete (every slot signed); a field is gone once confirmed
+    // Confirm fields are live until the document is complete (every Confirm slot signed); a field is gone once confirmed.
+    // Changeable fields stay live: each change is saved (by the server, or by the host from the Markdown on screen) and again with a signature.
     let fieldsLive = $derived(!!signer?.fill && !!signer.canFill?.() && !isComplete(markdown));
+    let changeableLive = $derived(!!onMarkdownChange && !!signer?.canFill?.());
+
+    // Changes are saved one after another, so a slower answer never overwrites a newer one
+    let changeableQueue: Promise<void> = Promise.resolve();
+
+    /** Save a changeable field's new value; focus stays where the user moved it */
+    function keepChangeable(index: number, value: string | boolean) {
+        const next = setFieldInMarkdown(markdown, index, value);
+        if (next === null || next === markdown) return;
+        changeableQueue = changeableQueue.then(async () => {
+            let saved = next;
+            if (signer?.fillChangeable) {
+                try {
+                    saved = await signer.fillChangeable(index, value);
+                } catch (err) {
+                    console.error('Saving the field failed:', err);
+                    alert(err instanceof Error ? err.message : 'Could not save.');
+                    return;
+                }
+            } else await new Promise((resolve) => setTimeout(resolve, 0));
+            const focused = (document.activeElement as HTMLElement | null)?.closest?.('.field-slot')?.getAttribute('data-field');
+            onMarkdownChange?.(saved);
+            if (focused == null) return;
+            await tick();
+            (document.querySelector(`.card-webview-body .field-slot[data-field="${focused}"] :is(input, textarea)`) as HTMLElement | null)?.focus();
+        });
+    }
+
+    function handleBodyChange(e: Event) {
+        const box = e.target as HTMLInputElement | HTMLTextAreaElement | null;
+        const slotEl = box?.closest?.('.field-slot[data-changeable]') as HTMLElement | null;
+        if (!box || !slotEl || !changeableLive) return;
+        const index = Number(slotEl.dataset.field);
+        const field = scanFields(markdown)[index];
+        if (!field || field.confirm) return;
+        if (field.kind === 'check') keepChangeable(index, (box as HTMLInputElement).checked);
+        else if (field.kind === 'radio') {
+            if ((box as HTMLInputElement).checked) keepChangeable(index, true);
+        } else {
+            const problem = box.value === '' ? null : validateInput(field.input!, box.value);
+            if (problem) {
+                alert(problem);
+                return;
+            }
+            keepChangeable(index, box.value);
+        }
+    }
 
     async function saveField(index: number, value: string | boolean) {
         try {
-            onMarkdownChange?.(await signer!.fill!(index, value));
+            const saved = await signer!.fill!(index, value);
+            // The server's copy does not have the changeable values still on screen: keep them
+            onMarkdownChange?.(applyChangeableValues(saved, changeableValues(markdown)) ?? saved);
         } catch (err) {
             console.error('Saving the field failed:', err);
             alert(err instanceof Error ? err.message : 'Could not save.');
@@ -324,7 +388,24 @@
         }
     }
 
+    const attr = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    function renderChangeableField(field: FieldMarker): string {
+        const off = changeableLive ? '' : ' disabled';
+        const n = field.index;
+        const slot = (inner: string) => `<span class="field-slot" data-field="${n}" data-changeable="1">${inner}</span>`;
+        if (field.kind === 'check') return slot(`<input class="field-toggle" type="checkbox"${field.checked ? ' checked' : ''}${off}>`);
+        if (field.kind === 'radio') return slot(`<input class="field-toggle" type="radio" name="field-group-${field.group}" data-field="${n}"${field.checked ? ' checked' : ''}${off}>`);
+        const spec = field.input!;
+        const value = field.value ?? '';
+        if (spec.type === 'date') return slot(`<input class="field-input" type="date" value="${attr(value)}"${off}>`);
+        if (spec.type === 'textarea') return slot(`<textarea class="field-input" rows="4"${off}>${attr(value).replace(/\r?\n/g, '&#10;')}</textarea>`);
+        const maxlength = spec.length === null ? '' : ` maxlength="${spec.length}"`;
+        return slot(`<input class="field-input" type="text" value="${attr(value)}"${maxlength}${spec.type === 'digits' ? ' inputmode="numeric" pattern="[0-9]*"' : ''}${off}>`);
+    }
+
     function renderField(field: FieldMarker): string {
+        if (!field.confirm) return renderChangeableField(field);
         const off = fieldsLive ? '' : ' disabled';
         const n = field.index;
         // A check box or radio is followed by its label, so its Confirm button goes at the end of the label (see placeOkButtons)
@@ -362,10 +443,17 @@
             if (slot) commitField(slot);
             return;
         }
+        const again = (e.target as HTMLElement | null)?.closest?.('[data-cslot]') as HTMLElement | null;
+        if (again) {
+            if (!slotIsSignable(Number(again.dataset.cslot), true)) return;
+            signingChangeable = true;
+            signingSlot = Number(again.dataset.cslot);
+            return;
+        }
         const el = (e.target as HTMLElement | null)?.closest?.('.sign-pending') as HTMLElement | null;
         if (!el || !slotIsSignable(Number(el.dataset.slot))) return;
         // The last signature completes the document and locks its fields
-        if (signKinds.length === 1 && scanFields(markdown).length > 0) {
+        if (signKinds.length === 1 && scanFields(markdown).some((f) => f.confirm)) {
             alert('Fill in every field before the last signature.');
             return;
         }
@@ -381,6 +469,16 @@
         return `<span class="sign-slot sign-pending" data-slot="${slot}" data-signable="${signable}" title="${title}">✍ sign here</span>`;
     }
 
+    function renderChangeableSlot(slot: number, url: string | null): string {
+        const signable = slotIsSignable(slot, true);
+        if (url) {
+            const title = signable ? 'Click to sign again' : 'Signature';
+            return `<span class="sign-slot sign-signed${signable ? ' sign-again' : ''}" data-cslot="${slot}" title="${title}"><img src="${attr(url)}" alt="signature"></span>`;
+        }
+        const title = signable ? 'Click to sign' : 'You cannot sign this slot';
+        return `<span class="sign-slot sign-pending" data-cslot="${slot}" data-signable="${signable}" title="${title}">✍ sign here</span>`;
+    }
+
     // Templates, contracts and certificates get the business-document theme; an ordinary card (even with its own HTML form) does not
     let verifyDoc = $derived(isVerifyDocument(markdown));
 
@@ -394,6 +492,7 @@
         cleanMd = replaceStampImages(cleanMd, (url) => `<span class="sign-slot sign-stamp"><img src="${url}" alt="seal"></span>`);
         cleanMd = replaceSignedImages(cleanMd, (url) => `<span class="sign-slot sign-signed"><img src="${url}" alt="signature"></span>`);
         cleanMd = replaceSignMarkers(cleanMd, renderSignSlot);
+        cleanMd = replaceChangeableSigns(cleanMd, (slot, _kind, url) => renderChangeableSlot(slot, url));
 
         let processed = cleanMd.split('\n').map(line => {
             const trimmed = line.trim();
@@ -544,7 +643,7 @@
 
         <div class="card-webview-frame" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} style={!['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? `background-color: ${cardThemeColor};` : ''} class:embed-mode={isEmbed}>
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <div class="card-webview-body markdown-body" onclick={handleBodyClick}>
+            <div class="card-webview-body markdown-body" onclick={handleBodyClick} onchange={handleBodyChange}>
                 {#if verifyDoc}
                     <div class="markdown-verify">{@html cardBodyHtml}</div>
                 {:else}
@@ -558,7 +657,7 @@
 {#if signingSlot !== null}
     <SignaturePad
         onsave={(result) => saveSignature(signingSlot!, result)}
-        oncancel={() => (signingSlot = null)}
+        oncancel={() => ((signingSlot = null), (signingChangeable = false))}
     />
 {/if}
 
@@ -615,6 +714,9 @@
     }
     :global(.card-webview-body .sign-signed) {
         background: #dbeafe;
+    }
+    :global(.card-webview-body .sign-again) {
+        cursor: pointer;
     }
     :global(.card-webview-body .sign-signed img) {
         display: block;
