@@ -1174,6 +1174,8 @@ HyperBook: ${hyperBook.title}
     }
 
     function handleToggleSelection(book: any) {
+        // The stack you are in, and the stacks above it, cannot go inside a stack here (it would loop)
+        if (stackPathIds.includes(book.id)) return;
         const index = selectedStackBooks.findIndex(b => b.id === book.id);
         if (index > -1) {
             selectedStackBooks = selectedStackBooks.filter(b => b.id !== book.id);
@@ -1219,7 +1221,9 @@ HyperBook: ${hyperBook.title}
         
         const titleText = stackTitle.trim() || getNextStackDefaultTitle();
         const stackId = editingStackId || `stack-${Date.now()}`;
-        
+        // A new stack made while inside a stack goes into that stack
+        const parentStack = editingStackId ? null : activeStack;
+
         const markdown = `---
 title: ${titleText}
 author: Stack
@@ -1247,6 +1251,19 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
             });
 
             if (response.ok) {
+                const saved = await response.json();
+                if (parentStack && saved?.id) {
+                    const parentMarkdown = `${(parentStack.markdownContent || '').replace(/\s+$/, '')}\n- [${titleText}](stack:${saved.id})\n`;
+                    const parentResponse = await fetch('/api/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ markdown: parentMarkdown, id: parentStack.id })
+                    });
+                    if (!parentResponse.ok) {
+                        const errData = await parentResponse.json().catch(() => ({}));
+                        alert(`The stack was saved, but it could not be added to "${parentStack.title}": ${errData.error || parentResponse.statusText}`);
+                    }
+                }
                 isStackSelectionMode = false;
                 showStackModal = false;
                 selectedStackBooks = [];
