@@ -1,0 +1,96 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { newVerifyId, verifyHash, type VerifyRecord } from '../src/lib/server/markdown-verify.ts';
+import { checkMarkdown } from '../src/lib/server/verify-check.ts';
+import { createRateLimiter } from '../src/lib/server/rate-limit.ts';
+
+const markdown = '---\ntitle: Contract\n---\n# Contract\n\nWe agree.\n\n![MarkdownAIverify:my](https://x.test/a.webp)\n';
+const record: VerifyRecord = {
+    verify_id: newVerifyId(1_760_000_000_000),
+    book_id: '11111111-1111-4111-8111-111111111111',
+    markdown,
+    signatures: [{ signature_id: 's1', slot: 0, kind: 'my', signer_id: 'user-secret-id', signer_name: 'Alice', svg: '<svg/>', signed_at: '2026-10-22T00:00:00.000Z' }],
+    completed_at: '2026-10-22T00:00:00.000Z'
+};
+const row = { ...record, sha256: verifyHash(record), complete_key: 'k' };
+
+/** Just enough of the Supabase query builder for one select on markdown_verify */
+function fakeAdmin(result: { data?: unknown; error?: unknown; throws?: boolean }): SupabaseClient {
+    const builder = {
+        select: () => builder,
+        eq: (_col: string, value: string) => ({ maybeSingle: async () => {
+            if (result.throws) throw new Error('connection refused');
+            if (result.error) return { data: null, error: result.error };
+            return { data: (result.data as { verify_id: string } | null)?.verify_id === value ? result.data : null, error: null };
+        } })
+    };
+    return { from: () => builder } as unknown as SupabaseClient;
+}
+
+test('1. the registered Markdown matches and returns only public fields', async () => {
+    const out = await checkMarkdown(fakeAdmin({ data: row }), record.verify_id, markdown);
+    assert.equal(out.status, 200);
+    assert.equal(out.body.result, 'match');
+    const text = JSON.stringify(out.body);
+    assert.ok(!text.includes(record.book_id) && !text.includes('user-secret-id') && !text.includes('<svg'));
+    if (out.body.result === 'match') {
+        assert.equal(out.body.record.verifyId, record.verify_id);
+        assert.equal(out.body.record.signers[0].name, 'Alice');
+        assert.equal(out.body.record.recordType, 'completed');
+    }
+});
+
+test('2. one changed character is a mismatch', async () => {
+    const out = await checkMarkdown(fakeAdmin({ data: row }), record.verify_id, markdown.replace('agree', 'agreE'));
+    assert.equal(out.status, 200);
+    assert.equal(out.body.result, 'mismatch');
+});
+
+test('3. an unknown document id cannot be verified', async () => {
+    const out = await checkMarkdown(fakeAdmin({ data: row }), newVerifyId(), markdown);
+    assert.equal(out.status, 404);
+    assert.equal(out.body.result, 'unverifiable');
+    assert.equal(out.body.ok === false && out.body.reason, 'not_found');
+});
+
+test('4. line endings follow the registration rule: hashed as they are, so CRLF differs', async () => {
+    const out = await checkMarkdown(fakeAdmin({ data: row }), record.verify_id, markdown.replace(/\n/g, '\r\n'));
+    assert.equal(out.body.result, 'mismatch');
+    // A record registered with CRLF matches CRLF only
+    const crlf = { ...record, markdown: markdown.replace(/\n/g, '\r\n') };
+    const crlfRow = { ...crlf, sha256: verifyHash(crlf), complete_key: 'k' };
+    assert.equal((await checkMarkdown(fakeAdmin({ data: crlfRow }), record.verify_id, crlf.markdown)).body.result, 'match');
+    assert.equal((await checkMarkdown(fakeAdmin({ data: crlfRow }), record.verify_id, markdown)).body.result, 'mismatch');
+});
+
+test('5. a database error or outage cannot be verified', async () => {
+    for (const admin of [fakeAdmin({ error: { code: '57P01' } }), fakeAdmin({ throws: true })]) {
+        const out = await checkMarkdown(admin, record.verify_id, markdown);
+        assert.equal(out.status, 503);
+        assert.equal(out.body.ok === false && out.body.reason, 'unavailable');
+    }
+});
+
+test('a stored record that does not match its own hash cannot be verified', async () => {
+    const out = await checkMarkdown(fakeAdmin({ data: { ...row, sha256: '0'.repeat(64) } }), record.verify_id, markdown);
+    assert.equal(out.status, 409);
+    assert.equal(out.body.ok === false && out.body.reason, 'record_invalid');
+});
+
+test('bad input is rejected before the database is read', async () => {
+    const admin = { from: () => { throw new Error('must not be called'); } } as unknown as SupabaseClient;
+    assert.equal((await checkMarkdown(admin, 'not-a-uuid', markdown)).status, 400);
+    assert.equal((await checkMarkdown(admin, record.verify_id, '')).status, 400);
+    assert.equal((await checkMarkdown(admin, record.verify_id, 'x'.repeat(1_000_001))).status, 400);
+});
+
+test('the rate limiter allows the limit per window and per key', () => {
+    const limiter = createRateLimiter(2, 60_000);
+    assert.ok(limiter.take('a', 0).allowed);
+    assert.ok(limiter.take('a', 1).allowed);
+    const denied = limiter.take('a', 2);
+    assert.ok(!denied.allowed && denied.retryAfter === 60);
+    assert.ok(limiter.take('b', 2).allowed);
+    assert.ok(limiter.take('a', 60_000).allowed);
+});
