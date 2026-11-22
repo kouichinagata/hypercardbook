@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
-import { contractMarkdown, contractStamp, isCertificate, isContract, signedCopyMarkdown } from '../signature/contract.ts';
+import { contractMarkdown, contractStamp, isContract, signedCopyMarkdown } from '../signature/contract.ts';
 import { isComplete } from '../signature/markers.ts';
 import { copyTemplateSignatures } from './markdown-verify.ts';
 
@@ -49,7 +49,7 @@ export async function createContract(supabase: SupabaseClient, userId: string, t
  */
 export async function copySignedContractToSigners(admin: SupabaseClient, bookId: string, markdown: string): Promise<void> {
     try {
-        if (!(isContract(markdown) || isCertificate(markdown)) || !isComplete(markdown)) return;
+        if (!isContract(markdown) || !isComplete(markdown)) return;
         const { data: book } = await admin.from('books').select('id, user_id, title, author, cover_image, theme_color').eq('id', bookId).maybeSingle();
         if (!book) return;
         const { data: signatures, error } = await admin.from('markdown_signatures').select('signer_id').eq('book_id', bookId).not('signer_id', 'is', null);

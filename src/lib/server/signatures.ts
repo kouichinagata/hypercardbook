@@ -1,4 +1,3 @@
-import { certificateIssuance, certificateState } from './certificates.ts';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
@@ -75,13 +74,6 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
     if (!book) return { ok: false, status: 404, error: 'Document not found.' };
     if (actor.type === 'owner' && actor.userId !== book.user_id) return { ok: false, status: 403, error: 'Not your document.' };
     if (actor.type === 'guest' && !guestMaySign(kind)) return { ok: false, status: 403, error: 'This slot is for the owner.' };
-    const issuance = book.slug?.startsWith('certificate-') ? await certificateIssuance(admin, bookId) : null;
-    if (issuance) {
-        if (actor.type === 'guest' && !actor.userId) return { ok: false, status: 403, error: 'Sign this certificate in the chat where you received it.' };
-        const state = await certificateState(admin, bookId, book.markdown_content || '', issuance.verify_id);
-        if (state.status === 'complete' && !changeable) return { ok: false, status: 409, error: 'This certificate is already complete.' };
-        if (actor.type === 'owner' && kind === 'your') return { ok: false, status: 403, error: 'This field must be signed by the recipient.' };
-    }
     // The page the signer saw is out of date (someone signed or edited meanwhile): slot numbers may have moved
     if (book.version !== baseVersion) return { ok: false, status: 409, error: 'The document has changed. Reload and try again.' };
 
@@ -202,9 +194,7 @@ export async function applyStamp(admin: SupabaseClient, input: { bookId: string;
     if (!book) return { ok: false, status: 404, error: 'Document not found.' };
     const isOwner = userId === book.user_id;
     const before: string = book.markdown_content || '';
-    const issuance = book.slug?.startsWith('certificate-') ? await certificateIssuance(admin, bookId) : null;
-    if (issuance && (await certificateState(admin, bookId, before, issuance.verify_id)).status === 'complete') return { ok: false, status: 409, error: 'This certificate is already complete.' };
-    const target = nextStampSlot(before, (kind) => isOwner ? (!issuance || kind !== 'your') : guestMaySign(kind));
+    const target = nextStampSlot(before, (kind) => isOwner || guestMaySign(kind));
     if (!target) return { ok: false, status: 409, error: 'There is no slot left for you to stamp.' };
     if (mode === 'stamp' && signSlotKinds(before).length === 1 && hasConfirmFields(before)) return { ok: false, status: 409, error: FILL_FIELDS_FIRST };
 

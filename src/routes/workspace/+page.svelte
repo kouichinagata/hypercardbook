@@ -2819,7 +2819,7 @@ ${markdown}
                 <div class="publish-modal-body">
                     <label><input type="radio" bind:group={shareChoice} value="private" /> Private — only you</label>
                     <label><input type="radio" bind:group={shareChoice} value="link" disabled={!canLink} /> Anyone with the link — not listed on the bookshelf or in search</label>
-                    {#if !canLink}<p>Contracts and certificates cannot be shared by link.</p>{/if}
+                    {#if !canLink}<p>Contracts cannot be shared by link.</p>{/if}
                     <label><input type="radio" bind:group={shareChoice} value="public" /> Public — listed on the bookshelf</label>
                     {#if shareChoice === 'public'}
                         <p>Public content is visible to everyone and may be searchable on Google. Other users can reuse and build upon your work.</p>

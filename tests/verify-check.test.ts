@@ -23,7 +23,7 @@ function fakeAdmin(result: { rows?: unknown[]; error?: unknown; throws?: boolean
         from: (table: string) => {
             if (result.throws) throw new Error('connection refused');
             if (table === 'books') return { select: () => ({ eq: async (_c: string, slug: string) => (result.error ? { data: null, error: result.error } : { data: slug === SLUG ? [{ id: record.book_id }] : [], error: null }) }) };
-            return { select: () => ({ in: () => ({ not: async () => ({ data: result.rows || [], error: null }) }) }) };
+            return { select: () => ({ in: async () => ({ data: result.rows || [], error: null }) }) };
         }
     } as unknown as SupabaseClient;
 }

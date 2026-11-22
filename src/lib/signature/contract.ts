@@ -13,25 +13,21 @@ function hasFrontmatterKey(markdown: string, key: string): boolean {
 /** Made from a template for one signing (see contractMarkdown) */
 export const isContract = (markdown: string) => hasFrontmatterKey(markdown, 'contract_source_id');
 
-/** Template, contract or certificate: only MarkdownAI markers, signed images or the contract / certificate frontmatter count, never an ordinary HTML form */
+/** Template or contract: only MarkdownAI markers, signed images or the contract frontmatter count, never an ordinary HTML form */
 export function isVerifyDocument(markdown: string): boolean {
     return (
         signSlotKinds(markdown).length > 0 ||
         changeableSignKinds(markdown).length > 0 ||
         hasFields(markdown) ||
         signatureImageUrls(markdown).length > 0 ||
-        hasFrontmatterKey(markdown, 'contract_source_id') ||
-        hasFrontmatterKey(markdown, 'certificate_issuance_id')
+        hasFrontmatterKey(markdown, 'contract_source_id')
     );
 }
 
-/** Made from a template by PapeRobo's certificate button */
-export const isCertificate = (markdown: string) => hasFrontmatterKey(markdown, 'certificate_issuance_id');
-
-/** Has a variable and is not a contract or certificate. The owner's own signature may already be in it. */
+/** Has a variable and is not a contract. The owner's own signature may already be in it. */
 export function isTemplate(markdown: string): boolean {
     if (!signSlotKinds(markdown).length && !changeableSignKinds(markdown).length && !hasFields(markdown)) return false;
-    return !isContract(markdown) && !isCertificate(markdown);
+    return !isContract(markdown);
 }
 
 /** "2026-11-03 15:20" in Japan time: tells contracts made from one template apart */

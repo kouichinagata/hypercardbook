@@ -24,8 +24,6 @@ async function harness(t) {
         export const dev=false;
         export const PUBLIC_SUPABASE_URL='https://test.invalid';
         export function adminClient(){return createClient()}
-        export function certificateState(){throw new Error('Unexpected certificate in ordinary document test')}
-        export function issueCertificate(){throw new Error('Unexpected certificate issuance in ordinary document test')}
         export function isComplete(){return false}
         export function createContract(){throw new Error('Unexpected contract in ordinary document test')}
         export function applyStamp(){throw new Error('Unexpected stamp in ordinary document test')}
@@ -39,8 +37,8 @@ async function harness(t) {
         await fs.writeFile(path.join(dir,destination),ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText);
         return path.join(dir,destination);
     }
-    const module=await compile('src/lib/server/paperoboDocuments.ts','documents.mjs',{'./certificates.ts':fixture,'$env/dynamic/private':fixture,'$env/dynamic/public':fixture,'@supabase/supabase-js':fixture,'$app/environment':fixture,'$lib/content-origin':path.join(root,'src/lib/content-origin.ts'),'$lib/book-frontmatter':path.join(root,'src/lib/book-frontmatter.ts'),'./paperoboDocumentTicket':path.join(root,'src/lib/server/paperoboDocumentTicket.ts')});
-    const route=await compile('src/routes/api/paperobo/documents/+server.ts','route.mjs',{'$lib/plan':path.join(root,'src/lib/plan.ts'),'$lib/server/certificates':fixture,'$lib/server/signatures':fixture,'$lib/server/contracts':fixture,'$lib/server/markdown-verify':fixture,'$lib/signature/contract':path.join(root,'src/lib/signature/contract.ts'),'$lib/server/paperoboDocuments':module,'$lib/signature/markers':path.join(root,'src/lib/signature/markers.ts')});
+    const module=await compile('src/lib/server/paperoboDocuments.ts','documents.mjs',{'$env/dynamic/private':fixture,'$env/dynamic/public':fixture,'@supabase/supabase-js':fixture,'$app/environment':fixture,'$lib/content-origin':path.join(root,'src/lib/content-origin.ts'),'$lib/book-frontmatter':path.join(root,'src/lib/book-frontmatter.ts'),'./paperoboDocumentTicket':path.join(root,'src/lib/server/paperoboDocumentTicket.ts')});
+    const route=await compile('src/routes/api/paperobo/documents/+server.ts','route.mjs',{'$lib/plan':path.join(root,'src/lib/plan.ts'),'$lib/server/signatures':fixture,'$lib/server/contracts':fixture,'$lib/server/markdown-verify':fixture,'$lib/signature/contract':path.join(root,'src/lib/signature/contract.ts'),'$lib/server/paperoboDocuments':module,'$lib/signature/markers':path.join(root,'src/lib/signature/markers.ts')});
     const handler=(await import(pathToFileURL(route).href)).POST;
     const api=(body,secret='test-only-key')=>handler({request:new Request('https://www.hypercardbook.org/api/paperobo/documents',{method:'POST',headers:{authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify(body)}),url:new URL('https://www.hypercardbook.org/api/paperobo/documents')});
     return {state,api,documents:await import(pathToFileURL(module).href)};

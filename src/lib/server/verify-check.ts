@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { verifyHash, type VerifyRecord, type VerifySignature } from './markdown-verify.ts';
 
 // Verify Checker: does this Markdown match a sealed record of this document?
-// The document ID is the `id:` written at the top of the Markdown (contract-… / certificate-…), the card's slug.
+// The document ID is the `id:` written at the top of the Markdown (contract-…), the card's slug.
 // The hash covers the whole record (id, book, Markdown, signatures, time), exactly as it was registered,
 // so each stored record of the document is hashed again with only its Markdown replaced by the submitted one.
 // Line endings are not normalized: registration hashes the Markdown as it was, so the check does too.
@@ -62,12 +62,10 @@ export async function checkMarkdown(admin: SupabaseClient, documentId: unknown, 
             return unverifiable(503, 'unavailable', UNAVAILABLE);
         }
         if (!books?.length) return unverifiable(404, 'not_found', 'No record was found for this document ID.');
-        // The signed records only: a certificate's issuance record is the blank copy, not the document
         const { data, error } = await admin
             .from('markdown_verify')
             .select('verify_id, book_id, markdown, signatures, completed_at, sha256')
-            .in('book_id', books.map((b: { id: string }) => b.id))
-            .not('complete_key', 'like', 'certificate-issued:%');
+            .in('book_id', books.map((b: { id: string }) => b.id));
         if (error) {
             console.error('[verify-check] could not read the records:', error.code || 'unknown');
             return unverifiable(503, 'unavailable', UNAVAILABLE);

@@ -549,7 +549,7 @@
         return `<span class="sign-slot sign-pending" data-cslot="${slot}" data-signable="${signable}" title="${title}">✍ sign here</span>`;
     }
 
-    // Templates, contracts and certificates get the business-document theme; an ordinary card (even with its own HTML form) does not
+    // Templates and contracts get the business-document theme; an ordinary card (even with its own HTML form) does not
     let verifyDoc = $derived(isVerifyDocument(markdown));
 
     let cardBodyHtml = $derived.by(() => {

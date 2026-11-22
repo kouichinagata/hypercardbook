@@ -1,4 +1,3 @@
-import { certificateIssuance } from '$lib/server/certificates';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { adminClient, applyField, applySignature } from '$lib/server/signatures';
@@ -23,10 +22,9 @@ function ticketViewer(request: Request, bookId: string): string | undefined {
 
 // Whoever has the card's link can sign its your / MarkdownAIverify slots, logged in or not. `my` is the owner's.
 export const GET: RequestHandler = async ({ params, locals }) => {
-    const { admin, book } = await findBook(params.id);
+    const { book } = await findBook(params.id);
     if (!book) return json({ error: 'Not found' }, { status: 404 });
-    const certificate = book.slug?.startsWith('certificate-') ? Boolean(await certificateIssuance(admin, book.id)) : false;
-    return json({ certificate, bookId: book.id, version: book.version, isOwner: locals.session?.user.id === book.user_id });
+    return json({ bookId: book.id, version: book.version, isOwner: locals.session?.user.id === book.user_id });
 };
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {

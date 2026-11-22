@@ -1,5 +1,5 @@
 /* MarkdownAI Verify — Business Document Theme
-   Scope: .markdown-verify wraps the Marked output of a template, contract or certificate (see Card.svelte).
+   Scope: .markdown-verify wraps the Marked output of a template or contract (see Card.svelte).
    No document-specific markup is required. */
 
 .markdown-verify {

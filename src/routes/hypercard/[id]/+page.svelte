@@ -15,7 +15,6 @@
     $effect(() => { markdown = data.markdown; });
     let version = $state<number | null>(null);
     let isOwner = $state(false);
-    let certificate = $state(false);
     const signUrl = `/hypercard/${encodeURIComponent(data.id)}/sign`;
 
     onMount(async () => {
@@ -26,12 +25,11 @@
             const info = await res.json();
             version = info.version;
             isOwner = info.isOwner;
-            certificate = info.certificate === true;
         } catch {}
     });
 
     const signer = {
-        canSign: (kind: string) => !certificate && version !== null && (kind !== 'my' || isOwner),
+        canSign: (kind: string) => version !== null && (kind !== 'my' || isOwner),
         sign: async (slot: number, kind: string, result: { svg: string }) => {
             const res = await fetch(signUrl, {
                 method: 'POST',
@@ -66,8 +64,6 @@
     <!-- Loaded before the Card body so the MiniApp's own scripts can call paperobo.ask() -->
     {#if data.isMiniApp}<script src="/js/paperobo-ask.v1.js"></script>{/if}
 </svelte:head>
-
-{#if certificate}<p class="certificate-note">Sign or stamp this certificate in the chat where you received it.</p>{/if}
 
 <Card 
     {markdown}

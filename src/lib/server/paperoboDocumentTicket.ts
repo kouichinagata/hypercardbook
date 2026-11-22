@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-export type DocumentTicket = { id: string; selectedBy: string; purpose: 'cover' | 'preview'; expires: number; certificateId?: string; viewer?: string };
+export type DocumentTicket = { id: string; selectedBy: string; purpose: 'cover' | 'preview'; expires: number; viewer?: string };
 const mac = (value: string, secret: string) => createHmac('sha256', secret).update('paperobo-preview-v1:' + value).digest('base64url');
 export function signDocumentTicket(value: DocumentTicket, secret: string) {
     if (!secret) throw new Error('Integration is not configured.');

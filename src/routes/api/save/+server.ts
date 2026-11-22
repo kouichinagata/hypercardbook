@@ -41,7 +41,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
         const resolvedLinkAccess = link_access !== undefined ? link_access : fmLinkAccess;
         if (resolvedLinkAccess === true && !canShareByLink(markdown)) {
-            return json({ error: 'Contracts and certificates cannot be shared by link.' }, { status: 400 });
+            return json({ error: 'Contracts cannot be shared by link.' }, { status: 400 });
         }
         let existingLinkAccess: boolean | undefined;
 
@@ -78,7 +78,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
         // Public already includes the link; Link is never listed
         bookData.link_access = bookData.is_public === true ? false : (resolvedLinkAccess ?? existingLinkAccess ?? false);
-        // A contract or certificate that was already link-shared (not possible through this API) never keeps the flag
+        // A contract that was already link-shared (not possible through this API) never keeps the flag
         if (bookData.link_access && !canShareByLink(markdown)) bookData.link_access = false;
 
         const { data, error: dbError } = await supabase

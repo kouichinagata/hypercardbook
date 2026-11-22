@@ -68,10 +68,6 @@ export const completeKey = (bookId: string, markdown: string, signatureIds: stri
 
 /** Recording follows the document owner, never the last signer's plan or editable frontmatter. */
 export async function mayRecordCompletion(admin: SupabaseClient, bookId: string): Promise<boolean> {
-    // A recorded issuance keeps its entitlement if the issuer later changes plans.
-    const { data: issuance, error: issuanceError } = await admin.from('markdown_verify').select('*').eq('book_id', bookId).eq('complete_key', `certificate-issued:${bookId}`).maybeSingle();
-    if (issuanceError) throw issuanceError;
-    if (issuance && verifyHash(issuance) === issuance.sha256) return true;
     const { data: book, error: bookError } = await admin.from('books').select('user_id').eq('id', bookId).maybeSingle();
     if (bookError) throw bookError;
     if (!book?.user_id) return false;

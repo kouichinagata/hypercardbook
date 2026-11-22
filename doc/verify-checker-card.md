@@ -29,7 +29,7 @@ Paste the document ID (the `id:` at the top of the Markdown) and the Markdown of
 
 <div class="vc">
 <label for="vc-id">Document ID</label>
-<input id="vc-id" type="text" placeholder="contract-… or certificate-… (the id: at the top of the Markdown)" autocomplete="off" spellcheck="false">
+<input id="vc-id" type="text" placeholder="e.g. contract-… (the id: at the top of the Markdown)" autocomplete="off" spellcheck="false">
 <label for="vc-md">Markdown</label>
 <textarea id="vc-md" placeholder="Paste the whole Markdown, exactly as downloaded" spellcheck="false"></textarea>
 <button id="vc-btn" type="button" onclick="if (window.hcbVerifyCheck) { window.hcbVerifyCheck(); } else { var s = document.createElement('script'); s.src = '/js/verify-checker.v1.js'; s.onload = function () { window.hcbVerifyCheck(); }; document.head.appendChild(s); }">Verify</button>
