@@ -2,37 +2,39 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { timingSafeEqual } from 'node:crypto';
 import { verifyHash, type VerifyRecord, type VerifySignature } from './markdown-verify.ts';
 
-// Verify Checker: does this Markdown match the sealed record of this document id?
+// Verify Checker: does this Markdown match a sealed record of this document?
+// The document ID is the `id:` written at the top of the Markdown (contract-… / certificate-…), the card's slug.
 // The hash covers the whole record (id, book, Markdown, signatures, time), exactly as it was registered,
-// so the stored record is hashed again with only its Markdown replaced by the submitted one.
+// so each stored record of the document is hashed again with only its Markdown replaced by the submitted one.
 // Line endings are not normalized: registration hashes the Markdown as it was, so the check does too.
 
 export const MAX_MARKDOWN_LENGTH = 1_000_000;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DOCUMENT_ID = /^[A-Za-z0-9_-]{1,200}$/;
 
 /** What anyone may see once the Markdown matches. Never the book id, user ids or signature images. */
 export type PublicVerifyRecord = {
-    verifyId: string;
-    recordType: 'completed' | 'issued';
+    documentId: string;
     completedAt: string;
     sha256: string;
     signers: { slot: number; kind: string; name: string | null; signedAt: string; method: 'stamp' | 'signature' }[];
 };
 
+type Reason = 'invalid_request' | 'not_found' | 'record_invalid' | 'unavailable';
 export type CheckResult =
     | { status: 200; body: { ok: true; result: 'match'; record: PublicVerifyRecord } }
-    | { status: 200; body: { ok: true; result: 'mismatch'; verifyId: string } }
-    | { status: 400 | 404 | 409 | 503; body: { ok: false; result: 'unverifiable'; reason: 'invalid_request' | 'not_found' | 'record_invalid' | 'unavailable'; error: string } };
+    | { status: 200; body: { ok: true; result: 'mismatch'; documentId: string } }
+    | { status: 400 | 404 | 409 | 503; body: { ok: false; result: 'unverifiable'; reason: Reason; error: string } };
 
-const unverifiable = (status: 400 | 404 | 409 | 503, reason: 'invalid_request' | 'not_found' | 'record_invalid' | 'unavailable', error: string): CheckResult =>
-    ({ status, body: { ok: false, result: 'unverifiable', reason, error } });
+type Row = VerifyRecord & { sha256: string };
+
+const unverifiable = (status: 400 | 404 | 409 | 503, reason: Reason, error: string): CheckResult => ({ status, body: { ok: false, result: 'unverifiable', reason, error } });
+const UNAVAILABLE = 'The verification service is unavailable. Please try again later.';
 
 const sameHex = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-export function publicRecord(row: VerifyRecord & { sha256: string; complete_key: string }): PublicVerifyRecord {
+export function publicRecord(documentId: string, row: Row): PublicVerifyRecord {
     return {
-        verifyId: row.verify_id,
-        recordType: row.complete_key.startsWith('certificate-issued:') ? 'issued' : 'completed',
+        documentId,
         completedAt: new Date(row.completed_at).toISOString(),
         sha256: row.sha256,
         signers: (row.signatures || []).map((s: VerifySignature) => ({
@@ -45,37 +47,46 @@ export function publicRecord(row: VerifyRecord & { sha256: string; complete_key:
     };
 }
 
-export async function checkMarkdown(admin: SupabaseClient, verifyId: unknown, markdown: unknown): Promise<CheckResult> {
-    if (typeof verifyId !== 'string' || !UUID.test(verifyId.trim())) return unverifiable(400, 'invalid_request', 'Enter a valid document ID.');
+export async function checkMarkdown(admin: SupabaseClient, documentId: unknown, markdown: unknown): Promise<CheckResult> {
+    if (typeof documentId !== 'string' || !DOCUMENT_ID.test(documentId.trim())) return unverifiable(400, 'invalid_request', 'Enter a valid document ID.');
     if (typeof markdown !== 'string' || !markdown.length) return unverifiable(400, 'invalid_request', 'Enter the Markdown to verify.');
     if (markdown.length > MAX_MARKDOWN_LENGTH) return unverifiable(400, 'invalid_request', 'The Markdown is too large.');
-    const id = verifyId.trim().toLowerCase();
+    const id = documentId.trim();
 
-    let row: (VerifyRecord & { sha256: string; complete_key: string }) | null;
+    let rows: Row[];
     try {
+        const { data: books, error: bookError } = await admin.from('books').select('id').eq('slug', id);
+        if (bookError) {
+            // Only the error code: the submitted Markdown and the records are never logged
+            console.error('[verify-check] could not read the document:', bookError.code || 'unknown');
+            return unverifiable(503, 'unavailable', UNAVAILABLE);
+        }
+        if (!books?.length) return unverifiable(404, 'not_found', 'No record was found for this document ID.');
+        // The signed records only: a certificate's issuance record is the blank copy, not the document
         const { data, error } = await admin
             .from('markdown_verify')
-            .select('verify_id, book_id, markdown, signatures, completed_at, sha256, complete_key')
-            .eq('verify_id', id)
-            .maybeSingle();
+            .select('verify_id, book_id, markdown, signatures, completed_at, sha256')
+            .in('book_id', books.map((b: { id: string }) => b.id))
+            .not('complete_key', 'like', 'certificate-issued:%');
         if (error) {
-            // Only the error code: the submitted Markdown and the record are never logged
-            console.error('[verify-check] could not read the record:', error.code || 'unknown');
-            return unverifiable(503, 'unavailable', 'The verification service is unavailable. Please try again later.');
+            console.error('[verify-check] could not read the records:', error.code || 'unknown');
+            return unverifiable(503, 'unavailable', UNAVAILABLE);
         }
-        row = data as typeof row;
+        rows = (data || []) as Row[];
     } catch (err) {
-        console.error('[verify-check] could not read the record:', (err as { code?: string })?.code || 'exception');
-        return unverifiable(503, 'unavailable', 'The verification service is unavailable. Please try again later.');
+        console.error('[verify-check] could not read the records:', (err as { code?: string })?.code || 'exception');
+        return unverifiable(503, 'unavailable', UNAVAILABLE);
     }
-    if (!row) return unverifiable(404, 'not_found', 'No record was found for this document ID.');
+    if (!rows.length) return unverifiable(404, 'not_found', 'No record was found for this document ID.');
 
     // A stored record that no longer matches its own hash cannot vouch for anything
-    if (typeof row.sha256 !== 'string' || !sameHex(verifyHash(row), row.sha256)) {
+    if (rows.some((row) => typeof row.sha256 !== 'string' || !sameHex(verifyHash(row), row.sha256))) {
         console.error('[verify-check] stored record does not match its hash');
         return unverifiable(409, 'record_invalid', 'The stored record is invalid, so this document cannot be verified.');
     }
 
-    if (!sameHex(verifyHash({ ...row, markdown }), row.sha256)) return { status: 200, body: { ok: true, result: 'mismatch', verifyId: row.verify_id } };
-    return { status: 200, body: { ok: true, result: 'match', record: publicRecord(row) } };
+    // A document whose signatures can be signed again has one record per signing; any of them may be the copy at hand
+    const matched = rows.find((row) => sameHex(verifyHash({ ...row, markdown }), row.sha256));
+    if (!matched) return { status: 200, body: { ok: true, result: 'mismatch', documentId: id } };
+    return { status: 200, body: { ok: true, result: 'match', record: publicRecord(id, matched) } };
 }
