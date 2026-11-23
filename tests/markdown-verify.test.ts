@@ -21,7 +21,7 @@ test('the hash is stable and changes with any part of the record', () => {
         verify_id: newVerifyId(1),
         book_id: 'b',
         markdown: 'm',
-        signatures: [{ signature_id: 's', slot: 0, kind: 'my', signer_id: 'u', signer_name: null, svg: '<svg/>', signed_at: '2026-10-22T00:00:00.000Z' }],
+        signatures: [{ signature_id: 's', slot: 0, kind: 'my', signer_id: 'u', svg: '<svg/>', signed_at: '2026-10-22T00:00:00.000Z' }],
         completed_at: '2026-10-22T00:00:00.000Z'
     };
     assert.equal(verifyHash(record), verifyHash(structuredClone(record)));
@@ -38,7 +38,7 @@ test('the same Complete gives the same key, and a new signature gives a new one'
 });
 
 test('a hash ignores method on handwritten signatures but covers it on seals', () => {
-    const base: VerifyRecord = { verify_id: 'v', book_id: 'b', markdown: 'm', completed_at: '2026-01-01T00:00:00.000Z', signatures: [{ signature_id: 's', slot: 0, kind: 'my', signer_id: null, signer_name: null, svg: '<svg/>', signed_at: '2026-01-01T00:00:00.000Z' }] };
+    const base: VerifyRecord = { verify_id: 'v', book_id: 'b', markdown: 'm', completed_at: '2026-01-01T00:00:00.000Z', signatures: [{ signature_id: 's', slot: 0, kind: 'my', signer_id: null, svg: '<svg/>', signed_at: '2026-01-01T00:00:00.000Z' }] };
     const sealed: VerifyRecord = { ...base, signatures: [{ ...base.signatures[0], method: 'stamp' }] };
     assert.notEqual(verifyHash(base), verifyHash(sealed));
 });

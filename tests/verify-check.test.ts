@@ -10,7 +10,7 @@ const record: VerifyRecord = {
     verify_id: newVerifyId(1_760_000_000_000),
     book_id: '11111111-1111-4111-8111-111111111111',
     markdown,
-    signatures: [{ signature_id: 's1', slot: 0, kind: 'my', signer_id: 'user-secret-id', signer_name: 'Alice', svg: '<svg/>', signed_at: '2026-10-22T00:00:00.000Z' }],
+    signatures: [{ signature_id: 's1', slot: 0, kind: 'my', signer_id: 'user-secret-id', svg: '<svg/>', signed_at: '2026-10-22T00:00:00.000Z' }],
     completed_at: '2026-10-22T00:00:00.000Z'
 };
 const row = { ...record, sha256: verifyHash(record) };
@@ -36,7 +36,7 @@ test('1. the registered Markdown matches and returns only public fields', async 
     assert.ok(!text.includes(record.book_id) && !text.includes('user-secret-id') && !text.includes('<svg'));
     if (out.body.result === 'match') {
         assert.equal(out.body.record.documentId, SLUG);
-        assert.equal(out.body.record.signers[0].name, 'Alice');
+        assert.equal(out.body.record.signers[0].kind, 'my');
     }
 });
 

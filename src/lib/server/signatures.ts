@@ -23,7 +23,7 @@ export function adminClient(): SupabaseClient {
     return createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
-export type SignActor = { type: 'owner'; userId: string } | { type: 'guest'; name: string | null; userId?: string };
+export type SignActor = { type: 'owner'; userId: string } | { type: 'guest'; userId?: string };
 /**
  * `changeable`: the slot is a {{MarkdownAIverify}} that can be signed again (numbered among those), not a Confirm slot.
  * `fields`: the current values of the changeable fields on the signer's screen, saved together with the signature.
@@ -85,7 +85,6 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
             kind,
             signer_type: actor.type,
             signer_id: actor.type === 'owner' ? actor.userId : actor.userId || null,
-            signer_name: actor.type === 'guest' ? actor.name : null,
             svg,
             webp_url: url,
             svg_sha256: sha256(svg as string),
@@ -195,7 +194,6 @@ export async function applyStamp(admin: SupabaseClient, input: { bookId: string;
             kind: target.kind,
             signer_type: isOwner ? 'owner' : 'guest',
             signer_id: userId,
-            signer_name: null,
             method: 'stamp',
             svg,
             webp_url: url,

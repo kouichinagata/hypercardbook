@@ -6,7 +6,6 @@ create table if not exists markdown_signatures (
     kind text not null check (kind in ('my', 'your', 'any')),
     signer_type text not null check (signer_type in ('owner', 'guest')),
     signer_id uuid,
-    signer_name text,
     svg text not null,
     webp_url text not null,
     svg_sha256 text not null,
@@ -23,3 +22,6 @@ alter table markdown_signatures add column if not exists method text not null de
 
 -- The sign request links were removed: drop their table where it was created.
 drop table if exists markdown_sign_links;
+
+-- No signer name is taken: drop the column where it was created.
+alter table markdown_signatures drop column if exists signer_name;

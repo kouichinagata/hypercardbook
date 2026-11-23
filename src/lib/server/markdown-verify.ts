@@ -25,7 +25,6 @@ export type VerifySignature = {
     slot: number;
     kind: string;
     signer_id: string | null;
-    signer_name: string | null;
     svg: string;
     signed_at: string;
     /** Set only for a seal (stamp); a handwritten signature has no method, so records made before seals existed hash the same */
@@ -52,7 +51,8 @@ export function verifyHash(r: VerifyRecord): string {
                 slot: s.slot,
                 kind: s.kind,
                 signer_id: s.signer_id,
-                signer_name: s.signer_name,
+                // Always null: no name is taken. Kept in the hash so the records sealed so far still match.
+                signer_name: null,
                 svg: s.svg,
                 signed_at: s.signed_at,
                 ...(s.method ? { method: s.method } : {})
@@ -85,7 +85,7 @@ export async function copyTemplateSignatures(admin: SupabaseClient, template: { 
     if (!urls.length || template.user_id !== userId) return;
     const { data, error } = await admin
         .from('markdown_signatures')
-        .select('kind, signer_type, signer_id, signer_name, svg, webp_url, svg_sha256, webp_sha256, markdown_sha256, signed_at, method')
+        .select('kind, signer_type, signer_id, svg, webp_url, svg_sha256, webp_sha256, markdown_sha256, signed_at, method')
         .eq('book_id', template.id)
         .in('webp_url', urls);
     if (error) throw error;
@@ -102,7 +102,7 @@ export async function recordCompletion(admin: SupabaseClient, bookId: string, ma
         const urls = signatureImageUrls(markdown);
         const { data, error } = await admin
             .from('markdown_signatures')
-            .select('id, kind, signer_id, signer_name, svg, webp_url, signed_at, method')
+            .select('id, kind, signer_id, svg, webp_url, signed_at, method')
             .eq('book_id', bookId)
             .in('webp_url', urls);
         if (error) throw error;
@@ -110,7 +110,7 @@ export async function recordCompletion(admin: SupabaseClient, bookId: string, ma
         const signatures: VerifySignature[] = [];
         urls.forEach((url, slot) => {
             const row = rows.get(url);
-            if (row) signatures.push({ signature_id: row.id, slot, kind: row.kind, signer_id: row.signer_id, signer_name: row.signer_name, svg: row.svg, signed_at: new Date(row.signed_at).toISOString(), ...(row.method === 'stamp' ? { method: 'stamp' as const } : {}) });
+            if (row) signatures.push({ signature_id: row.id, slot, kind: row.kind, signer_id: row.signer_id, svg: row.svg, signed_at: new Date(row.signed_at).toISOString(), ...(row.method === 'stamp' ? { method: 'stamp' as const } : {}) });
         });
         if (signatures.length !== urls.length) throw new Error('signature record missing for a signed slot');
 

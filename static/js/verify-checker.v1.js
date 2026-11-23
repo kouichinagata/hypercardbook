@@ -23,7 +23,7 @@ window.hcbVerifyCheck = async function () {
     var data = await res.json().catch(function () { return {}; });
     if (data.result === 'match') {
       var r = data.record, rows = [['Document ID', r.documentId], ['Completed at', when(r.completedAt)]];
-      (r.signers || []).forEach(function (s) { rows.push([s.method === 'stamp' ? 'Seal' : 'Signer', (s.name || 'Unnamed') + ' (' + s.kind + ') - ' + when(s.signedAt)]); });
+      (r.signers || []).forEach(function (s) { rows.push([s.method === 'stamp' ? 'Seal' : 'Signature', s.kind + ' - ' + when(s.signedAt)]); });
       rows.push(['SHA-256', r.sha256]);
       show('match', 'Match', 'This card is identical to the sealed record.', rows);
     } else if (data.result === 'mismatch') {

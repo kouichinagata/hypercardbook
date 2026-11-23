@@ -11,12 +11,12 @@ import { verifyHash, type VerifyRecord, type VerifySignature } from './markdown-
 export const MAX_MARKDOWN_LENGTH = 1_000_000;
 const DOCUMENT_ID = /^[A-Za-z0-9_-]{1,200}$/;
 
-/** What anyone may see once the Markdown matches. Never the book id, user ids or signature images. */
+/** What anyone may see once the card matches. Never the book id, user ids or signature images. */
 export type PublicVerifyRecord = {
     documentId: string;
     completedAt: string;
     sha256: string;
-    signers: { slot: number; kind: string; name: string | null; signedAt: string; method: 'stamp' | 'signature' }[];
+    signers: { slot: number; kind: string; signedAt: string; method: 'stamp' | 'signature' }[];
 };
 
 type Reason = 'invalid_request' | 'not_found' | 'record_invalid' | 'unavailable';
@@ -40,7 +40,6 @@ export function publicRecord(documentId: string, row: Row): PublicVerifyRecord {
         signers: (row.signatures || []).map((s: VerifySignature) => ({
             slot: s.slot,
             kind: s.kind,
-            name: s.signer_name ?? null,
             signedAt: new Date(s.signed_at).toISOString(),
             method: s.method === 'stamp' ? 'stamp' : 'signature'
         }))
