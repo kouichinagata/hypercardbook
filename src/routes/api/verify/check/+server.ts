@@ -3,7 +3,7 @@ import { env } from '$env/dynamic/private';
 import { timingSafeEqual } from 'node:crypto';
 import type { RequestHandler } from './$types';
 import { adminClient } from '$lib/server/signatures';
-import { checkMarkdown, MAX_MARKDOWN_LENGTH } from '$lib/server/verify-check';
+import { checkCardUrl, checkMarkdown, MAX_MARKDOWN_LENGTH } from '$lib/server/verify-check';
 import { createRateLimiter } from '$lib/server/rate-limit';
 
 // Shared Verify API: the anonymous Verify Checker card, and later Realtime Verify, PapeRobo, company AI and other systems.
@@ -39,11 +39,11 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
     if (Number(request.headers.get('content-length') || 0) > MAX_MARKDOWN_LENGTH * 6 + 4096) {
         return json({ ok: false, result: 'unverifiable', reason: 'invalid_request', error: 'The Markdown is too large.' }, { status: 413, headers: NO_STORE });
     }
-    let body: { documentId?: unknown; markdown?: unknown };
+    let body: { url?: unknown; documentId?: unknown; markdown?: unknown };
     try {
         body = await request.json();
     } catch {
-        return json({ ok: false, result: 'unverifiable', reason: 'invalid_request', error: 'Send JSON with documentId and markdown.' }, { status: 400, headers: NO_STORE });
+        return json({ ok: false, result: 'unverifiable', reason: 'invalid_request', error: 'Send JSON with url, or with documentId and markdown.' }, { status: 400, headers: NO_STORE });
     }
 
     let admin;
@@ -53,6 +53,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
         console.error('[verify-check] the database is not configured');
         return json({ ok: false, result: 'unverifiable', reason: 'unavailable', error: 'The verification service is unavailable. Please try again later.' }, { status: 503, headers: NO_STORE });
     }
-    const outcome = await checkMarkdown(admin, body?.documentId, body?.markdown);
+    // The card sends the card URL; other systems may send a document ID with the Markdown they hold
+    const outcome = body?.url !== undefined ? await checkCardUrl(admin, body.url) : await checkMarkdown(admin, body?.documentId, body?.markdown);
     return json(outcome.body, { status: outcome.status, headers: NO_STORE });
 };

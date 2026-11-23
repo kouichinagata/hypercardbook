@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { newVerifyId, verifyHash, type VerifyRecord } from '../src/lib/server/markdown-verify.ts';
-import { checkMarkdown } from '../src/lib/server/verify-check.ts';
+import { checkCardUrl, checkMarkdown } from '../src/lib/server/verify-check.ts';
 import { createRateLimiter } from '../src/lib/server/rate-limit.ts';
 
 const markdown = '---\ntitle: Contract\n---\n# Contract\n\nWe agree.\n\n![MarkdownAIverify:my](https://x.test/a.webp)\n';
@@ -99,4 +99,32 @@ test('the rate limiter allows the limit per window and per key', () => {
     assert.ok(!denied.allowed && denied.retryAfter === 60);
     assert.ok(limiter.take('b', 2).allowed);
     assert.ok(limiter.take('a', 60_000).allowed);
+});
+
+/** A card in the books table: looked up by id or slug, with its current Markdown */
+function fakeCardAdmin(card: { markdown: string }, rows: unknown[]): SupabaseClient {
+    return {
+        from: (table: string) => {
+            if (table === 'books') return { select: () => ({ eq: async (column: string, value: string) => ({ data: (column === 'id' ? value === record.book_id : value === SLUG) ? [{ id: record.book_id, slug: SLUG, markdown_content: card.markdown }] : [], error: null }) }) };
+            return { select: () => ({ in: async () => ({ data: rows, error: null }) }) };
+        }
+    } as unknown as SupabaseClient;
+}
+
+test('a card URL matches while the card is unchanged, by UUID or by id', async () => {
+    for (const url of [`https://www.hypercardbook.org/hypercard/${record.book_id}?from=home`, `https://markdown.hypercardbook.org/hypercard/${SLUG}`]) {
+        const out = await checkCardUrl(fakeCardAdmin({ markdown }, [row]), url);
+        assert.equal(out.body.result, 'match');
+        if (out.body.result === 'match') assert.equal(out.body.record.documentId, SLUG);
+    }
+});
+
+test('a card changed after sealing is a mismatch', async () => {
+    const out = await checkCardUrl(fakeCardAdmin({ markdown: markdown.replace('agree', 'agreE') }, [row]), `https://www.hypercardbook.org/hypercard/${record.book_id}`);
+    assert.equal(out.body.result, 'mismatch');
+});
+
+test('an unknown or malformed card URL cannot be verified', async () => {
+    assert.equal((await checkCardUrl(fakeCardAdmin({ markdown }, [row]), 'https://www.hypercardbook.org/hypercard/contract-unknown')).status, 404);
+    assert.equal((await checkCardUrl(fakeCardAdmin({ markdown }, [row]), 'not a url')).status, 400);
 });

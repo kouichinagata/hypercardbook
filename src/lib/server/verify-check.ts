@@ -75,16 +75,52 @@ export async function checkMarkdown(admin: SupabaseClient, documentId: unknown, 
         console.error('[verify-check] could not read the records:', (err as { code?: string })?.code || 'exception');
         return unverifiable(503, 'unavailable', UNAVAILABLE);
     }
-    if (!rows.length) return unverifiable(404, 'not_found', 'No record was found for this document ID.');
+    return judge(rows, id, () => markdown);
+}
 
-    // A stored record that no longer matches its own hash cannot vouch for anything
+/** Compare each stored record with the Markdown it should match; a record that fails its own hash cannot vouch for anything */
+function judge(rows: Row[], documentId: string, markdownOf: (row: Row) => string): CheckResult {
+    if (!rows.length) return unverifiable(404, 'not_found', 'No sealed record was found for this document.');
     if (rows.some((row) => typeof row.sha256 !== 'string' || !sameHex(verifyHash(row), row.sha256))) {
         console.error('[verify-check] stored record does not match its hash');
         return unverifiable(409, 'record_invalid', 'The stored record is invalid, so this document cannot be verified.');
     }
+    // A document whose signatures can be signed again has one record per signing; any of them may match
+    const matched = rows.find((row) => sameHex(verifyHash({ ...row, markdown: markdownOf(row) }), row.sha256));
+    if (!matched) return { status: 200, body: { ok: true, result: 'mismatch', documentId } };
+    return { status: 200, body: { ok: true, result: 'match', record: publicRecord(documentId, matched) } };
+}
 
-    // A document whose signatures can be signed again has one record per signing; any of them may be the copy at hand
-    const matched = rows.find((row) => sameHex(verifyHash({ ...row, markdown }), row.sha256));
-    if (!matched) return { status: 200, body: { ok: true, result: 'mismatch', documentId: id } };
-    return { status: 200, body: { ok: true, result: 'match', record: publicRecord(id, matched) } };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The card at this URL (/hypercard/<uuid or id>): is its Markdown still the sealed one? */
+export async function checkCardUrl(admin: SupabaseClient, url: unknown): Promise<CheckResult> {
+    const key = typeof url === 'string' && url.length <= 2000 ? url.trim().match(/\/hypercard\/([A-Za-z0-9_-]{1,200})(?:[/?#]|$)/)?.[1] : undefined;
+    if (!key) return unverifiable(400, 'invalid_request', 'Enter a card URL.');
+
+    let books: { id: string; slug: string; markdown_content: string | null }[];
+    let rows: Row[];
+    try {
+        const { data, error: bookError } = await admin.from('books').select('id, slug, markdown_content').eq(UUID.test(key) ? 'id' : 'slug', key);
+        if (bookError) {
+            console.error('[verify-check] could not read the document:', bookError.code || 'unknown');
+            return unverifiable(503, 'unavailable', UNAVAILABLE);
+        }
+        books = data || [];
+        if (!books.length) return unverifiable(404, 'not_found', 'No card was found at this URL.');
+        const { data: records, error } = await admin
+            .from('markdown_verify')
+            .select('verify_id, book_id, markdown, signatures, completed_at, sha256')
+            .in('book_id', books.map((b) => b.id));
+        if (error) {
+            console.error('[verify-check] could not read the records:', error.code || 'unknown');
+            return unverifiable(503, 'unavailable', UNAVAILABLE);
+        }
+        rows = (records || []) as Row[];
+    } catch (err) {
+        console.error('[verify-check] could not read the records:', (err as { code?: string })?.code || 'exception');
+        return unverifiable(503, 'unavailable', UNAVAILABLE);
+    }
+    const markdownOf = (row: Row) => books.find((b) => b.id === row.book_id)?.markdown_content || '';
+    return judge(rows, books[0].slug, markdownOf);
 }
