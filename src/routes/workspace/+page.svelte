@@ -508,27 +508,6 @@
         markdown = next;
     }
 
-    // Copy the sign link: whoever has it can sign the "your" / "MarkdownAIverify" slots without logging in
-    async function copySignLink() {
-        if (!bookUuid) return;
-        const res = await fetch('/api/sign/links', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bookId: bookUuid })
-        });
-        const out = await res.json();
-        if (!res.ok) {
-            alert(`Could not create the sign request link: ${out.error}`);
-            return;
-        }
-        try {
-            await navigator.clipboard.writeText(out.url);
-            alert(`Sign request link copied (valid until ${new Date(out.expiresAt).toLocaleDateString()}; creating a new one disables the previous link)`);
-        } catch {
-            prompt('Sign request link', out.url);
-        }
-    }
-
     async function handleAttachedFilesChange(e: Event) {
         const input = e.target as HTMLInputElement;
         if (!input.files || input.files.length === 0) return;
@@ -2238,11 +2217,6 @@ ${markdown}
         <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; handleExportHtmlLink(); }} disabled={isExportingHtml} title="Publish HTML">
             🌐{#if labels}<span class="action-label">Publish HTML</span>{/if}
         </button>
-        {#if mode === 'card'}
-            <button class="card-action-btn tabs-action-btn" onclick={() => { showMobileMenu = false; copySignLink(); }} title="Copy sign request link">
-                ✍️{#if labels}<span class="action-label">Sign request link</span>{/if}
-            </button>
-        {/if}
         <a class="card-action-btn tabs-action-btn" href={mode === 'card' ? `/hypercard/${cardSlug}?embed=true` : `/hyperbook/${bookUuid}`} target="_blank" title="New tab" style="text-decoration: none;">
             🔗{#if labels}<span class="action-label">Open in new tab</span>{/if}
         </a>

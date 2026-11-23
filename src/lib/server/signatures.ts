@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
@@ -11,39 +11,16 @@ import { isComplete, recordCompletion } from './markdown-verify.ts';
 import { copySignedContractToSigners } from './contracts.ts';
 import { notifyOwnerSigned } from './paperoboNotice.ts';
 
-// Signing is done here, in one place: the owner (logged in), a guest with a sign link, and PapeRobo all go through applySignature.
+// Signing is done here, in one place: the owner (logged in), a guest on the card page, and PapeRobo all go through applySignature.
 const BUCKET = 'HyperCardBookBucket';
-export const SIGN_LINK_DAYS = 14;
 const FILL_FIELDS_FIRST = 'Fill in every field before the last signature.';
 
 export const sha256 = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
-export const hashToken = (token: string) => sha256('markdown-sign-link-v1:' + token);
-export const newSignToken = () => randomBytes(32).toString('base64url');
-
-export function linkIsUsable(link: { expires_at: string; revoked_at: string | null } | null, now = Date.now()): boolean {
-    return !!link && !link.revoked_at && new Date(link.expires_at).getTime() > now;
-}
 
 export function adminClient(): SupabaseClient {
     const url = publicEnv.PUBLIC_SUPABASE_URL || env.PUBLIC_SUPABASE_URL;
     if (!url || !env.SUPABASE_SERVICE_ROLE_KEY) throw new Error('Signing is not configured.');
     return createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
-/** One sign link per book: issuing a new one revokes the previous one. Only the hash of the token is stored. */
-export async function createSignLink(admin: SupabaseClient, bookId: string, userId: string) {
-    await admin.from('markdown_sign_links').update({ revoked_at: new Date().toISOString() }).eq('book_id', bookId).is('revoked_at', null);
-    const token = newSignToken();
-    const expiresAt = new Date(Date.now() + SIGN_LINK_DAYS * 86_400_000).toISOString();
-    const { error } = await admin.from('markdown_sign_links').insert({ token_hash: hashToken(token), book_id: bookId, created_by: userId, expires_at: expiresAt });
-    if (error) throw error;
-    return { token, expiresAt };
-}
-
-export async function resolveSignLink(admin: SupabaseClient, token: string): Promise<{ bookId: string; expiresAt: string } | null> {
-    if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return null;
-    const { data } = await admin.from('markdown_sign_links').select('book_id, expires_at, revoked_at').eq('token_hash', hashToken(token)).maybeSingle();
-    return linkIsUsable(data) ? { bookId: data!.book_id, expiresAt: data!.expires_at } : null;
 }
 
 export type SignActor = { type: 'owner'; userId: string } | { type: 'guest'; name: string | null; userId?: string };
@@ -143,7 +120,7 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
 /**
  * Save a form field of a document. A Confirm field ({{MarkdownAIinputConfirm}} / check / radio) is confirmed once, and not once
  * the document is complete. A changeable field ({{MarkdownAIinput}} / check / radio) is saved each time it is changed, also after completion.
- * `actor` is the owner, or a guest holding a sign link.
+ * `actor` is the owner, or a guest on the card page.
  */
 export async function applyField(
     admin: SupabaseClient,

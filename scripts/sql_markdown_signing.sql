@@ -1,15 +1,5 @@
--- Sign request links and the originals of handwritten signatures ({{MarkdownAIverifyConfirm}} and {{MarkdownAIverify}} slots).
--- RLS is on with no policies: only the server (service role) can read or write these tables.
-create table if not exists markdown_sign_links (
-    token_hash text primary key,
-    book_id uuid not null,
-    created_by uuid not null,
-    expires_at timestamptz not null,
-    revoked_at timestamptz,
-    created_at timestamptz not null default now()
-);
-create index if not exists markdown_sign_links_book_idx on markdown_sign_links (book_id);
-
+-- The originals of handwritten signatures ({{MarkdownAIverifyConfirm}} and {{MarkdownAIverify}} slots).
+-- RLS is on with no policies: only the server (service role) can read or write this table.
 create table if not exists markdown_signatures (
     id uuid primary key default gen_random_uuid(),
     book_id uuid not null,
@@ -26,8 +16,10 @@ create table if not exists markdown_signatures (
 );
 create index if not exists markdown_signatures_book_idx on markdown_signatures (book_id);
 
-alter table markdown_sign_links enable row level security;
 alter table markdown_signatures enable row level security;
 
 -- Seals (stamps) pressed through PapeRobo. A handwritten signature keeps the default 'sign'.
 alter table markdown_signatures add column if not exists method text not null default 'sign' check (method in ('sign', 'stamp'));
+
+-- The sign request links were removed: drop their table where it was created.
+drop table if exists markdown_sign_links;
