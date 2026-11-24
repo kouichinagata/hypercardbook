@@ -544,6 +544,31 @@
                                             </div>
                                         {/if}
                                     </div>
+                                {:else if book.isCard && book.isTemplate}
+                                    <!-- MarkdownAIverify template: one light gray cover with a flowchart stencil plate for every template -->
+                                    <div class="book-cover card-cover" data-theme-color="template">
+                                        <div class="card-cover-title">{book.title}</div>
+                                        <svg viewBox="0 0 60 72" class="template-stencil-svg" aria-hidden="true">
+                                            <rect class="stencil-plate" x="4" y="4" width="52" height="64" rx="5" />
+                                            <g class="stencil-holes">
+                                                <rect x="10" y="11" width="18" height="9" rx="4.5" />
+                                                <rect x="33" y="11" width="18" height="9" rx="1" />
+                                                <path d="M19 26l8 6-8 6-8-6z" />
+                                                <path d="M36 27h15l-3 10H33z" />
+                                                <circle cx="19" cy="49" r="5" />
+                                                <path d="M33 44h18v9c-4-2-6 2-9 1s-6-2-9 0z" />
+                                                <rect x="10" y="58" width="41" height="4" rx="2" />
+                                            </g>
+                                        </svg>
+                                        {#if book.subTitle}
+                                            <div class="card-cover-subtitle">{book.subTitle}</div>
+                                        {/if}
+                                        {#if (isStackSelection && selectedStackBookIds.includes(book.id)) || (isHyperRoboSelection && selectedHyperRoboBookIds.includes(book.id))}
+                                            <div class="stack-select-check-overlay">
+                                                <div class="check-circle">✓</div>
+                                            </div>
+                                        {/if}
+                                    </div>
                                 {:else if book.isCard}
                                     {@const isPreset = ['white', 'black', 'blue', 'pink', 'gold'].includes(book.themeColor)}
                                     <div 
@@ -1008,6 +1033,30 @@
         color: #e6c300;
     }
 
+    .book-cover[data-theme-color="template"] {
+        background: linear-gradient(135deg, #e6e6e6 0%, #cccccc 100%);
+        box-shadow: 3px 3px 0 #bbb, 5px 5px 0 #161616, 7px 9px 10px rgba(0, 0, 0, 0.25), inset 0 2px 3px rgba(255, 255, 255, 0.8);
+        color: #333333;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+    }
+    .template-stencil-svg {
+        width: 80%;
+        flex-grow: 1;
+        min-height: 0;
+        margin: 2px 0;
+        stroke-linejoin: round;
+    }
+    .template-stencil-svg .stencil-plate {
+        fill: #c4e8cf;
+        stroke: #7fb893;
+        stroke-width: 0.6;
+    }
+    .template-stencil-svg .stencil-holes {
+        fill: #d8d8d8;
+        stroke: #7fb893;
+        stroke-width: 0.45;
+    }
+
     /* Hover - Left exactly as it was in +page.svelte */
     .book-item:hover {
         transform: translateY(-12px) translateZ(10px) rotateY(-8deg);
@@ -1043,6 +1092,10 @@
         box-shadow: 3px 3px 0 #bbb, 5px 5px 0 #161616, 11px 15px 22px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 1), inset 0 -2px 3px rgba(0, 0, 0, 0.1);
     }
     
+    .book-item:hover .book-cover[data-theme-color="template"] {
+        box-shadow: 3px 3px 0 #bbb, 5px 5px 0 #161616, 11px 15px 22px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.8);
+    }
+
     .book-item:hover .book-cover[data-theme-color="blue"] {
         box-shadow: 3px 3px 0 #bbb, 5px 5px 0 #161616, 11px 15px 22px rgba(0, 0, 0, 0.5), inset 0 2px 3px rgba(255, 255, 255, 0.15);
     }

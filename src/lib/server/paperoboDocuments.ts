@@ -5,6 +5,7 @@ import { error } from '@sveltejs/kit';
 import { dev } from '$app/environment';
 import { contentOrigins } from '$lib/content-origin';
 import { parseBookFrontmatter } from '$lib/book-frontmatter';
+import { isTemplate } from '$lib/signature/contract';
 import { signDocumentTicket, verifyDocumentTicket } from './paperoboDocumentTicket';
 export const documentSecret = () => env.HYPERCARDBOOK_SHARED_SECRET || '';
 export function documentClient() {
@@ -23,7 +24,7 @@ export function documentKind(markdown: string) {
 export function shelfDocument(row: DocumentRow) {
     const fm = parseBookFrontmatter(row.markdown_content || '');
     const fields = Object.fromEntries((row.markdown_content.match(/^---\s*([\s\S]*?)\s*---/)?.[1] || '').split('\n').filter(line => !/^\s/.test(line) && line.includes(':')).map(line => { const i = line.indexOf(':'); return [line.slice(0,i).trim(),line.slice(i+1).trim()]; }));
-    return { id: row.id, slug: row.slug, title: row.title, author: row.author, coverImage: row.cover_image, themeColor: row.theme_color || (['card','miniapp'].includes(fm.playMode) ? 'white' : 'black'), isCard: ['card','miniapp'].includes(fm.playMode), isStack: false, isMiniApp: fm.playMode === 'miniapp', playMode: fm.playMode, isPublic: row.is_public === true, subTitle: fields.sub_title, description: fields.description, sourceApp: fields.source_app, hideHyperbook: fields.hide_hyperbook === 'true', hyperbookId: fields.hyperbook_id };
+    return { id: row.id, slug: row.slug, title: row.title, author: row.author, coverImage: row.cover_image, themeColor: row.theme_color || (['card','miniapp'].includes(fm.playMode) ? 'white' : 'black'), isCard: ['card','miniapp'].includes(fm.playMode), isTemplate: isTemplate(row.markdown_content || ''), isStack: false, isMiniApp: fm.playMode === 'miniapp', playMode: fm.playMode, isPublic: row.is_public === true, subTitle: fields.sub_title, description: fields.description, sourceApp: fields.source_app, hideHyperbook: fields.hide_hyperbook === 'true', hyperbookId: fields.hyperbook_id };
 }
 export function documentLinks(row: DocumentRow, selectedBy: string, url: URL, preview = false, viewer?: string) {
     const origin = contentOrigins(url, dev).markdown;

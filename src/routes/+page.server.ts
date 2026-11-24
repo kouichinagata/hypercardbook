@@ -1,4 +1,5 @@
 import { isCardLike } from '$lib/play-mode';
+import { isTemplate } from '$lib/signature/contract';
 import type { PageServerLoad } from './$types';
 import { biographySlug, ensureBiographyBook } from '$lib/server/biography';
 
@@ -57,6 +58,7 @@ function toShelfBook(b: any, extra: Record<string, unknown>, own = false) {
         userId: b.user_id,
         ...(own ? { isPublic: b.is_public === true } : {}),
         isCard,
+        isTemplate: isTemplate(markdown),
         isMiniApp: fm.playMode === 'miniapp',
         isStack: fm.playMode === 'stack',
         playMode: fm.playMode,

@@ -1,4 +1,5 @@
 import { isCardLike } from '$lib/play-mode';
+import { isTemplate } from '$lib/signature/contract';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
@@ -110,6 +111,7 @@ function formatPublicBook(book: any) {
         hideHyperbook,
         sourceApp,
         isCard: isCardLike(playMode),
+        isTemplate: isTemplate(markdownContent),
         isMiniApp: playMode === 'miniapp',
         isStack: playMode === 'stack',
         isGraphicBook: /(?:^|\n)\s*(?:layout|mode|page_mode):\s*(fill|full)\s*(?:\n|$)/i.test(markdownContent),
