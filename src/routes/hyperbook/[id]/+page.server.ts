@@ -4,6 +4,10 @@ import { dev } from '$app/environment';
 import { servedOnMarkdown, viewerRedirect, type ContentRow } from '$lib/content-origin';
 import { linkSharedBooks } from '$lib/server/link-access';
 import { isBookUuid } from '$lib/unlisted-mini-app';
+import { isTemplate } from '$lib/signature/contract';
+import { createContract } from '$lib/server/contracts';
+import { adminClient } from '$lib/server/signatures';
+import { effectivePlanFromUser, isPaidPlan } from '$lib/plan';
 import type { PageServerLoad } from './$types';
 import { error, redirect } from '@sveltejs/kit';
 import fs from 'fs';
@@ -98,6 +102,15 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch, setHead
         row = data;
     }
 
+        // The owner opening their own template here (not in the workspace) gets a contract (Standard or above), as with a card.
+        // Before the domain redirect: the markdown domain has no session. A card goes to /hypercard, which does the same.
+        const isCardContent = isCardMarkdown(markdownContent) || (!markdownContent.includes('play_mode: book') && !/Page\s*\d+:/i.test(markdownContent) && !/(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(markdownContent));
+        const ownerUserId = locals.session?.user.id;
+        if (!isCardContent && row && !shareToken && ownerUserId && (row as ContentRow & { user_id?: string }).user_id === ownerUserId && isTemplate(markdownContent) && isPaidPlan(effectivePlanFromUser(locals.session?.user))) {
+            const contractId = await createContract(adminClient(), ownerUserId, row.id);
+            if (contractId) throw redirect(302, `/hyperbook/${contractId}${url.search}`);
+        }
+
         // Public content created from the cutover (and the standard MiniApps) is served from the markdown domain
         // A link-shared document is not for search engines, caches or referrers
         if (row?.link_access && !row.is_public) setHeaders({ 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'private, no-store' });
@@ -133,7 +146,9 @@ export const load: PageServerLoad = async ({ params, locals, url, fetch, setHead
             backUrl,
             isEmbed,
             currentUserId: ownerId,
-            initialPageIndex
+            initialPageIndex,
+            // Sent back with signatures so the signer is known (see ticketViewer in hypercard/[id]/sign/+server.ts)
+            shareTicket: shareToken || ''
         };
 };
 

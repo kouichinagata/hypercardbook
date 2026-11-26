@@ -544,7 +544,7 @@
                                             </div>
                                         {/if}
                                     </div>
-                                {:else if book.isCard && book.isTemplate}
+                                {:else if book.isTemplate}
                                     <!-- MarkdownAIverify template: one light gray cover with a flowchart stencil plate for every template -->
                                     <div class="book-cover card-cover" data-theme-color="template">
                                         <div class="card-cover-title">{book.title}</div>

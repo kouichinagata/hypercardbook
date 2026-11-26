@@ -6,6 +6,7 @@ import { env as publicEnv } from '$env/dynamic/public';
 import { changeableSignKinds, guestMaySign, nextStampSlot, signChangeableInMarkdown, signSlotInMarkdown, signSlotKinds, stampSlotInMarkdown, type SignKind } from '../signature/markers.ts';
 import { applyChangeableValues, hasConfirmFields, scanFields, setFieldInMarkdown } from '../signature/fields.ts';
 import { isValidSignatureSvg } from '../signature/signature-svg.ts';
+import { fieldStore, fieldView } from '../hyperbook-db.ts';
 import { isValidStampSvg } from '../signature/stamp-svg.ts';
 import { isComplete, recordCompletion } from './markdown-verify.ts';
 import { copySignedContractToSigners } from './contracts.ts';
@@ -57,7 +58,9 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
     const before: string = book.markdown_content || '';
     const wasComplete = isComplete(before);
     // The changeable fields on the signer's screen are saved with the signature
-    const filled = fields === undefined ? before : applyChangeableValues(before, fields);
+    // Fields and slots are numbered on the view (a HyperBook template shows page 1's fields on every page)
+    const view = fieldView(before);
+    const filled = fields === undefined ? view : applyChangeableValues(view, fields);
     if (filled === null) return { ok: false, status: 400, error: 'A field value does not fit. Check the fields and try again.' };
     if ((changeable ? changeableSignKinds(filled) : signSlotKinds(filled))[slot] !== kind) return { ok: false, status: 409, error: 'No such slot.' };
     // The last Confirm signature completes the document and locks its Confirm fields, so every Confirm field must be confirmed first
@@ -77,7 +80,11 @@ export async function applySignature(admin: SupabaseClient, input: SignInput): P
     if (uploadError) return { ok: false, status: 500, error: 'Could not store the signature image.' };
     const url = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 
-    const after = (changeable ? signChangeableInMarkdown(filled, slot, kind, url) : signSlotInMarkdown(filled, slot, kind, url))!;
+    const after = fieldStore(before, (changeable ? signChangeableInMarkdown(filled, slot, kind, url) : signSlotInMarkdown(filled, slot, kind, url))!);
+    if (after === null) {
+        await admin.storage.from(BUCKET).remove([path]);
+        return { ok: false, status: 500, error: 'Could not save the document.' };
+    }
     let signatureId: string | null = null;
     try {
         signatureId = await storeSignature(admin, {
@@ -133,10 +140,13 @@ export async function applyField(
     if (actor.type === 'owner' && actor.userId !== book.user_id) return { ok: false, status: 403, error: 'Not your document.' };
 
     const before: string = book.markdown_content || '';
-    const target = scanFields(before)[index as number];
+    // Numbered on the view, like the screen (a HyperBook template shows page 1's fields on every page)
+    const view = fieldView(before);
+    const target = scanFields(view)[index as number];
     if (!target) return { ok: false, status: 400, error: 'That value does not fit the field.' };
     if (target.confirm && isComplete(before)) return { ok: false, status: 409, error: 'A completed document cannot be changed.' };
-    const after = setFieldInMarkdown(before, index as number, value);
+    const set = setFieldInMarkdown(view, index as number, value);
+    const after = set === null ? null : fieldStore(before, set);
     if (after === null) return { ok: false, status: 400, error: 'That value does not fit the field.' };
 
     const { data: saved } = await admin

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 import { contractMarkdown, contractStamp, isContract, signedCopyMarkdown } from '../signature/contract.ts';
 import { isComplete } from '../signature/markers.ts';
+import { isCardMarkdown } from '../play-mode.ts';
 import { copyTemplateSignatures } from './markdown-verify.ts';
 
 /** Make a contract (a private card of the user) from a template card; returns the contract's id, or null when it could not be made. */
@@ -22,7 +23,8 @@ export async function createContract(supabase: SupabaseClient, userId: string, t
             title,
             author: template.author || null,
             cover_image: template.cover_image || null,
-            theme_color: template.theme_color || 'white',
+            // The same default as a saved card / book
+            theme_color: template.theme_color || (isCardMarkdown(template.markdown_content) ? 'white' : 'black'),
             markdown_content: contractMarkdown(template.markdown_content, { id: slug, sourceId: template.id, title }),
             is_public: false,
             published_at: null
@@ -65,7 +67,7 @@ export async function copySignedContractToSigners(admin: SupabaseClient, bookId:
                 title: book.title,
                 author: book.author || null,
                 cover_image: book.cover_image || null,
-                theme_color: book.theme_color || 'white',
+                theme_color: book.theme_color || (isCardMarkdown(markdown) ? 'white' : 'black'),
                 markdown_content: signedCopyMarkdown(markdown, slug),
                 is_public: false,
                 published_at: null

@@ -3,10 +3,10 @@
     import { onDestroy, onMount, tick } from 'svelte';
     import { browser } from '$app/environment';
     import './markdown-verify.css';
+    import './verify-fields.css';
     import SignaturePad from '$lib/signature/SignaturePad.svelte';
-    import { replaceSignedImages, replaceStampImages, isComplete, signSlotKinds, replaceSignMarkers, changeableSignKinds, replaceChangeableSigns, type SignKind } from '$lib/signature/markers';
     import { isVerifyDocument } from '$lib/signature/contract';
-    import { replaceFieldMarkers, validateInput, scanFields, setFieldInMarkdown, changeableValues, applyChangeableValues, type FieldMarker } from '$lib/signature/fields';
+    import { VerifyView, type VerifySigner } from '$lib/signature/verify-view.svelte';
 
     let {
         markdown = '',
@@ -22,18 +22,8 @@
         markdown?: string; id?: string; showNewTab?: boolean; isEmbed?: boolean; backUrl?: string;
         activePluginIds?: string[]; currentUserId?: string;
         onMarkdownChange?: (markdown: string) => void;
-        // Who may sign which slot, and how: sign() returns the new Markdown (the server has already saved it).
-        // `changeable`: a {{MarkdownAIverify}} slot (signed again any number of times); `fields`: the changeable field values, saved with the signature.
-        // canFill / fill do the same for Confirm fields ({{MarkdownAIinputConfirm}} / check / radio): text for an input, a boolean for check / radio.
-        // fillChangeable saves a changeable field on the server each time it is changed; without it (the workspace) the change stays in the
-        // Markdown on screen and the host saves it as usual.
-        signer?: {
-            canSign: (kind: SignKind) => boolean;
-            sign: (slot: number, kind: SignKind, result: { svg: string; changeable?: boolean; fields?: (string | boolean | null)[] }) => Promise<string>;
-            canFill?: () => boolean;
-            fill?: (index: number, value: string | boolean) => Promise<string>;
-            fillChangeable?: (index: number, value: string | boolean) => Promise<string>;
-        };
+        // Who may sign which slot, and how (see VerifySigner)
+        signer?: VerifySigner;
     } = $props();
 
     // Iframe postMessage connection states
@@ -271,283 +261,8 @@
         return 'white';
     });
 
-    // {{MarkdownAIverifyConfirm}} signature slots: pending (yellow) -> signed (blue, a plain Markdown image link) / error (red).
-    // {{MarkdownAIverify}} slots can be signed again: clicking the signature opens the pad again.
-    // Signing needs the host to provide both callbacks (the workspace of the user's own bookshelf); other views only show colors.
-    let signingSlot = $state<number | null>(null);
-    let signingChangeable = $state(false);
-    let signErrorSlots = $state<number[]>([]);
-    let signKinds = $derived(signSlotKinds(markdown));
-    let changeableKinds = $derived(changeableSignKinds(markdown));
-
-    async function saveSignature(slot: number, result: { svg: string }) {
-        const changeable = signingChangeable;
-        // The changeable fields on screen are saved together with the signature (the Sign button is what saves them)
-        const values = changeableValues(markdown);
-        try {
-            const kind = (changeable ? changeableKinds[slot] : signKinds[slot]) ?? 'any';
-            onMarkdownChange?.(await signer!.sign(slot, kind, { ...result, ...(changeable ? { changeable: true } : {}), ...(values.length ? { fields: values } : {}) }));
-        } catch (err) {
-            console.error('Signature failed:', err);
-            if (changeable) alert(err instanceof Error ? err.message : 'Could not sign.');
-            else signErrorSlots = [...signErrorSlots, slot];
-        }
-        signingSlot = null;
-        signingChangeable = false;
-    }
-
-    function slotIsSignable(slot: number, changeable = false): boolean {
-        const kind = changeable ? changeableKinds[slot] : signKinds[slot];
-        return !!signer && !!kind && signer.canSign(kind);
-    }
-
-    // Confirm fields are live until the document is complete (every Confirm slot signed); a field is gone once confirmed.
-    // Changeable fields stay live: each change is saved (by the server, or by the host from the Markdown on screen) and again with a signature.
-    let fieldsLive = $derived(!!signer?.fill && !!signer.canFill?.() && !isComplete(markdown));
-    let changeableLive = $derived(!!onMarkdownChange && !!signer?.canFill?.());
-
-    // Changes are saved one after another, so a slower answer never overwrites a newer one
-    let changeableQueue: Promise<void> = Promise.resolve();
-
-    /** Save a changeable field's new value; focus stays where the user moved it */
-    function keepChangeable(index: number, value: string | boolean) {
-        const next = setFieldInMarkdown(markdown, index, value);
-        if (next === null || next === markdown) return;
-        changeableQueue = changeableQueue.then(async () => {
-            let saved = next;
-            if (signer?.fillChangeable) {
-                try {
-                    saved = await signer.fillChangeable(index, value);
-                } catch (err) {
-                    console.error('Saving the field failed:', err);
-                    alert(err instanceof Error ? err.message : 'Could not save.');
-                    return;
-                }
-            } else await new Promise((resolve) => setTimeout(resolve, 0));
-            const focused = (document.activeElement as HTMLElement | null)?.closest?.('.field-slot')?.getAttribute('data-field');
-            onMarkdownChange?.(saved);
-            if (focused == null) return;
-            await tick();
-            (document.querySelector(`.card-webview-body .field-slot[data-field="${focused}"] :is(input, textarea)`) as HTMLElement | null)?.focus();
-        });
-    }
-
-    /** Show a slider's number while it moves */
-    function handleBodyInput(e: Event) {
-        const range = e.target as HTMLInputElement | null;
-        if (range?.classList?.contains('field-range')) {
-            const out = range.nextElementSibling;
-            if (out?.classList.contains('field-range-value')) out.textContent = range.value;
-        }
-    }
-
-    function handleBodyChange(e: Event) {
-        const box = e.target as HTMLInputElement | HTMLTextAreaElement | null;
-        const slotEl = box?.closest?.('.field-slot[data-changeable]') as HTMLElement | null;
-        if (!box || !slotEl || !changeableLive) return;
-        const index = Number(slotEl.dataset.field);
-        const field = scanFields(markdown)[index];
-        if (!field || field.confirm) return;
-        if (field.kind === 'check') keepChangeable(index, (box as HTMLInputElement).checked);
-        else if (field.kind === 'radio') {
-            if ((box as HTMLInputElement).checked) keepChangeable(index, true);
-        } else if (field.kind === 'slider' || field.kind === 'select') {
-            if (box.value !== '') keepChangeable(index, box.value);
-        } else {
-            const problem = box.value === '' ? null : validateInput(field.input!, box.value);
-            if (problem) {
-                alert(problem);
-                return;
-            }
-            keepChangeable(index, box.value);
-        }
-    }
-
-    async function saveField(index: number, value: string | boolean) {
-        try {
-            const saved = await signer!.fill!(index, value);
-            // The server's copy does not have the changeable values still on screen: keep them
-            onMarkdownChange?.(applyChangeableValues(saved, changeableValues(markdown)) ?? saved);
-        } catch (err) {
-            console.error('Saving the field failed:', err);
-            alert(err instanceof Error ? err.message : 'Could not save.');
-        }
-    }
-
-    function commitField(slotEl: HTMLElement) {
-        const index = Number(slotEl.dataset.field);
-        const field = scanFields(markdown)[index];
-        if (!field) return;
-        if (field.kind === 'check') {
-            saveField(index, (slotEl.querySelector('input') as HTMLInputElement).checked);
-        } else if (field.kind === 'slider') {
-            saveField(index, (slotEl.querySelector('input') as HTMLInputElement).value);
-        } else if (field.kind === 'select') {
-            const value = (slotEl.querySelector('select') as HTMLSelectElement).value;
-            if (value === '') {
-                alert('Select an option.');
-                return;
-            }
-            saveField(index, value);
-        } else if (field.kind === 'radio') {
-            // The Confirm button sits on the last option; the selected one is whichever radio of the group is on
-            const picked = slotEl.closest('.card-webview-body')?.querySelector(`input[name="${(slotEl.querySelector('input') as HTMLInputElement).name}"]:checked`) as HTMLInputElement | null;
-            if (!picked) {
-                alert('Select an option.');
-                return;
-            }
-            saveField(Number(picked.dataset.field), true);
-        } else {
-            const box = slotEl.querySelector('input, textarea') as HTMLInputElement | HTMLTextAreaElement;
-            const problem = validateInput(field.input!, box.value);
-            if (problem) {
-                alert(problem);
-                return;
-            }
-            saveField(index, box.value);
-        }
-    }
-
-    const attr = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-    const sliderHtml = (field: FieldMarker, off: string) =>
-        `<input class="field-range" type="range" min="${field.range!.min}" max="${field.range!.max}" step="1" value="${field.value}"${off}><output class="field-range-value">${field.value}</output>`;
-
-    function selectHtml(field: FieldMarker, off: string): string {
-        const none = field.selected! < 0 ? '<option value="" disabled selected>Select…</option>' : '';
-        const options = field.options!.map((o, i) => `<option value="${i}"${i === field.selected ? ' selected' : ''}>${attr(o)}</option>`).join('');
-        return `<select class="field-input"${off}>${none}${options}</select>`;
-    }
-
-    /** Opens the mail app (to the button's addresses) with the whole Markdown as the body (the YAML frontmatter is not Markdown: left out) */
-    function openMailto(to: string[]) {
-        const body = markdown.replace(/^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '').replace(/^\s+/, '');
-        const a = document.createElement('a');
-        a.href = `mailto:${to.join(',')}?body=${encodeURIComponent(body)}`;
-        a.click();
-    }
-
-    /** Now, as 2026/11/22 10:30 (UTC+09:00) */
-    function sentAt(): string {
-        const d = new Date();
-        const p = (n: number) => String(n).padStart(2, '0');
-        const off = -d.getTimezoneOffset();
-        const zone = `${off < 0 ? '-' : '+'}${p(Math.floor(Math.abs(off) / 60))}:${p(Math.abs(off) % 60)}`;
-        return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())} (UTC${zone})`;
-    }
-
-    function renderChangeableField(field: FieldMarker): string {
-        const off = changeableLive ? '' : ' disabled';
-        const n = field.index;
-        const slot = (inner: string) => `<span class="field-slot" data-field="${n}" data-changeable="1">${inner}</span>`;
-        // Mailto changes nothing, so anyone can use it at any time
-        if (field.kind === 'button') return `<button type="button" class="field-mailto" data-field="${n}">Mailto</button>`;
-        if (field.kind === 'slider') return slot(sliderHtml(field, off));
-        if (field.kind === 'select') return slot(selectHtml(field, off));
-        if (field.kind === 'check') return slot(`<input class="field-toggle" type="checkbox"${field.checked ? ' checked' : ''}${off}>`);
-        if (field.kind === 'radio') return slot(`<input class="field-toggle" type="radio" name="field-group-${field.group}" data-field="${n}"${field.checked ? ' checked' : ''}${off}>`);
-        const spec = field.input!;
-        const value = field.value ?? '';
-        if (spec.type === 'date') return slot(`<input class="field-input" type="date" value="${attr(value)}"${off}>`);
-        if (spec.type === 'time') return slot(`<input class="field-input" type="time" value="${attr(value)}"${off}>`);
-        if (spec.type === 'textarea') return slot(`<textarea class="field-input" rows="4"${off}>${attr(value).replace(/\r?\n/g, '&#10;')}</textarea>`);
-        const maxlength = spec.length === null ? '' : ` maxlength="${spec.length}"`;
-        return slot(`<input class="field-input" type="text" value="${attr(value)}"${maxlength}${spec.type === 'digits' ? ' inputmode="numeric" pattern="[0-9]*"' : ''}${off}>`);
-    }
-
-    function renderField(field: FieldMarker): string {
-        if (!field.confirm) return renderChangeableField(field);
-        const off = fieldsLive ? '' : ' disabled';
-        const n = field.index;
-        // A check box or radio is followed by its label, so its Confirm button goes at the end of the label (see placeOkButtons)
-        if (field.kind === 'check') {
-            return `<span class="field-slot" data-field="${n}"><input class="field-toggle" type="checkbox"${field.checked ? ' checked' : ''}${off}></span>${okMark(n)}`;
-        }
-        if (field.kind === 'radio') {
-            const mark = field.lastInGroup ? okMark(n) : '';
-            return `<span class="field-slot" data-field="${n}"><input class="field-toggle" type="radio" name="field-group-${field.group}" data-field="${n}"${field.checked ? ' checked' : ''}${off}></span>${mark}`;
-        }
-        if (field.kind === 'button') return `<span class="field-slot" data-field="${n}"><button type="button" class="field-mailto"${off}>Mailto</button></span>`;
-        const ok = `<button type="button" class="field-ok"${off}>Confirm</button>`;
-        if (field.kind === 'slider') return `<span class="field-slot" data-field="${n}">${sliderHtml(field, off)}${ok}</span>`;
-        if (field.kind === 'select') return `<span class="field-slot" data-field="${n}">${selectHtml(field, off)}${ok}</span>`;
-        const spec = field.input!;
-        let box: string;
-        if (spec.type === 'date') box = `<input class="field-input" type="date"${off}>`;
-        else if (spec.type === 'time') box = `<input class="field-input" type="time"${off}>`;
-        else if (spec.type === 'textarea') box = `<textarea class="field-input" rows="4"${off}></textarea>`;
-        else {
-            const maxlength = spec.length === null ? '' : ` maxlength="${spec.length}"`;
-            box = `<input class="field-input" type="text"${maxlength}${spec.type === 'digits' ? ' inputmode="numeric" pattern="[0-9]*"' : ''}${off}>`;
-        }
-        return `<span class="field-slot" data-field="${n}">${box}<button type="button" class="field-ok"${off}>Confirm</button></span>`;
-    }
-
-    const okMark = (n: number) => `\u0000OK${n}\u0000`;
-
-    /** Move each check box / radio Confirm mark past its label: to the end of the line, or of the table cell */
-    function placeOkButtons(md: string): string {
-        const off = fieldsLive ? '' : ' disabled';
-        return md.replace(/\u0000OK(\d+)\u0000([^\r\n|\u0000]*?)([ \t]*)(?=\r?\n|\||\u0000|$)/g, (_m, n, label, tail) => `${label}<button type="button" class="field-ok" data-field="${n}"${off}>Confirm</button>${tail}`);
-    }
-
-    function handleBodyClick(e: MouseEvent) {
-        const mail = (e.target as HTMLElement | null)?.closest?.('.field-mailto') as HTMLButtonElement | null;
-        if (mail) {
-            const slotEl = mail.closest('.field-slot') as HTMLElement | null;
-            const index = Number((slotEl ?? mail).dataset.field);
-            const field = scanFields(markdown)[index];
-            if (field?.kind !== 'button') return;
-            // The Confirm version is sent once: it is replaced with "Sent by email to … on …"
-            if (field.confirm) {
-                if (!fieldsLive) return;
-                openMailto(field.mailto!);
-                saveField(index, sentAt());
-            } else openMailto(field.mailto!);
-            return;
-        }
-        const ok = (e.target as HTMLElement | null)?.closest?.('.field-ok') as HTMLElement | null;
-        if (ok && fieldsLive) {
-            // A text field's button sits in its slot; a check box / radio button sits after the label
-            const slot = (ok.closest('.field-slot') ?? ok.closest('.card-webview-body')?.querySelector(`.field-slot[data-field="${ok.dataset.field}"]`)) as HTMLElement | null;
-            if (slot) commitField(slot);
-            return;
-        }
-        const again = (e.target as HTMLElement | null)?.closest?.('[data-cslot]') as HTMLElement | null;
-        if (again) {
-            if (!slotIsSignable(Number(again.dataset.cslot), true)) return;
-            signingChangeable = true;
-            signingSlot = Number(again.dataset.cslot);
-            return;
-        }
-        const el = (e.target as HTMLElement | null)?.closest?.('.sign-pending') as HTMLElement | null;
-        if (!el || !slotIsSignable(Number(el.dataset.slot))) return;
-        // The last signature completes the document and locks its fields
-        if (signKinds.length === 1 && scanFields(markdown).some((f) => f.confirm)) {
-            alert('Fill in every field before the last signature.');
-            return;
-        }
-        signingSlot = Number(el.dataset.slot);
-    }
-
-    function renderSignSlot(slot: number): string {
-        if (signErrorSlots.includes(slot)) {
-            return `<span class="sign-slot sign-error" data-slot="${slot}">sign error</span>`;
-        }
-        const signable = slotIsSignable(slot);
-        const title = signable ? 'Click to sign' : 'You cannot sign this slot';
-        return `<span class="sign-slot sign-pending" data-slot="${slot}" data-signable="${signable}" title="${title}">✍ sign here</span>`;
-    }
-
-    function renderChangeableSlot(slot: number, url: string | null): string {
-        const signable = slotIsSignable(slot, true);
-        if (url) {
-            const title = signable ? 'Click to sign again' : 'Signature';
-            return `<span class="sign-slot sign-signed${signable ? ' sign-again' : ''}" data-cslot="${slot}" title="${title}"><img src="${attr(url)}" alt="signature"></span>`;
-        }
-        const title = signable ? 'Click to sign' : 'You cannot sign this slot';
-        return `<span class="sign-slot sign-pending" data-cslot="${slot}" data-signable="${signable}" title="${title}">✍ sign here</span>`;
-    }
+    // Fields, signature slots and what happens when they are used: shared with Book
+    const verify = new VerifyView(() => ({ markdown, signer, onMarkdownChange }));
 
     // Templates and contracts get the business-document theme; an ordinary card (even with its own HTML form) does not
     let verifyDoc = $derived(isVerifyDocument(markdown));
@@ -555,14 +270,10 @@
     let cardBodyHtml = $derived.by(() => {
         if (!markdown) return '';
         // Fields are numbered on the whole Markdown, as the server does
-        let cleanMd = placeOkButtons(replaceFieldMarkers(markdown, renderField)).replace(/^---\s*[\s\S]*?\s*---/, '').trim();
+        let cleanMd = verify.renderFields().replace(/^---\s*[\s\S]*?\s*---/, '').trim();
         // Remove the whole line of a style block so no blank line is left inside an HTML block (it would end the block)
         cleanMd = cleanMd.replace(new RegExp('^[ \\t]*<' + 'style>[\\s\\S]*?<' + '[\\/]style>[ \\t]*\\r?\\n?', 'gim'), '').replace(new RegExp(styleBlockPattern), '');
-        // Seals pressed before the signature sit left-aligned in a row of inline boxes, so many of them wrap onto new lines
-        cleanMd = replaceStampImages(cleanMd, (url) => `<span class="sign-slot sign-stamp"><img src="${url}" alt="seal"></span>`);
-        cleanMd = replaceSignedImages(cleanMd, (url) => `<span class="sign-slot sign-signed"><img src="${url}" alt="signature"></span>`);
-        cleanMd = replaceSignMarkers(cleanMd, renderSignSlot);
-        cleanMd = replaceChangeableSigns(cleanMd, (slot, _kind, url) => renderChangeableSlot(slot, url));
+        cleanMd = verify.renderSlots(cleanMd);
 
         let processed = cleanMd.split('\n').map(line => {
             const trimmed = line.trim();
@@ -713,7 +424,7 @@
 
         <div class="card-webview-frame" data-theme-color={['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? cardThemeColor : 'white'} style={!['white', 'black', 'blue', 'pink', 'gold'].includes(cardThemeColor) ? `background-color: ${cardThemeColor};` : ''} class:embed-mode={isEmbed}>
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <div class="card-webview-body markdown-body" onclick={handleBodyClick} onchange={handleBodyChange} oninput={handleBodyInput}>
+            <div class="card-webview-body verify-root markdown-body" onclick={verify.handleBodyClick} onchange={verify.handleBodyChange} oninput={verify.handleBodyInput}>
                 {#if verifyDoc}
                     <div class="markdown-verify">{@html cardBodyHtml}</div>
                 {:else}
@@ -724,115 +435,14 @@
     </div>
 </div>
 
-{#if signingSlot !== null}
+{#if verify.signingSlot !== null}
     <SignaturePad
-        onsave={(result) => saveSignature(signingSlot!, result)}
-        oncancel={() => ((signingSlot = null), (signingChangeable = false))}
+        onsave={(result) => verify.saveSignature(verify.signingSlot!, result)}
+        oncancel={() => verify.cancelSigning()}
     />
 {/if}
 
 <style>
-    :global(.card-webview-body .field-slot) {
-        display: inline-flex;
-        gap: 6px;
-        align-items: flex-start;
-        vertical-align: middle;
-    }
-    :global(.card-webview-body .field-input) {
-        padding: 4px 8px;
-        border: 1px solid #bbb;
-        border-radius: 6px;
-        font: inherit;
-        background: #fffbe0;
-        color: #222;
-    }
-    :global(.card-webview-body textarea.field-input) {
-        min-width: 16em;
-    }
-    :global(.card-webview-body .field-ok) {
-        padding: 4px 10px;
-        border: 1px solid #888;
-        border-radius: 6px;
-        background: #f3f3f3;
-        color: #222;
-        cursor: pointer;
-    }
-    :global(.card-webview-body .field-ok:disabled) {
-        opacity: 0.5;
-        cursor: default;
-    }
-    :global(.card-webview-body .field-range) {
-        vertical-align: middle;
-        accent-color: #b58900;
-    }
-    :global(.card-webview-body .field-range-value) {
-        min-width: 2.5em;
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-    }
-    :global(.card-webview-body .field-mailto) {
-        padding: 4px 12px;
-        border: 1px solid #888;
-        border-radius: 6px;
-        background: #f3f3f3;
-        color: #222;
-        cursor: pointer;
-    }
-    :global(.card-webview-body .field-mailto:disabled) {
-        opacity: 0.5;
-        cursor: default;
-    }
-    :global(.card-webview-body .field-slot .field-range-value) {
-        align-self: center;
-    }
-    :global(.card-webview-body .field-toggle) {
-        transform: scale(1.2);
-        margin-right: 4px;
-        vertical-align: middle;
-    }
-    :global(.card-webview-body .sign-slot) {
-        display: inline-block;
-        min-width: 8em;
-        padding: 0 0.5em;
-        border-radius: 4px;
-        color: #555;
-        vertical-align: middle;
-    }
-    :global(.card-webview-body .sign-pending) {
-        background: #fff6b3;
-        cursor: pointer;
-    }
-    :global(.card-webview-body .sign-focus) {
-        outline: 3px solid #f59e0b;
-        outline-offset: 2px;
-    }
-    :global(.card-webview-body .sign-signed) {
-        background: #dbeafe;
-    }
-    :global(.card-webview-body .sign-again) {
-        cursor: pointer;
-    }
-    :global(.card-webview-body .sign-signed img) {
-        display: block;
-        height: 3.5em;
-        width: auto;
-        margin: 0;
-    }
-    :global(.card-webview-body .sign-stamp) {
-        min-width: 0;
-        padding: 0;
-        margin: 0 0.25em 0.25em 0;
-        background: transparent;
-    }
-    :global(.card-webview-body .sign-stamp img) {
-        display: block;
-        height: 3.5em;
-        width: auto;
-        margin: 0;
-    }
-    :global(.card-webview-body .sign-error) {
-        background: #fecaca;
-    }
     .card-reader-container {
         width: 100vw;
         height: 100vh;

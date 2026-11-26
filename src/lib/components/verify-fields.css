@@ -1,0 +1,102 @@
+/* MarkdownAI fields and signature slots, shared by Card and Book (inside .verify-root, see verify-view.svelte.ts) */
+.verify-root .field-slot {
+    display: inline-flex;
+    gap: 6px;
+    align-items: flex-start;
+    vertical-align: middle;
+}
+.verify-root .field-input {
+    padding: 4px 8px;
+    border: 1px solid #bbb;
+    border-radius: 6px;
+    font: inherit;
+    background: #fffbe0;
+    color: #222;
+}
+.verify-root textarea.field-input {
+    min-width: 16em;
+}
+.verify-root .field-ok {
+    padding: 4px 10px;
+    border: 1px solid #888;
+    border-radius: 6px;
+    background: #f3f3f3;
+    color: #222;
+    cursor: pointer;
+}
+.verify-root .field-ok:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.verify-root .field-range {
+    vertical-align: middle;
+    accent-color: #b58900;
+}
+.verify-root .field-range-value {
+    min-width: 2.5em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.verify-root .field-mailto {
+    padding: 4px 12px;
+    border: 1px solid #888;
+    border-radius: 6px;
+    background: #f3f3f3;
+    color: #222;
+    cursor: pointer;
+}
+.verify-root .field-mailto:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.verify-root .field-slot .field-range-value {
+    align-self: center;
+}
+.verify-root .field-toggle {
+    transform: scale(1.2);
+    margin-right: 4px;
+    vertical-align: middle;
+}
+.verify-root .sign-slot {
+    display: inline-block;
+    min-width: 8em;
+    padding: 0 0.5em;
+    border-radius: 4px;
+    color: #555;
+    vertical-align: middle;
+}
+.verify-root .sign-pending {
+    background: #fff6b3;
+    cursor: pointer;
+}
+.verify-root .sign-focus {
+    outline: 3px solid #f59e0b;
+    outline-offset: 2px;
+}
+.verify-root .sign-signed {
+    background: #dbeafe;
+}
+.verify-root .sign-again {
+    cursor: pointer;
+}
+.verify-root .sign-signed img {
+    display: block;
+    height: 3.5em;
+    width: auto;
+    margin: 0;
+}
+.verify-root .sign-stamp {
+    min-width: 0;
+    padding: 0;
+    margin: 0 0.25em 0.25em 0;
+    background: transparent;
+}
+.verify-root .sign-stamp img {
+    display: block;
+    height: 3.5em;
+    width: auto;
+    margin: 0;
+}
+.verify-root .sign-error {
+    background: #fecaca;
+}

@@ -2586,6 +2586,8 @@ ${markdown}
                                 currentUserId={data.currentUserId}
                                 isWorkspace={true}
                                 isProPlan={isProPlan}
+                                onMarkdownChange={applySignedMarkdown}
+                                {signer}
                             />
                         </div>
                     {:else}

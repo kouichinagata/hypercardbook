@@ -6,6 +6,10 @@
 
     import { LANGUAGES } from '$lib/languages';
     import { aiRequestHeaders } from '$lib/ai-model';
+    import './verify-fields.css';
+    import SignaturePad from '$lib/signature/SignaturePad.svelte';
+    import { isVerifyDocument } from '$lib/signature/contract';
+    import { VerifyView, type VerifySigner } from '$lib/signature/verify-view.svelte';
 
     let { 
         markdown = '', 
@@ -17,8 +21,20 @@
         currentIndex = $bindable(-1),
         currentUserId = 'global',
         isWorkspace = false,
-        isProPlan = false
+        isProPlan = false,
+        // MarkdownAI Verify fields and signature slots work as in a Card (see VerifyView)
+        onMarkdownChange = undefined,
+        signer = undefined
+    }: {
+        markdown?: string; backUrl?: string; id?: string; activePluginIds?: string[]; language?: string;
+        onHookAiResult?: any; currentIndex?: number; currentUserId?: string; isWorkspace?: boolean; isProPlan?: boolean;
+        onMarkdownChange?: (markdown: string) => void;
+        signer?: VerifySigner;
     } = $props();
+
+    // Fields, signature slots and what happens when they are used: shared with Card
+    const verify = new VerifyView(() => ({ markdown, signer, onMarkdownChange }));
+    let hasVerify = $derived(isVerifyDocument(markdown || ''));
 
     // Iframe postMessage connection states
     let iframeSource: MessageEventSource | null = null;
@@ -509,7 +525,8 @@
     let continuousLoadedCount = $state(CONTINUOUS_BATCH_SIZE);
     let continuousScrollFrame: number | null = null;
 
-    let displayMarkdown = $derived(markdown || '');
+    // A Verify document is shown with its fields and slots as HTML, numbered on the whole Markdown as the server does
+    let displayMarkdown = $derived(hasVerify ? verify.renderSlots(verify.renderFields()) : markdown || '');
 
     $effect(() => {
         if (displayMarkdown) {
@@ -1254,6 +1271,7 @@
 
         if (
             (e.target as HTMLElement).closest('a') || 
+            (e.target as HTMLElement).closest('input, textarea, select, button, label, .field-slot, .sign-slot') || 
             (e.target as HTMLElement).closest('.control-panel') ||
             (isWorkspace && (e.target as HTMLElement).tagName === 'IMG')
         ) {
@@ -1495,10 +1513,14 @@
         onscroll={handleContinuousScroll}
     >
         <div 
-            class="book-body" 
+            class="book-body verify-root" 
             class:opened={isOpened} 
-            onclick={handleBookClick}
+            onclick={(e) => { verify.handleBodyClick(e); handleBookClick(e); }}
+            onchange={verify.handleBodyChange}
+            oninput={verify.handleBodyInput}
             onkeydown={(e) => {
+                // Typing in a field never turns the page
+                if ((e.target as HTMLElement).closest?.('input, textarea, select, button')) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     goNext();
@@ -1709,6 +1731,13 @@
         </div>
     {/if}
 </div>
+
+{#if verify.signingSlot !== null}
+    <SignaturePad
+        onsave={(result) => verify.saveSignature(verify.signingSlot!, result)}
+        oncancel={() => verify.cancelSigning()}
+    />
+{/if}
 
 <style>
     /* Scoped exact styles from hyperbook.html */

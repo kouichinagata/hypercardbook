@@ -1821,6 +1821,48 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
     let isUploadingAvatar = $state(false);
     let avatarFileInputEl = $state<HTMLInputElement | null>(null);
 
+    // API key for the HyperBook DB HTTP Request API: only its first characters are shown again after it is created
+    let apiKeyInfo = $state<{ prefix: string; created_at: string } | null>(null);
+    let newApiKey = $state('');
+    let apiKeyBusy = $state(false);
+
+    async function loadApiKey() {
+        newApiKey = '';
+        try {
+            const res = await fetch('/api/api-keys');
+            if (res.ok) apiKeyInfo = (await res.json()).key;
+        } catch {}
+    }
+
+    async function createApiKey() {
+        if (apiKeyInfo && !confirm('Create a new API key? The current key will stop working.')) return;
+        apiKeyBusy = true;
+        try {
+            const res = await fetch('/api/api-keys', { method: 'POST' });
+            const out = await res.json();
+            if (!res.ok) throw new Error(out.error || 'Could not create an API key.');
+            apiKeyInfo = out.key;
+            newApiKey = out.apiKey;
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Could not create an API key.');
+        }
+        apiKeyBusy = false;
+    }
+
+    async function deleteApiKey() {
+        if (!confirm('Delete the API key? Requests that use it will stop working.')) return;
+        apiKeyBusy = true;
+        try {
+            const res = await fetch('/api/api-keys', { method: 'DELETE' });
+            if (!res.ok) throw new Error((await res.json()).error || 'Could not delete the API key.');
+            apiKeyInfo = null;
+            newApiKey = '';
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Could not delete the API key.');
+        }
+        apiKeyBusy = false;
+    }
+
     // Account deletion workflow states
     let deleteStep = $state('none'); // 'none', 'warn', 'credentials', 'loading'
     let deleteConfirmEmail = $state('');
@@ -1875,6 +1917,7 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         claudeSaveSuccess = false;
 
         showSettingsModal = true;
+        if (data.session) loadApiKey();
     }
 
     function saveGeminiKey() {
@@ -3217,6 +3260,28 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
                                     </label>
                                 </div>
                                 <textarea id="setting-bio" bind:value={profileAuthorBio} rows="4" placeholder=""></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="setting-api-key">HyperBook DB API Key</label>
+                                {#if newApiKey}
+                                    <input type="text" id="setting-api-key" readonly value={newApiKey} onfocus={(e) => (e.currentTarget as HTMLInputElement).select()} />
+                                    <p class="api-key-note">Copy this key now. It will not be shown again. Send it as <code>Authorization: Bearer …</code>.</p>
+                                {:else if apiKeyInfo}
+                                    <p class="api-key-note" id="setting-api-key">{apiKeyInfo.prefix}… (created {new Date(apiKeyInfo.created_at).toLocaleDateString()})</p>
+                                {:else}
+                                    <p class="api-key-note" id="setting-api-key">No API key yet.</p>
+                                {/if}
+                                <div style="display: flex; gap: 8px;">
+                                    <button type="button" class="plan-btn free-btn" style="width: auto; padding: 8px 20px;" disabled={apiKeyBusy} onclick={createApiKey}>
+                                        {apiKeyInfo ? 'Create New Key' : 'Create API Key'}
+                                    </button>
+                                    {#if apiKeyInfo}
+                                        <button type="button" class="plan-btn free-btn" style="width: auto; padding: 8px 20px;" disabled={apiKeyBusy} onclick={deleteApiKey}>
+                                            Delete Key
+                                        </button>
+                                    {/if}
+                                </div>
                             </div>
 
                             <div class="form-group">
@@ -4818,6 +4883,12 @@ ${selectedStackBooks.map(b => `- [${b.title}](${b.isStack || b.playMode === 'sta
         box-sizing: border-box;
     }
     
+    .api-key-note {
+        margin: 4px 0 8px;
+        font-size: 0.85rem;
+        opacity: 0.8;
+        word-break: break-all;
+    }
     .form-group {
         display: flex;
         flex-direction: column;

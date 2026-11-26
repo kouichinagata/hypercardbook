@@ -12,6 +12,8 @@ export interface BookFrontmatter {
     linkAccess?: boolean;
     publishedAt?: string;
     ddcCode: string;
+    /** `db_mode: template`: page 1's fields are used on every page (HyperBook DB) */
+    dbMode: string;
     /** id と play_mode の両方が書かれている（本文として扱ってよい全文か） */
     hasIdentity: boolean;
 }
@@ -25,6 +27,7 @@ export function parseBookFrontmatter(markdown: string): BookFrontmatter {
         themeColor: '',
         playMode: 'book',
         ddcCode: '',
+        dbMode: '',
         hasIdentity: false
     };
     let hasId = false;
@@ -49,6 +52,7 @@ export function parseBookFrontmatter(markdown: string): BookFrontmatter {
                 if (k === 'link_access') fm.linkAccess = v === 'true';
                 if (k === 'published_at') fm.publishedAt = v;
                 if (k === 'ddc_code') fm.ddcCode = v;
+                if (k === 'db_mode') fm.dbMode = v;
             }
         });
     }
