@@ -6,8 +6,8 @@ import { dev } from '$app/environment';
 import { contentOrigins, isMarkdownHost } from '$lib/content-origin';
 
 // Paths the markdown (content) domain serves: the viewers, the signing endpoint of a card, and the static files they read.
-// The Verify API is anonymous and reads no cookies, so a card there can call it.
-const MARKDOWN_PATHS = /^\/(hypercard|hyperbook)\/[^/]+\/?$|^\/hypercard\/[^/]+\/sign\/?$|^\/(samples|books|js)\/|^\/api\/verify\/check\/?$/;
+// The Verify API is anonymous and reads no cookies, so a card there can call it. So is the HyperBook DB API (the owner's card or an API key).
+const MARKDOWN_PATHS = /^\/(hypercard|hyperbook)\/[^/]+\/?$|^\/hypercard\/[^/]+\/sign\/?$|^\/hyperbook\/[^/]+\/db\/?$|^\/(samples|books|js)\/|^\/api\/verify\/check\/?$/;
 
 export const handle: Handle = async ({ event, resolve }) => {
     // The content domain never signs anyone in: no session cookies are read or written there.

@@ -306,3 +306,34 @@ export function updateField(markdown: string, page: number, selector: string, bo
     if (next === null) return fail(400, `The value does not fit ${selector}.`);
     return withPage(markdown, view, at, next);
 }
+
+// ---- Who may call the DB API without an API key: the owner's own card ----
+
+/** The HyperBook a card is linked to (`hyperbook_db: <book id or UUID>` in its frontmatter), or null */
+export function linkedDb(markdown: string): string | null {
+    const fm = markdown.match(/^---\s*\n([\s\S]*?)\n---/);
+    const v = fm?.[1].match(/^hyperbook_db:[ \t]*([A-Za-z0-9_-]+)[ \t]*\r?$/m)?.[1];
+    return v || null;
+}
+
+/**
+ * The card a request came from, read from its Referer on the same host: /hypercard/{id} (the card page),
+ * or /workspace?id={id} (the owner's workspace preview). Null for anything else.
+ */
+export function refererCard(referer: string | null, requestUrl: URL): string | null {
+    if (!referer) return null;
+    let from: URL;
+    try {
+        from = new URL(referer);
+    } catch {
+        return null;
+    }
+    if (from.origin !== requestUrl.origin) return null;
+    const page = from.pathname.match(/^\/hypercard\/([A-Za-z0-9_-]+)\/?$/)?.[1];
+    if (page) return page;
+    if (/^\/workspace\/?$/.test(from.pathname)) {
+        const id = from.searchParams.get('id');
+        return id && /^[A-Za-z0-9_-]+$/.test(id) ? id : null;
+    }
+    return null;
+}
