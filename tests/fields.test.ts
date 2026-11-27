@@ -143,3 +143,11 @@ test('the changeable values on screen are written back with a signature', async 
     assert.equal(applyChangeableValues(server, [1, true, false, true, null]), null);
     assert.equal(applyChangeableValues(screen, ['', true, false, true, null]), screen.replace('{{MarkdownAIinput=Taro}}', '{{MarkdownAIinput}}'));
 });
+
+test('a system book (Biography, Call history) quoting markers is never a template or Verify document', async () => {
+    const { isTemplate, isVerifyDocument } = await import('../src/lib/signature/contract.ts');
+    const md = '---\ntitle: Call history\nplay_mode: book\nspecial_book_key: call_history\n---\n{{MarkdownAIinput}} {{MarkdownAIverifyConfirm}}';
+    assert.equal(isTemplate(md), false);
+    assert.equal(isVerifyDocument(md), false);
+    assert.equal(isTemplate(md.replace('special_book_key: call_history\n', '')), true);
+});

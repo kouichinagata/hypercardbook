@@ -13,8 +13,12 @@ function hasFrontmatterKey(markdown: string, key: string): boolean {
 /** Made from a template for one signing (see contractMarkdown) */
 export const isContract = (markdown: string) => hasFrontmatterKey(markdown, 'contract_source_id');
 
+/** A system book (Biography, Call history) records conversations, which may quote MarkdownAI markers: never a Verify document */
+const isSystemBook = (markdown: string) => hasFrontmatterKey(markdown, 'special_book_key');
+
 /** Template or contract: only MarkdownAI markers, signed images or the contract frontmatter count, never an ordinary HTML form */
 export function isVerifyDocument(markdown: string): boolean {
+    if (isSystemBook(markdown)) return false;
     return (
         signSlotKinds(markdown).length > 0 ||
         changeableSignKinds(markdown).length > 0 ||
@@ -26,6 +30,7 @@ export function isVerifyDocument(markdown: string): boolean {
 
 /** Has a variable and is not a contract. The owner's own signature may already be in it. */
 export function isTemplate(markdown: string): boolean {
+    if (isSystemBook(markdown)) return false;
     if (!signSlotKinds(markdown).length && !changeableSignKinds(markdown).length && !hasFields(markdown)) return false;
     return !isContract(markdown);
 }
