@@ -6,7 +6,7 @@ import { isCardMarkdown } from '$lib/play-mode';
 import { createRateLimiter } from '$lib/server/rate-limit';
 import { documentSecret } from '$lib/server/paperoboDocuments';
 import { verifyDocumentTicket } from '$lib/server/paperoboDocumentTicket';
-import { addPage, dbPages, deletePage, linkedDb, parseFieldSelector, refererCard, searchPages, updateField, updatePage, type DbResult } from '$lib/hyperbook-db';
+import { addPage, dbPages, deletePage, parseFieldSelector, refererCard, searchPages, updateField, updatePage, type DbResult } from '$lib/hyperbook-db';
 
 // HyperBook DB HTTP Request API: add / delete / search / get / update the pages of the owner's HyperBook.
 //   POST   ?action=add                    body: Markdown of the new page (template: field values)
@@ -16,7 +16,7 @@ import { addPage, dbPages, deletePage, linkedDb, parseFieldSelector, refererCard
 //   PATCH  ?action=update&page=3          body: Markdown of the page (template: field values)
 //   PATCH  ?action=update&page=3&input(2) body: {{MarkdownAIinput=Sales}}
 // Who may call it:
-//   - the owner's own card: a card whose frontmatter has `hyperbook_db: <this book>`, with the same owner as the book.
+//   - the owner's own card: a card with the same owner as the book.
 //     The card is the page the request comes from (its Referer on the same host), so no key is in the card.
 //     In PapeRobo the card runs in a sandboxed iframe (no Referer, opaque origin): it sends the ticket PapeRobo opened it with
 //     (the `paperobo_share` parameter of its own URL) as `X-PapeRobo-Share`, and the ticket names the card.
@@ -38,20 +38,17 @@ const limiter = createRateLimiter(120, 60_000);
 type Book = { id: string; user_id: string; markdown_content: string | null; version: number };
 
 async function findRow(admin: ReturnType<typeof adminClient>, id: string) {
-    const query = admin.from('books').select('id, slug, user_id, markdown_content, version');
+    const query = admin.from('books').select('id, user_id, markdown_content, version');
     const { data } = await (UUID.test(id) ? query.eq('id', id) : query.eq('slug', id)).maybeSingle();
-    return data as (Book & { slug: string | null }) | null;
+    return data as Book | null;
 }
 
-type Row = NonNullable<Awaited<ReturnType<typeof findRow>>>;
-
-/** The card's owner, when the card is linked to this book (`hyperbook_db` names it) */
-function linkedOwner(card: Row | null, book: Row | null): string | null {
-    const linked = card && isCardMarkdown(card.markdown_content) ? linkedDb(card.markdown_content || '') : null;
-    return card && linked && book && (linked === book.id || linked === book.slug) ? card.user_id : null;
+/** The card's owner (the book's owner is checked after) */
+function cardOwner(card: Book | null): string | null {
+    return card && isCardMarkdown(card.markdown_content) ? card.user_id : null;
 }
 
-/** The book, when the caller is its owner (API key) or the owner's card linked to it; the caller names the rate-limit bucket */
+/** The book, when the caller is its owner (API key) or the owner's card; the caller names the rate-limit bucket */
 async function ownBook(request: Request, url: URL, id: string, client: string): Promise<{ book: Book; caller: string } | { response: Response }> {
     const admin = adminClient();
     const book = await findRow(admin, id);
@@ -68,14 +65,14 @@ async function ownBook(request: Request, url: URL, id: string, client: string): 
         const grant = verifyDocumentTicket(ticket, documentSecret(), 'preview');
         if (!grant) return { response: fail(401, 'The PapeRobo ticket has expired. Open the MiniApp again.') };
         const card = await findRow(admin, grant.id);
-        userId = linkedOwner(card, book);
-        if (!userId) return { response: fail(401, 'This card is not linked to this book (hyperbook_db in its frontmatter).') };
+        userId = cardOwner(card);
+        if (!userId) return { response: fail(401, 'The PapeRobo ticket does not name a card.') };
         caller = `card:${card!.id}:${grant.viewer || client}`;
     } else {
         const ref = refererCard(request.headers.get('referer'), url);
         const card = ref ? await findRow(admin, ref) : null;
-        userId = linkedOwner(card, book);
-        if (!userId) return { response: fail(401, 'Use this from a card linked to this book (hyperbook_db in its frontmatter), or send an API key.') };
+        userId = cardOwner(card);
+        if (!userId) return { response: fail(401, 'Use this from your own card, or send an API key.') };
         caller = `card:${card!.id}:${client}`;
     }
     if (!book) return { response: fail(404, 'Book not found.') };

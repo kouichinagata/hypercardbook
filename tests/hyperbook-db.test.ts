@@ -118,10 +118,8 @@ test('field selectors', () => {
     assert.equal(parseFieldSelector('check:x(1)'), null);
 });
 
-test('a card names its DB in the frontmatter, and is found from the Referer on the same host', async () => {
-    const { linkedDb, refererCard } = await import('../src/lib/hyperbook-db.ts');
-    assert.equal(linkedDb('---\nid: c\nplay_mode: card\nhyperbook_db: test-db-book\n---\n# x'), 'test-db-book');
-    assert.equal(linkedDb('---\nid: c\n---\nhyperbook_db: test-db-book'), null);
+test('a card is found from the Referer on the same host', async () => {
+    const { refererCard } = await import('../src/lib/hyperbook-db.ts');
     const api = new URL('https://markdown.example.org/hyperbook/test-db-book/db?action=add');
     assert.equal(refererCard('https://markdown.example.org/hypercard/test-db-crud', api), 'test-db-crud');
     assert.equal(refererCard('https://evil.example.com/hypercard/test-db-crud', api), null);

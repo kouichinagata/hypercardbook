@@ -309,13 +309,6 @@ export function updateField(markdown: string, page: number, selector: string, bo
 
 // ---- Who may call the DB API without an API key: the owner's own card ----
 
-/** The HyperBook a card is linked to (`hyperbook_db: <book id or UUID>` in its frontmatter), or null */
-export function linkedDb(markdown: string): string | null {
-    const fm = markdown.match(/^---\s*\n([\s\S]*?)\n---/);
-    const v = fm?.[1].match(/^hyperbook_db:[ \t]*([A-Za-z0-9_-]+)[ \t]*\r?$/m)?.[1];
-    return v || null;
-}
-
 /**
  * The card a request came from, read from its Referer on the same host: /hypercard/{id} (the card page),
  * or /workspace?id={id} (the owner's workspace preview). Null for anything else.
