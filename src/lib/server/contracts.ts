@@ -5,15 +5,18 @@ import { isComplete } from '../signature/markers.ts';
 import { isCardMarkdown } from '../play-mode.ts';
 import { copyTemplateSignatures } from './markdown-verify.ts';
 
-/** Make a contract (a private card of the user) from a template card; returns the contract's id, or null when it could not be made. */
-export async function createContract(supabase: SupabaseClient, userId: string, templateId: string): Promise<string | null> {
+/**
+ * Make a contract (a private card of the user) from a template card; returns the contract's id, or null when it could not be made.
+ * The same copy makes a HyperBook DB from a DB template; that copy is given a fixed slug so the user has one per template.
+ */
+export async function createContract(supabase: SupabaseClient, userId: string, templateId: string, fixedSlug?: string): Promise<string | null> {
     const { data: template } = await supabase
         .from('books')
         .select('id, user_id, title, author, cover_image, theme_color, markdown_content')
         .eq('id', templateId)
         .maybeSingle();
     if (!template) return null;
-    const slug = `contract-${randomUUID()}`;
+    const slug = fixedSlug ?? `contract-${randomUUID()}`;
     const title = `${template.title} ${contractStamp(new Date())}`;
     const { data: contract, error } = await supabase
         .from('books')

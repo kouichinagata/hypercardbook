@@ -6,6 +6,8 @@ import { isCardMarkdown } from '$lib/play-mode';
 import { createRateLimiter } from '$lib/server/rate-limit';
 import { documentSecret } from '$lib/server/paperoboDocuments';
 import { verifyDocumentTicket } from '$lib/server/paperoboDocumentTicket';
+import { isTemplate } from '$lib/signature/contract';
+import { createContract } from '$lib/server/contracts';
 import { addPage, dbPages, deletePage, parseFieldSelector, refererCard, searchPages, updateField, updatePage, type DbResult } from '$lib/hyperbook-db';
 
 // HyperBook DB HTTP Request API: add / delete / search / get / update the pages of the owner's HyperBook.
@@ -21,10 +23,14 @@ import { addPage, dbPages, deletePage, parseFieldSelector, refererCard, searchPa
 //     In PapeRobo the card runs in a sandboxed iframe (no Referer, opaque origin): it sends the ticket PapeRobo opened it with
 //     (the `paperobo_share` parameter of its own URL) as `X-PapeRobo-Share`, and the ticket names the card.
 //   - an outside program: Authorization: Bearer <the owner's API key>.
+// A template (the class of a DB) is never written. In PapeRobo, a card whose developer owns the template gets the PapeRobo user
+// who opened it their own DB made from the template (one per user and template); the card keeps calling with the template's id.
+// Opened anywhere else, who opened it is not known, so a template is refused with a message to sign in.
 // Body: text/markdown; charset=utf-8. Any origin may call it (no cookies are read), so a sandboxed iframe can.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const METHOD: Record<string, string> = { add: 'POST', delete: 'DELETE', search: 'GET', get: 'GET', update: 'PATCH' };
 const fail = (status: number, error: string) => json({ error }, { status });
+const SIGN_IN = 'This MiniApp keeps your data in your own HyperCardBook. Sign up or sign in to HyperCardBook, then open it from PapeRobo.';
 // No cookie is read here: who calls is told by the API key, the PapeRobo ticket, or the Referer (only ever the page's own)
 const CORS = {
     'Access-Control-Allow-Origin': '*',
@@ -48,6 +54,22 @@ function cardOwner(card: Book | null): string | null {
     return card && isCardMarkdown(card.markdown_content) ? card.user_id : null;
 }
 
+/** The user's own DB made from the template: one per user and template (the slug is fixed), made the first time */
+async function viewerCopy(admin: ReturnType<typeof adminClient>, template: Book, viewer: string): Promise<Book | null> {
+    const slug = `db-${template.id}-${viewer}`;
+    const find = async () => {
+        const { data } = await admin.from('books').select('id, user_id, markdown_content, version').eq('slug', slug).eq('user_id', viewer).order('created_at').limit(1).maybeSingle();
+        return data as Book | null;
+    };
+    const found = await find();
+    if (found) return found;
+    const madeId = await createContract(admin, viewer, template.id, slug);
+    const copy = await find();
+    // Made twice at the same time: keep the first one
+    if (madeId && copy && copy.id !== madeId) await admin.from('books').delete().eq('id', madeId);
+    return copy;
+}
+
 /** The book, when the caller is its owner (API key) or the owner's card; the caller names the rate-limit bucket */
 async function ownBook(request: Request, url: URL, id: string, client: string): Promise<{ book: Book; caller: string } | { response: Response }> {
     const admin = adminClient();
@@ -68,6 +90,13 @@ async function ownBook(request: Request, url: URL, id: string, client: string): 
         userId = cardOwner(card);
         if (!userId) return { response: fail(401, 'The PapeRobo ticket does not name a card.') };
         caller = `card:${card!.id}:${grant.viewer || client}`;
+        // The developer's template: the PapeRobo user who opened the card works in their own DB made from it
+        if (book && book.user_id === userId && isTemplate(book.markdown_content || '')) {
+            if (!grant.viewer) return { response: fail(401, SIGN_IN) };
+            const copy = await viewerCopy(admin, book, grant.viewer);
+            if (!copy) return { response: fail(503, 'Could not make your copy of the database.') };
+            return { book: copy, caller };
+        }
     } else {
         const ref = refererCard(request.headers.get('referer'), url);
         const card = ref ? await findRow(admin, ref) : null;
@@ -78,6 +107,7 @@ async function ownBook(request: Request, url: URL, id: string, client: string): 
     if (!book) return { response: fail(404, 'Book not found.') };
     if (book.user_id !== userId) return { response: fail(403, 'Not your book.') };
     if (isCardMarkdown(book.markdown_content)) return { response: fail(400, 'This document is not a HyperBook.') };
+    if (isTemplate(book.markdown_content || '')) return { response: fail(401, SIGN_IN) };
     return { book, caller };
 }
 
