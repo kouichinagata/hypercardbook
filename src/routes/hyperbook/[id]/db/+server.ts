@@ -4,22 +4,34 @@ import { adminClient } from '$lib/server/signatures';
 import { userForApiKey } from '$lib/server/api-keys';
 import { isCardMarkdown } from '$lib/play-mode';
 import { createRateLimiter } from '$lib/server/rate-limit';
+import { documentSecret } from '$lib/server/paperoboDocuments';
+import { verifyDocumentTicket } from '$lib/server/paperoboDocumentTicket';
 import { addPage, dbPages, deletePage, linkedDb, parseFieldSelector, refererCard, searchPages, updateField, updatePage, type DbResult } from '$lib/hyperbook-db';
 
-// HyperBook DB HTTP Request API: add / delete / search / update the pages of the owner's HyperBook.
+// HyperBook DB HTTP Request API: add / delete / search / get / update the pages of the owner's HyperBook.
 //   POST   ?action=add                    body: Markdown of the new page (template: field values)
 //   DELETE ?action=delete&page=3
 //   GET    ?action=search&keyword=Yamada
+//   GET    ?action=get                    every page; ?action=get&page=3 one page
 //   PATCH  ?action=update&page=3          body: Markdown of the page (template: field values)
 //   PATCH  ?action=update&page=3&input(2) body: {{MarkdownAIinput=Sales}}
 // Who may call it:
 //   - the owner's own card: a card whose frontmatter has `hyperbook_db: <this book>`, with the same owner as the book.
 //     The card is the page the request comes from (its Referer on the same host), so no key is in the card.
+//     In PapeRobo the card runs in a sandboxed iframe (no Referer, opaque origin): it sends the ticket PapeRobo opened it with
+//     (the `paperobo_share` parameter of its own URL) as `X-PapeRobo-Share`, and the ticket names the card.
 //   - an outside program: Authorization: Bearer <the owner's API key>.
-// Body: text/markdown; charset=utf-8.
+// Body: text/markdown; charset=utf-8. Any origin may call it (no cookies are read), so a sandboxed iframe can.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const METHOD: Record<string, string> = { add: 'POST', delete: 'DELETE', search: 'GET', update: 'PATCH' };
+const METHOD: Record<string, string> = { add: 'POST', delete: 'DELETE', search: 'GET', get: 'GET', update: 'PATCH' };
 const fail = (status: number, error: string) => json({ error }, { status });
+// No cookie is read here: who calls is told by the API key, the PapeRobo ticket, or the Referer (only ever the page's own)
+const CORS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-PapeRobo-Share',
+    'Access-Control-Max-Age': '600'
+};
 // Per caller (API key, or the card and the client address), per minute
 const limiter = createRateLimiter(120, 60_000);
 
@@ -31,26 +43,40 @@ async function findRow(admin: ReturnType<typeof adminClient>, id: string) {
     return data as (Book & { slug: string | null }) | null;
 }
 
+type Row = NonNullable<Awaited<ReturnType<typeof findRow>>>;
+
+/** The card's owner, when the card is linked to this book (`hyperbook_db` names it) */
+function linkedOwner(card: Row | null, book: Row | null): string | null {
+    const linked = card && isCardMarkdown(card.markdown_content) ? linkedDb(card.markdown_content || '') : null;
+    return card && linked && book && (linked === book.id || linked === book.slug) ? card.user_id : null;
+}
+
 /** The book, when the caller is its owner (API key) or the owner's card linked to it; the caller names the rate-limit bucket */
 async function ownBook(request: Request, url: URL, id: string, client: string): Promise<{ book: Book; caller: string } | { response: Response }> {
     const admin = adminClient();
     const book = await findRow(admin, id);
     const authorization = request.headers.get('authorization');
+    const ticket = request.headers.get('x-paperobo-share');
     let userId: string | null = null;
     let caller = '';
     if (authorization) {
         userId = await userForApiKey(admin, authorization);
         if (!userId) return { response: fail(401, 'A valid API key is required.') };
         caller = `key:${userId}`;
+    } else if (ticket) {
+        // The card PapeRobo opened, for the PapeRobo user who opened it
+        const grant = verifyDocumentTicket(ticket, documentSecret(), 'preview');
+        if (!grant) return { response: fail(401, 'The PapeRobo ticket has expired. Open the MiniApp again.') };
+        const card = await findRow(admin, grant.id);
+        userId = linkedOwner(card, book);
+        if (!userId) return { response: fail(401, 'This card is not linked to this book (hyperbook_db in its frontmatter).') };
+        caller = `card:${card!.id}:${grant.viewer || client}`;
     } else {
         const ref = refererCard(request.headers.get('referer'), url);
         const card = ref ? await findRow(admin, ref) : null;
-        const linked = card && isCardMarkdown(card.markdown_content) ? linkedDb(card.markdown_content || '') : null;
-        if (!card || !linked || !book || (linked !== book.id && linked !== book.slug)) {
-            return { response: fail(401, 'Use this from a card linked to this book (hyperbook_db in its frontmatter), or send an API key.') };
-        }
-        userId = card.user_id;
-        caller = `card:${card.id}:${client}`;
+        userId = linkedOwner(card, book);
+        if (!userId) return { response: fail(401, 'Use this from a card linked to this book (hyperbook_db in its frontmatter), or send an API key.') };
+        caller = `card:${card!.id}:${client}`;
     }
     if (!book) return { response: fail(404, 'Book not found.') };
     if (book.user_id !== userId) return { response: fail(403, 'Not your book.') };
@@ -82,7 +108,7 @@ async function save(bookId: string, change: (markdown: string) => DbResult): Pro
     return fail(409, 'The book is being changed. Try again.');
 }
 
-const handle: RequestHandler = async ({ params, request, url, getClientAddress }) => {
+const run: RequestHandler = async ({ params, request, url, getClientAddress }) => {
     const action = url.searchParams.get('action') || '';
     if (!METHOD[action]) return fail(400, 'Unknown action.');
     if (request.method !== METHOD[action]) return fail(405, `Use ${METHOD[action]} for action=${action}.`);
@@ -97,6 +123,12 @@ const handle: RequestHandler = async ({ params, request, url, getClientAddress }
         if (!keyword) return fail(400, 'A keyword is required.');
         return json({ results: searchPages(book.markdown_content || '', keyword) });
     }
+    if (action === 'get') {
+        const pages = dbPages(book.markdown_content || '').map((markdown, n) => ({ page: n + 1, markdown }));
+        if (!url.searchParams.has('page')) return json({ pages, count: pages.length });
+        const one = pages[Number(url.searchParams.get('page')) - 1];
+        return one ? json(one) : fail(404, 'No such page.');
+    }
 
     const body = action === 'delete' ? '' : await request.text();
     if (body.length > 200_000) return fail(413, 'The body is too large.');
@@ -110,6 +142,14 @@ const handle: RequestHandler = async ({ params, request, url, getClientAddress }
     return save(book.id, (md) => updatePage(md, page, body));
 };
 
+const handle: RequestHandler = async (event) => {
+    const response = await run(event);
+    for (const [k, v] of Object.entries(CORS)) response.headers.set(k, v);
+    return response;
+};
+
+// The preflight a sandboxed iframe (or any other origin) sends before PATCH / DELETE or a custom header
+export const OPTIONS: RequestHandler = async () => new Response(null, { status: 204, headers: CORS });
 export const GET = handle;
 export const POST = handle;
 export const PATCH = handle;
